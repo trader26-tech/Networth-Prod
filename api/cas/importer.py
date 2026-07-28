@@ -125,6 +125,76 @@ def _issuer_from_name(name: str) -> str:
     return head or (name or "Unknown issuer")
 
 
+def _first_payment_date(maturity: str | None, freq: str, as_of: str) -> str | None:
+    """
+    Derive the first upcoming coupon date from the maturity date.
+
+    An NCD's coupon falls on the same day-of-month as its redemption: a bond
+    maturing 20 Nov 2028 pays on the 20th of each month (or the 20th of each
+    quarter/half-year/year, counting back from maturity). So the payment DAY is
+    knowable even though a CAS never prints the payment schedule.
+
+    Without this every bond would anchor to purchase_date + 1 step, which for a
+    CAS import means the statement date — collapsing every bond in the portfolio
+    onto one calendar day. That is wrong and visibly so.
+
+    Returns the first payment strictly after `as_of`, aligned to the maturity's
+    day-of-month and phase.
+    """
+    md = _pdate(maturity)
+    ref = _pdate(as_of) or date.today()
+    if not md or md <= ref:
+        return None
+
+    ppy = {"monthly": 12, "quarterly": 4, "half_yearly": 2, "annual": 1}.get(freq)
+    if not ppy:
+        return None  # cumulative / zero-coupon pay only at maturity
+    step = 12 // ppy
+
+    # Walk back from maturity in whole steps until just past `ref`, so the
+    # cycle's phase matches the issuer's actual schedule.
+    #
+    # Offsets are always measured from the ORIGINAL maturity date, never from
+    # the previously computed date: stepping month-by-month lets a short month
+    # clamp the day (31 -> 29 in February) and the day never recovers, so a
+    # bond paying on the 31st would drift to the 28th for the rest of its life.
+    k = 0
+    while True:
+        cur = _add_months_safe(md, -step * k)
+        prev = _add_months_safe(md, -step * (k + 1))
+        if prev <= ref:
+            return cur.isoformat()
+        if cur <= ref:                    # safety: never return a past date
+            return _add_months_safe(md, -step * (k - 1)).isoformat()
+        k += 1
+
+
+def _add_months_safe(d: date, months: int) -> date:
+    """Shift by months, clamping the day to the target month's length."""
+    y = d.year + (d.month - 1 + months) // 12
+    m = (d.month - 1 + months) % 12 + 1
+    last = _monthrange(y, m)
+    return date(y, m, min(d.day, last))
+
+
+def _monthrange(year: int, month: int) -> int:
+    import calendar
+
+    return calendar.monthrange(year, month)[1]
+
+
+def _pdate(v: Any) -> date | None:
+    if isinstance(v, date):
+        return v
+    s = str(v or "").strip()[:10]
+    if not s:
+        return None
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        return None
+
+
 def _bond_type(name: str, isin: str) -> str:
     up = (name or "").upper()
     if "GOI" in up or "G-SEC" in up or "GSEC" in up or (isin or "").startswith("IN00"):
@@ -277,6 +347,15 @@ def build_preview(
             lookup_report = isin_lookup.enrich_bonds(bond_rows)
         except Exception as e:  # never let a network hiccup break the import
             lookup_report = {"looked_up": 0, "resolved": 0, "filled": {}, "error": str(e)}
+
+    # Anchor each bond's payout cycle to its own coupon day, derived from the
+    # maturity date. Must run AFTER enrichment, which is what supplies maturity
+    # and frequency for most NCDs.
+    for rec in bond_rows:
+        if not rec.get("first_payment_date"):
+            rec["first_payment_date"] = _first_payment_date(
+                rec.get("maturity_date"), rec.get("coupon_freq") or "annual", as_of
+            )
 
     # `_needs` is computed AFTER enrichment so it lists only what is still
     # genuinely missing and must come from the user.

@@ -231,28 +231,121 @@ _VALUE_COL_MIN = 528.0
 # split is mandatory, not cosmetic.
 _GLUED_PRICE_VALUE = re.compile(r"^(\d+\.\d{4})([\d,]+\.\d\d)$")
 
+# The constants above are measured from CDSL's current A4 layout. Rather than
+# trust them, `calibrate_layout()` re-derives the column boundaries from each
+# PDF's own geometry, so a different page size, margin or font scale still
+# parses. The constants remain only as a fallback when calibration can't find
+# enough structure to measure.
+_LAYOUT_DEFAULT = {
+    "name_x0": _NAME_COL_X0,
+    "name_x1": _NAME_COL_X1,
+    "price_min": _PRICE_COL_MIN,
+    "price_max": _PRICE_COL_MAX,
+    "value_min": _VALUE_COL_MIN,
+}
 
-def _rows_from_words(words: list[dict]) -> list[dict[str, Any]]:
+
+def calibrate_layout(pages_words: list[list[dict]]) -> dict[str, float]:
+    """
+    Measure the holdings-table column boundaries from the document itself.
+
+    Anchor: rows whose first token is an ISIN. On such a row the right-most
+    numeric cell is the market value and the one before it is the unit price, so
+    the gap between those two columns gives a real split point — whatever the
+    page width. Everything is expressed relative to observed positions, so a
+    rescaled or re-margined CAS calibrates to its own numbers.
+
+    Falls back to the measured-from-A4 defaults if too few rows are found to
+    measure confidently.
+    """
+    isin_x: list[float] = []
+    numeric_x: list[float] = []
+    rightmost: list[float] = []
+
+    for words in pages_words:
+        if not words:
+            continue
+        by_y: dict[float, list[dict]] = {}
+        for w in words:
+            by_y.setdefault(round(w["top"], 1), []).append(w)
+        for y, row in by_y.items():
+            row = sorted(row, key=lambda w: w["x0"])
+            first = row[0]
+            if not _ISIN.fullmatch(first["text"].strip()):
+                continue
+            nums = [
+                w for w in row[1:]
+                if _num(w["text"]) is not None and _NUM_RE.fullmatch(
+                    w["text"].replace(",", "")
+                )
+            ]
+            if len(nums) < 3:
+                continue
+            isin_x.append(first["x0"])
+            rightmost.append(nums[-1]["x0"])
+            numeric_x.extend(w["x0"] for w in nums)
+
+    if len(rightmost) < 20:
+        return dict(_LAYOUT_DEFAULT)
+
+    rightmost.sort()
+    numeric_x.sort()
+
+    # Value column: right-aligned, so take a little below its smallest observed
+    # x0 (long numbers start furthest left).
+    value_min = rightmost[0] - 3.0
+
+    # Price column: the widest gap among numeric starts that sits left of the
+    # value column marks the price/value boundary.
+    left_of_value = [x for x in numeric_x if x < value_min - 1]
+    if not left_of_value:
+        return dict(_LAYOUT_DEFAULT)
+    price_max = value_min
+    price_min = max(left_of_value[0], min(left_of_value[-1] - 60.0, value_min - 60.0))
+
+    # Name column sits between the ISIN token and the first numeric column.
+    first_num = left_of_value[0] if left_of_value else _NAME_COL_X1
+    name_x0 = (min(isin_x) + first_num) / 2 if isin_x else _NAME_COL_X0
+    name_x0 = min(name_x0, first_num - 20.0)
+    name_x1 = first_num - 1.0
+
+    return {
+        "name_x0": name_x0,
+        "name_x1": name_x1,
+        "price_min": price_min,
+        "price_max": price_max,
+        "value_min": value_min,
+    }
+
+
+def _rows_from_words(
+    words: list[dict], layout: dict[str, float] | None = None
+) -> list[dict[str, Any]]:
     """
     Group a page's words into holdings rows keyed on the ISIN token, pulling
     the security name from the name column within the row's vertical band.
     """
+    lay = layout or _LAYOUT_DEFAULT
+    name_x0, name_x1 = lay["name_x0"], lay["name_x1"]
+    price_min, price_max = lay["price_min"], lay["price_max"]
+    value_min = lay["value_min"]
+
     isin_words = [
-        w for w in words if w["x0"] < _NAME_COL_X0 and _ISIN.fullmatch(w["text"].strip())
+        w for w in words if w["x0"] < name_x0 and _ISIN.fullmatch(w["text"].strip())
     ]
     if not isin_words:
         return []
     isin_words.sort(key=lambda w: w["top"])
 
     name_words = [
-        w for w in words if _NAME_COL_X0 <= w["x0"] < _NAME_COL_X1
+        w for w in words if name_x0 <= w["x0"] < name_x1
     ]
 
     rows: list[dict[str, Any]] = []
     for iw in isin_words:
         y = iw["top"]
         # numeric/data cells on the same baseline
-        band = [w for w in words if abs(w["top"] - y) < _ROW_BAND and w["x0"] >= _NAME_COL_X1]
+        band = [w for w in words if abs(w["top"] - y) < _ROW_BAND and w["x0"] >= name_x1]
         band.sort(key=lambda w: w["x0"])
         # CAS sometimes emits an adjacent "--" glued to the next figure
         # ("--3540.000"); split those so column counting stays correct.
@@ -266,7 +359,7 @@ def _rows_from_words(words: list[dict]) -> list[dict[str, Any]]:
             if g:
                 cells_xy.append((w["x0"], g.group(1)))
                 # the value half belongs in the value column
-                cells_xy.append((max(_VALUE_COL_MIN, w["x0"]), g.group(2)))
+                cells_xy.append((max(value_min, w["x0"]), g.group(2)))
                 continue
             for part in re.split(r"(?<=--)(?=\d)|(?<=\d)(?=--)", txt):
                 part = part.strip()
@@ -280,14 +373,14 @@ def _rows_from_words(words: list[dict]) -> list[dict[str, Any]]:
         # can break a date apart and let a ledger row through.
         has_date = any(_DATE_RE.search(w["text"]) for w in band)
         has_price = any(
-            _PRICE_COL_MIN <= x < _PRICE_COL_MAX and _num(t) is not None
+            price_min <= x < price_max and _num(t) is not None
             for x, t in cells_xy
         )
         value = next(
             (
                 _num(t)
                 for x, t in sorted(cells_xy, key=lambda c: -c[0])
-                if x >= _VALUE_COL_MIN and _num(t) is not None
+                if x >= value_min and _num(t) is not None
             ),
             None,
         )
@@ -311,7 +404,7 @@ def _rows_from_words(words: list[dict]) -> list[dict[str, Any]]:
             (
                 _num(t)
                 for x, t in sorted(cells_xy, key=lambda c: -c[0])
-                if _PRICE_COL_MIN <= x < _PRICE_COL_MAX and _num(t) is not None
+                if price_min <= x < price_max and _num(t) is not None
             ),
             None,
         )
@@ -892,6 +985,18 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
     # Each demat account's holdings end with a bare "Portfolio Value ` X" line.
     # Walk pages in order, attributing rows to the current account, and close
     # the account when its valuation line appears.
+    # Measure this document's own column geometry before reading any row, so a
+    # different page size / margin / font scale parses without code changes.
+    layout = calibrate_layout(pages_words)
+    # Only mention calibration when the document's geometry is materially
+    # different from the common CDSL layout — otherwise it is just noise.
+    if abs(layout["value_min"] - _LAYOUT_DEFAULT["value_min"]) > 25:
+        warnings.append(
+            "This CAS uses a different page layout; columns were auto-calibrated "
+            f"(value column at x≥{layout['value_min']:.0f}). Totals were still "
+            "reconciled against the statement."
+        )
+
     account_seq = [a for a in _extract_accounts(pages_text)]
     acct_idx = 0
     stated_per_account: list[float] = []
@@ -948,7 +1053,7 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
                     section_values["equity"] = section_values.get("equity", 0.0) + val
                     acct_idx += 1
 
-        for row in _rows_from_words(words):
+        for row in _rows_from_words(words, layout):
             y = row["top"]
             in_bond = any(y > b for b in bond_bands)
             in_gsec = any(y > b for b in gsec_bands)

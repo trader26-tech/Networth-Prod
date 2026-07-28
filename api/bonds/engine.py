@@ -26,6 +26,7 @@ TDS: each payment carries `tds` (10% of interest, 0 for tax-free bonds) and
 """
 from __future__ import annotations
 
+import calendar
 from collections import defaultdict
 from datetime import date
 from typing import Any, Optional
@@ -96,13 +97,11 @@ def _add_months(d: date, n: int) -> date:
     m = d.month - 1 + n
     y = d.year + m // 12
     m = m % 12 + 1
-    # clamp day to month length
-    for dd in (d.day, 28, 29, 30, 31):
-        try:
-            return date(y, m, min(d.day, dd))
-        except ValueError:
-            continue
-    return date(y, m, 28)
+    # Clamp the day to the target month's real length. Walk DOWN from the
+    # requested day — trying 28 before 30 would return Sep 28 for a bond that
+    # pays on the 31st, silently moving every month-end payout two days early.
+    last = calendar.monthrange(y, m)[1]
+    return date(y, m, min(d.day, last))
 
 
 def _f(v: Any, default: float = 0.0) -> float:
@@ -174,6 +173,9 @@ def schedule(bond: dict) -> list[dict]:
     principal_slice = face / n if amort else 0.0
     outstanding = face
     for i in range(n):
+        # Offset from the anchor every time (never from the previous date): a
+        # short month would otherwise clamp the day permanently, so a bond
+        # paying on the 31st would slip to the 28th after its first February.
         dt = _add_months(anchor, i * step)
         if i == n - 1:
             dt = md
