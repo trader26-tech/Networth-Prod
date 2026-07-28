@@ -1,0 +1,321 @@
+@if (row?.snow; as s) {
+<div class="sd-overlay" (click)="close.emit()">
+  <div class="sd-modal" (click)="$event.stopPropagation()"
+       [class.bucket-keep]="s.bucket === 'KEEP_AND_ADD'"
+       [class.bucket-hold]="s.bucket === 'HOLD'"
+       [class.bucket-trim]="s.bucket === 'TRIM'"
+       [class.bucket-exit]="s.bucket === 'EXIT'"
+       [class.bucket-insuff]="s.bucket === 'INSUFFICIENT_DATA'">
+
+    <!-- Header -->
+    <header class="sd-head">
+      <div>
+        <h2 class="sd-ticker">{{ s.ticker || row.symbol }}</h2>
+        <div class="sd-name">{{ s.name || row.share }}</div>
+        <div class="sd-sub">
+          {{ s.subsector || '' }}
+          @if (s.cap_tier) { · {{ s.cap_tier }} cap }
+          @if (s.market_cap_cr != null) { · ₹{{ s.market_cap_cr | number:'1.0-0' }} Cr }
+        </div>
+      </div>
+      <span class="sd-bucket sd-bucket-{{ s.bucket }}">{{ bucketLabel() }}</span>
+      <button class="sd-close" (click)="close.emit()" aria-label="Close">×</button>
+    </header>
+
+    <!-- Decision card: WHY + WHAT TO DO -->
+    @if (playbook(); as pb) {
+    <section class="sd-decision">
+      <div class="sd-decision-radar">
+        <app-snowflake-radar
+          [axes_data]="s.axes"
+          [bucket]="s.bucket"
+          [composite]="s.composite"
+          [size]="240"
+          [pad]="34" />
+      </div>
+      <div class="sd-decision-text">
+        <h3 class="sd-decision-title">{{ pb.title }}</h3>
+        <p class="sd-decision-body">{{ pb.body }}</p>
+        @if (s.summary) {
+          <div class="sd-summary">{{ s.summary }}</div>
+        }
+        <h4 class="sd-todo-h">What to do</h4>
+        <ul class="sd-todo">
+          @for (t of pb.what_to_do; track t) { <li>{{ t }}</li> }
+        </ul>
+      </div>
+    </section>
+    }
+
+    <!-- ── Detailed rationale — the "why" the user explicitly asked for ── -->
+    @if (rationale(); as rat) {
+    <section class="sd-rationale">
+      <h3>Why the system landed here</h3>
+
+      @for (t of rat.triggers; track t) {
+        <p class="sd-rat-trigger">{{ t }}</p>
+      }
+
+      <!-- Trackable axes — what was actually counted -->
+      @if (rat.trackable.length) {
+      <div class="sd-rat-section">
+        <h4>Axes that counted toward the score</h4>
+        <ul class="sd-rat-list">
+          @for (a of rat.trackable; track a.name) {
+            <li>
+              <span class="sd-rat-ax-name">{{ a.name }}</span>
+              <span class="sd-rat-ax-score" [class.tone-green]="a.verdict === 'strong'"
+                                            [class.tone-blue]="a.verdict === 'average'"
+                                            [class.tone-amber]="a.verdict === 'weak'"
+                                            [class.tone-red]="a.verdict === 'very weak'">
+                {{ a.score | number:'1.1-1' }}/6 · {{ a.verdict }}
+              </span>
+              <span class="sd-rat-ax-note">
+                {{ a.passed }} of {{ a.available }} sub-checks passed.
+              </span>
+            </li>
+          }
+        </ul>
+      </div>
+      }
+
+      <!-- Untrackable axes — what was excluded -->
+      @if (rat.untrackable.length) {
+      <div class="sd-rat-section">
+        <h4>Axes excluded — data not trackable</h4>
+        <p class="sd-rat-untrack-lead">
+          The system requires at least 2 sub-checks worth of real data per axis to score it.
+          The axes below didn't meet that bar and were dropped from the composite — the system
+          would rather say "we don't know" than invent a number.
+        </p>
+        <ul class="sd-rat-list">
+          @for (a of rat.untrackable; track a.name) {
+            <li>
+              <span class="sd-rat-ax-name">{{ a.name }}</span>
+              <span class="sd-rat-ax-score tone-grey">n/a · {{ a.available }} of needed 2+ data points</span>
+            </li>
+          }
+        </ul>
+      </div>
+      }
+
+      <!-- How composite is computed -->
+      @if (rat.how_composite) {
+      <div class="sd-rat-section">
+        <h4>How the composite was computed</h4>
+        <p>{{ rat.how_composite }}</p>
+      </div>
+      }
+
+      <!-- What this means -->
+      @if (rat.interpretation) {
+      <div class="sd-rat-section">
+        <h4>What this means about the company</h4>
+        <p>{{ rat.interpretation }}</p>
+      </div>
+      }
+    </section>
+    }
+
+    <!-- Signals: strengths / warnings / blockers (specific numeric findings) -->
+    @if (s.strengths?.length || s.warnings?.length || s.blockers?.length) {
+    <section class="sd-signals">
+      <div class="sd-signal-hint">Click any item to jump to the underlying metric →</div>
+      @if (s.blockers?.length) {
+        <div class="sd-signal-col">
+          <h4 class="tone-red">Red flags · {{ s.blockers.length }}</h4>
+          <ul>@for (b of s.blockers; track b) {
+            <li class="sd-signal-item" (click)="jumpToMetric(b)">{{ b }}</li>
+          }</ul>
+        </div>
+      }
+      @if (s.warnings?.length) {
+        <div class="sd-signal-col">
+          <h4 class="tone-amber">Warnings · {{ s.warnings.length }}</h4>
+          <ul>@for (w of s.warnings; track w) {
+            <li class="sd-signal-item" (click)="jumpToMetric(w)">{{ w }}</li>
+          }</ul>
+        </div>
+      }
+      @if (s.strengths?.length) {
+        <div class="sd-signal-col">
+          <h4 class="tone-green">Strengths · {{ s.strengths.length }}</h4>
+          <ul>@for (st of s.strengths; track st) {
+            <li class="sd-signal-item" (click)="jumpToMetric(st)">{{ st }}</li>
+          }</ul>
+        </div>
+      }
+    </section>
+    }
+
+    <!-- Axis breakdown with composite -->
+    <section class="sd-axes-summary">
+      <div class="sd-axes-title">6-axis breakdown</div>
+      <div class="sd-axes-grid">
+        @for (a of AXIS_ORDER; track a.key) {
+          @if (s.axes?.[a.key]) {
+            <div class="sd-ax-card" [class.untracked]="!s.axes[a.key].trackable">
+              <div class="sd-ax-title">{{ a.title }}</div>
+              <div class="sd-ax-score">
+                @if (s.axes[a.key].trackable) {
+                  <b>{{ s.axes[a.key].score | number:'1.1-1' }}</b><span class="muted">/ 6</span>
+                } @else {
+                  <span class="muted-italic">n/a</span>
+                }
+              </div>
+              <div class="sd-ax-sub">{{ s.axes[a.key].passed }}/{{ s.axes[a.key].available }} checks</div>
+              <div class="sd-ax-desc">{{ a.desc }}</div>
+            </div>
+          }
+        }
+      </div>
+    </section>
+
+    <!-- Metric guide: every key ratio with definition + ranges + reading -->
+    <section class="sd-metrics">
+      <h3>Metric guide</h3>
+      <p class="sd-metrics-intro">
+        Every ratio below shows the current value, the acceptable range for Indian equities, and what the
+        current reading suggests about the business. Use this to verify (or argue with) the system's call.
+      </p>
+
+      <!-- Axis tabs -->
+      <div class="sd-tabs">
+        @for (a of AXIS_ORDER; track a.key) {
+          @if (metricsByAxis()[a.key]?.length) {
+            <button class="sd-tab"
+                    [class.active]="activeAxis() === a.key"
+                    (click)="activeAxis.set(a.key)">
+              {{ a.title }}
+              <span class="sd-tab-n">{{ metricsByAxis()[a.key].length }}</span>
+            </button>
+          }
+        }
+      </div>
+
+      <!-- Active axis content -->
+      @for (a of AXIS_ORDER; track a.key) {
+        @if (activeAxis() === a.key && metricsByAxis()[a.key]) {
+          @for (m of metricsByAxis()[a.key]; track m.key) {
+            <div class="sd-metric"
+                 [attr.data-metric-key]="m.key"
+                 [class.highlighted]="highlightedMetric() === m.key">
+              <div class="sd-metric-head">
+                <div>
+                  <span class="sd-metric-label">{{ m.label }}</span>
+                  @if (m.value != null) {
+                    <span class="sd-metric-value">{{ fmtValue(m.value, m.spec.unit) }}</span>
+                  } @else {
+                    <span class="sd-metric-value muted-italic">n/a</span>
+                  }
+                </div>
+                @if (m.band) {
+                  <span class="sd-band-pill" [class]="toneClass(m.band.tone)">{{ m.band.label }}</span>
+                }
+              </div>
+
+              <!-- Band bar — each segment shows its label + the numeric range -->
+              @if (m.band) {
+                <div class="sd-band-bar">
+                  @for (seg of bandSegments(m.spec); track seg.label; let i = $index) {
+                    <div class="sd-band-seg" [class]="toneClass(seg.tone)"
+                         [class.active]="i === m.bandIdx"
+                         [title]="seg.label + ' (' + seg.range + ')'">
+                      <span class="sd-band-seg-lbl">{{ seg.label }}</span>
+                      <span class="sd-band-seg-range">{{ seg.range }}</span>
+                    </div>
+                  }
+                  <div class="sd-band-marker" [style.left.%]="m.pctOnBar"></div>
+                </div>
+              }
+
+              <div class="sd-metric-desc">{{ m.spec.desc }}</div>
+
+              @if (m.spec.formula) {
+                <div class="sd-metric-formula" title="How this number is calculated">
+                  <span class="sd-formula-label">Formula:</span>
+                  <code>{{ m.spec.formula }}</code>
+                </div>
+              }
+
+              <!-- ── Peer comparison strip / sector exemption ────────────── -->
+              @if (m.exempt) {
+                <div class="sd-peer-exempt">
+                  <span class="sd-peer-exempt-tag">SECTOR EXEMPT</span>
+                  <span class="sd-peer-exempt-text">
+                    This metric doesn't apply to {{ row.snow.subsector }} —
+                    excluded from the score for this stock.
+                  </span>
+                </div>
+              } @else if (m.peer && m.peer.median != null) {
+                <div class="sd-peer">
+                  <div class="sd-peer-row">
+                    <span class="sd-peer-cell">
+                      <span class="sd-peer-lbl">This stock</span>
+                      <span class="sd-peer-val">{{ fmtValue(m.peer.value, m.spec.unit) }}</span>
+                    </span>
+                    <span class="sd-peer-cell">
+                      <span class="sd-peer-lbl">Sub-sector median</span>
+                      <span class="sd-peer-val">{{ fmtValue(m.peer.median, m.spec.unit) }}</span>
+                    </span>
+                    <span class="sd-peer-cell">
+                      <span class="sd-peer-lbl">Top quartile (Q3)</span>
+                      <span class="sd-peer-val">{{ fmtValue(m.peer.q3, m.spec.unit) }}</span>
+                    </span>
+                    <span class="sd-peer-cell">
+                      <span class="sd-peer-lbl">Peers compared</span>
+                      <span class="sd-peer-val">{{ m.peer.peer_count }}</span>
+                    </span>
+                  </div>
+                  <!-- Quartile track with this stock's position -->
+                  <div class="sd-peer-track">
+                    <div class="sd-peer-quartile q-low"   title="Bottom quartile"></div>
+                    <div class="sd-peer-quartile q-mid1"  title="Below median"></div>
+                    <div class="sd-peer-quartile q-mid2"  title="Above median"></div>
+                    <div class="sd-peer-quartile q-high"  title="Top quartile"></div>
+                    <div class="sd-peer-marker"
+                         [style.left.%]="Math.min(98, Math.max(2, m.peer.percentile))"
+                         [class.good]="m.peer.score_pct >= 60"
+                         [class.bad]="m.peer.score_pct <= 40">
+                      <span class="sd-peer-marker-label">
+                        {{ m.peer.score_pct >= 60 ? 'Top' : m.peer.score_pct >= 40 ? 'Mid' : 'Bottom' }}
+                        {{ Math.round(m.peer.direction === 'higher' ? m.peer.score_pct : (100 - m.peer.score_pct)) }}%
+                      </span>
+                    </div>
+                  </div>
+                  <div class="sd-peer-direction-hint">
+                    @if (m.peer.direction === 'higher') {
+                      Higher = better. This stock is in
+                      <b>{{ m.peer.score_pct >= 75 ? 'the top quartile' : m.peer.score_pct >= 50 ? 'the upper half' : m.peer.score_pct >= 25 ? 'the lower half' : 'the bottom quartile' }}</b>
+                      of its sub-sector for this metric.
+                    } @else {
+                      Lower = better (cheaper / less levered). This stock is
+                      <b>{{ m.peer.score_pct >= 75 ? 'cheaper than 75%+ of peers' : m.peer.score_pct >= 50 ? 'cheaper than the median peer' : m.peer.score_pct >= 25 ? 'more expensive than the median peer' : 'in the most expensive quartile of peers' }}</b>.
+                    }
+                  </div>
+                </div>
+              }
+
+              @if (m.interpret) {
+                <div class="sd-metric-interpret" [class]="toneClass(m.band?.tone)">
+                  <b>Reading:</b> {{ m.interpret }}
+                </div>
+              }
+            </div>
+          }
+        }
+      }
+    </section>
+
+    <!-- All raw metrics -->
+    <details class="sd-raw">
+      <summary>Show all 45 raw Tickertape fields</summary>
+      <table>
+        @for (kv of rawEntries(); track kv[0]) {
+          <tr><td class="k">{{ kv[0] }}</td><td class="v">{{ kv[1] }}</td></tr>
+        }
+      </table>
+    </details>
+  </div>
+</div>
+}

@@ -1,0 +1,3339 @@
+<div class="hb-page" [class.toc-collapsed]="!tocOpen()">
+
+  <!-- ════ Sticky grouped table of contents ════ -->
+  <aside class="hb-toc" [class.is-collapsed]="!tocOpen()">
+    @if (tocOpen()) {
+      <div class="hb-toc-head-row">
+        <div>
+          <div class="hb-toc-head">📚 Math Handbook</div>
+          <div class="hb-toc-sub">Theory + practice, side by side</div>
+        </div>
+        <button class="hb-toc-toggle" (click)="toggleToc()" title="Collapse sidebar">«</button>
+      </div>
+
+      @for (g of groups; track g.label) {
+        <div class="hb-toc-group" [class.is-day-2]="g.day === 2">
+          <button class="hb-toc-group-head" (click)="toggleGroup(g.label)">
+            <span class="hb-toc-group-icon">{{ g.icon }}</span>
+            <span class="hb-toc-group-label">{{ g.label }}</span>
+            <span class="hb-day-tag" [class.day-2]="g.day === 2">Day {{ g.day || 1 }}</span>
+            <span class="hb-toc-group-chev">{{ isGroupOpen(g.label) ? '▾' : '▸' }}</span>
+          </button>
+          @if (isGroupOpen(g.label)) {
+            <ol class="hb-toc-list">
+              @for (c of g.chapters; track c.id) {
+                <li>
+                  <a class="hb-toc-link"
+                     [class.active]="activeId() === c.id"
+                     (click)="scrollTo(c.id)">
+                    <span class="hb-toc-num">{{ c.number }}</span>
+                    <span class="hb-toc-title">{{ c.title }}</span>
+                  </a>
+                </li>
+              }
+            </ol>
+          }
+        </div>
+      }
+    } @else {
+      <button class="hb-toc-expand" (click)="toggleToc()" title="Expand sidebar">📚<br>»</button>
+    }
+  </aside>
+
+  <!-- ════ Main article ════ -->
+  <article class="hb-article">
+
+    <!-- ───────── Sticky example bar (collapsible) ───────── -->
+    @if (exampleBarOpen()) {
+      <div class="hb-example-bar">
+        <div class="hb-example-bar-head">
+          <span class="hb-example-bar-icon">🎯</span>
+          <strong>The running example</strong>
+          <span class="hb-example-bar-hint">Edit any value — every equation in every chapter recomputes live.</span>
+          <button class="hb-reset" (click)="resetExample()">Reset</button>
+          <button class="hb-close" (click)="toggleExampleBar()" title="Hide example bar">✕</button>
+        </div>
+        <div class="hb-example-bar-grid">
+          <label>S₀ (spot)
+            <input type="number" [ngModel]="S()" (ngModelChange)="S.set($event)">
+          </label>
+          <label>σ (vol)
+            <input type="number" step="0.01" [ngModel]="sig()" (ngModelChange)="sig.set($event)">
+          </label>
+          <label>μ (drift)
+            <input type="number" step="0.01" [ngModel]="mu()" (ngModelChange)="mu.set($event)">
+          </label>
+          <label>r (rf)
+            <input type="number" step="0.005" [ngModel]="r()" (ngModelChange)="r.set($event)">
+          </label>
+          <label>T (days)
+            <input type="number" step="1" [ngModel]="Tdays()" (ngModelChange)="Tdays.set($event)">
+          </label>
+          <label>K<sub>c</sub> (call)
+            <input type="number" [ngModel]="Kc()" (ngModelChange)="Kc.set($event)">
+          </label>
+          <label>K<sub>p</sub> (put)
+            <input type="number" [ngModel]="Kp()" (ngModelChange)="Kp.set($event)">
+          </label>
+          <label>K<sub>h</sub> (hedge)
+            <input type="number" [ngModel]="Kh()" (ngModelChange)="Kh.set($event)">
+          </label>
+        </div>
+      </div>
+    } @else {
+      <button class="hb-example-reopen" (click)="toggleExampleBar()" title="Show example bar">
+        🎯 Show example bar
+      </button>
+    }
+
+    <!-- ───────── PREFACE ───────── -->
+    <section id="intro" class="hb-section hb-preface">
+      <div class="hb-eyebrow">Preface</div>
+      <h1 class="hb-h1">How to read this book</h1>
+      <p class="hb-lead">
+        Most options handbooks teach formulas in the abstract. This one threads
+        a <strong>single concrete example</strong> through every chapter so the
+        math never feels disconnected from a real trade. Every equation appears
+        twice — once in symbols, once with the example values plugged in. Below
+        each is an interactive widget you can play with to see how outputs
+        respond to inputs.
+      </p>
+      <div class="hb-callout">
+        <strong>Your example trade:</strong>
+        Nifty at <code>{{ S() | number }}</code>, volatility <code>{{ (sig()*100).toFixed(0) }}%</code>,
+        expected drift <code>{{ (mu()*100).toFixed(0) }}%</code>, risk-free <code>{{ (r()*100).toFixed(1) }}%</code>,
+        time to expiry <code>{{ Tdays() }} days</code>. You're considering a
+        <code>{{ Kc() }} CE</code> covered-call write or a <code>{{ Kp() }} PE</code> cash-secured put.
+        The protective put we'll discuss has strike <code>{{ Kh() }}</code>, expiring 90 days out.
+      </div>
+      <p>
+        The example bar at the top is sticky — you can change any value at any
+        time. Every "with our example" box and every interactive chart will
+        update instantly so you can build intuition by experimentation.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 1: Random Walks                                              -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch1-random" class="hb-section">
+      <div class="hb-eyebrow">Chapter 1</div>
+      <h2 class="hb-h2">Random Walks &amp; the Stock Market</h2>
+      <div class="hb-deck">Why prices are stochastic — and what that gives us as traders.</div>
+
+      <div class="hb-topic-intro">
+        <div class="hb-topic-intro-label">📖 What this chapter is about</div>
+        <p>
+          Stock prices look chaotic minute-to-minute. But that chaos has a
+          mathematical structure — it's a <strong>random walk</strong>. This
+          chapter shows you that structure and explains why understanding it
+          unlocks everything else: option prices, probabilities of profit,
+          and risk measurements.
+        </p>
+        <p>
+          By the end you'll be able to: <strong>(a)</strong> describe how a
+          stock's "uncertainty cone" grows with time, <strong>(b)</strong>
+          compute the expected one-month range of any liquid stock,
+          <strong>(c)</strong> understand why all option pricing rests on
+          this single foundation.
+        </p>
+      </div>
+
+      <p>
+        At any moment, a stock's next tick depends on news, flows, and a
+        thousand factors we can't observe. Cumulatively this looks like a
+        <strong>random walk</strong> — the foundation of every option price
+        you'll ever pay or collect.
+      </p>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 1.1 — discrete random walk</h3>
+        <button class="hb-info-btn" (click)="toggleVar('1.1')" title="Show variable definitions">
+          ⓘ {{ expandedVar() === '1.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        S<sub>n</sub> = S₀ + ε · (X₁ + X₂ + ... + X<sub>n</sub>),
+        where each X<sub>i</sub> ∈ &#123;−1, +1&#125; with probability ½
+      </div>
+      @if (expandedVar() === '1.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>S<sub>n</sub></strong></td><td>Stock price after n steps</td>
+              <td>What we want to compute — the future price.</td></tr>
+          <tr><td><strong>S₀</strong></td><td>Starting price (today's spot)</td>
+              <td>Observable; you read it off the ticker.</td></tr>
+          <tr><td><strong>ε</strong></td><td>Step size (one period's standard deviation)</td>
+              <td>Derived as σ·√Δt where σ is annual vol, Δt is one period in years.</td></tr>
+          <tr><td><strong>X<sub>i</sub></strong></td><td>Random direction (±1)</td>
+              <td>Bernoulli: a fair coin flip. Each tick goes up or down independently.</td></tr>
+          <tr><td><strong>n</strong></td><td>Number of steps</td>
+              <td>How fine you want to slice time. More steps → more accurate.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Imagine the stock takes random ±ε
+          jumps every Δt seconds. Sum the jumps from t=0 to t=n·Δt. Each jump
+          is independent of the previous. Central Limit Theorem says the sum
+          is approximately Normal — that's the bridge to everything in Chapter 2.
+        </div>
+      </div>
+      }
+      <div class="hb-plug">
+        <strong>With our example:</strong> Nifty starts at S₀ = {{ S() }}.
+        Each step ε = {{ S() * sig() / Math.sqrt(252) | number:'1.0-1' }} (one-day stdev).
+        After 30 days the price is the sum of 30 such random ±ε steps.
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        This equation says: <strong>tomorrow's price = today's price + random shock</strong>.
+        It's the simplest possible "model" of a stock — but it's enough to start computing
+        probabilities. In trading, you don't need to predict each day; you need to know
+        the <strong>shape</strong> of where prices can land. Random walks give you that shape.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 1.2 — variance grows linearly with time</h3>
+        <button class="hb-info-btn" (click)="toggleVar('1.2')" title="Show variable definitions">
+          ⓘ {{ expandedVar() === '1.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        Var(S<sub>n</sub>) = n · ε²
+        &nbsp;⟹&nbsp;
+        StDev(S<sub>n</sub>) = ε · √n
+      </div>
+      @if (expandedVar() === '1.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>Var(S<sub>n</sub>)</strong></td><td>Variance of the price after n steps</td>
+              <td>How spread out possible prices are; squared units of price.</td></tr>
+          <tr><td><strong>StDev(S<sub>n</sub>)</strong></td><td>Standard deviation</td>
+              <td>Square root of variance; same units as price (₹).</td></tr>
+          <tr><td><strong>n</strong></td><td>Number of time steps</td>
+              <td>If each step is 1 day, n=30 means 30 days.</td></tr>
+          <tr><td><strong>ε</strong></td><td>Per-step standard deviation</td>
+              <td>From annual σ: ε = σ·√Δt.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Each step X<sub>i</sub> has variance 1
+          (since X = ±1 with equal probability, mean 0, variance E[X²] = 1).
+          The total variance after n independent steps is the SUM of variances:
+          n · 1 = n. Multiply by ε² (since each X is scaled by ε) → n · ε².
+          Take square root → StDev = ε · √n. <em>The √n is the famous "square
+          root of time" rule.</em>
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          The <strong>variance</strong> (a measure of "how spread out" possible
+          prices can be) grows directly proportional to time — wait twice as
+          long, variance doubles. But variance is in <em>squared</em> units. So
+          the <strong>standard deviation</strong> (variance's square root, in
+          regular units of price) grows only with the <strong>square root</strong>
+          of time. Wait 4× as long → uncertainty grows 2×, not 4×.
+        </p>
+        <p>
+          Picture a cone opening from today's price. The cone widens, but it
+          widens slower than a triangle would. That's the √t shape.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong> after T = {{ Tdays() }} days,
+        StDev = {{ S() }} · {{ sig() }} · √({{ Tdays() }}/365)
+        = <strong>{{ (S() * sig() * Math.sqrt(Tdays()/365)) | number:'1.0-0' }}</strong> Nifty points
+        ({{ ((sig() * Math.sqrt(Tdays()/365)) * 100).toFixed(2) }}% of spot).
+      </div>
+
+      <!-- ── Visualization: the uncertainty cone ────────────────────────────── -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📊 The uncertainty cone — see the √t law</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <!-- Axes -->
+          <line x1="40" y1="220" x2="580" y2="220" stroke="#94a3b8" stroke-width="1"/>
+          <line x1="40" y1="20" x2="40" y2="220" stroke="#94a3b8" stroke-width="1"/>
+          <text x="44" y="14" fill="#475569" font-size="11">price</text>
+          <text x="565" y="235" fill="#475569" font-size="11">time →</text>
+          <!-- 2σ envelope -->
+          <path [attr.d]="uncertaintyCone().two" fill="rgba(56,126,209,0.10)" stroke="rgba(56,126,209,0.4)" stroke-width="0.5"/>
+          <!-- 1σ envelope -->
+          <path [attr.d]="uncertaintyCone().one" fill="rgba(56,126,209,0.22)" stroke="#387ed1" stroke-width="1"/>
+          <!-- Expected line -->
+          <path [attr.d]="uncertaintyCone().centre" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="4 3"/>
+          <!-- Labels -->
+          <text x="44" [attr.y]="uncertaintyCone().labelStart" fill="#1e293b" font-size="11" font-weight="700">S₀ = {{ S() }}</text>
+          <text x="500" y="50"  fill="#0f172a" font-size="11" font-weight="700">±2σ band (95%)</text>
+          <text x="500" y="65"  fill="#387ed1" font-size="11" font-weight="700">±1σ band (68%)</text>
+          <text x="500" y="80"  fill="#dc2626" font-size="11" font-weight="700">expected price</text>
+          <!-- Time markers -->
+          <line x1="175" y1="220" x2="175" y2="225" stroke="#475569"/>
+          <text x="158" y="237" fill="#475569" font-size="10">3 mo</text>
+          <line x1="310" y1="220" x2="310" y2="225" stroke="#475569"/>
+          <text x="293" y="237" fill="#475569" font-size="10">6 mo</text>
+          <line x1="445" y1="220" x2="445" y2="225" stroke="#475569"/>
+          <text x="428" y="237" fill="#475569" font-size="10">9 mo</text>
+          <line x1="580" y1="220" x2="580" y2="225" stroke="#475569"/>
+          <text x="555" y="237" fill="#475569" font-size="10">1 yr</text>
+        </svg>
+        <div class="hb-widget-note">
+          The dashed red line is the <strong>expected price path</strong>
+          (grows with μ). The blue band is where prices land 68% of the time
+          (±1σ); the lighter band is the 95% region (±2σ). <strong>Notice the
+          shape:</strong> the bands widen as √t — fast at first, slower later.
+          Drag σ in the example bar to see the cone fatten or shrink.
+        </div>
+      </div>
+
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        The <strong>√t scaling law</strong>. This is why a 30-day option is NOT
+        30× as risky as a 1-day option — only √30 ≈ 5.5× as risky. Every option
+        premium you've ever paid uses this rule. It's also why "I'll wait one
+        week and see" doesn't reduce your risk by half — it only reduces it by
+        ~30%. Time and risk are not linear partners.
+      </div>
+
+      <!-- ── Interactive widget: random walk paths ─────────────────────────── -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📈 Live: Five random walks</span>
+          <button class="hb-widget-btn" (click)="regeneratePaths()">↻ Regenerate</button>
+        </div>
+        <div class="hb-widget-controls">
+          <label>σ (volatility)
+            <input type="range" min="0.05" max="0.40" step="0.01"
+                   [ngModel]="walkSigma()" (ngModelChange)="walkSigma.set($event)">
+            <span>{{ (walkSigma()*100).toFixed(0) }}%</span>
+          </label>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="rgba(255,255,255,0.18)" stroke-dasharray="3 3"/>
+          <text x="44" y="116" fill="rgba(255,255,255,0.6)" font-size="11">S₀</text>
+          @for (path of walkPaths(); track $index) {
+            <polyline [attr.points]="path" fill="none"
+                      [attr.stroke]="pathColors[$index]" stroke-width="1.6" opacity="0.85"/>
+          }
+          <text x="40" y="232" fill="rgba(255,255,255,0.6)" font-size="11">t = 0</text>
+          <text x="540" y="232" fill="rgba(255,255,255,0.6)" font-size="11">t = T</text>
+        </svg>
+        <div class="hb-widget-note">
+          Each path is one possible future. Notice they fan out — variance grows
+          with √t. Higher σ → wider fan. <strong>This is why uncertainty is the
+          fundamental input to option pricing.</strong>
+        </div>
+      </div>
+
+      <h3 class="hb-h3">Why this matters for options</h3>
+      <p>
+        The random walk gives us a <strong>probability distribution</strong>
+        over where the price could end up. Option pricing reduces to: weight
+        each possible final price by its probability, multiply by the option's
+        payoff at that price, and sum. Without a distribution model, no pricing
+        is possible.
+      </p>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 2: Log-Normal                                                -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch2-lognormal" class="hb-section">
+      <div class="hb-eyebrow">Chapter 2</div>
+      <h2 class="hb-h2">Log-Normal Distribution</h2>
+      <div class="hb-deck">Why we model log returns as Normal — and what falls out.</div>
+
+      <div class="hb-topic-intro">
+        <div class="hb-topic-intro-label">📖 What this chapter is about</div>
+        <p>
+          Random walks predict the ±change. But stock prices can never go
+          below zero, and a 10% gain followed by 10% loss isn't 0%. So we
+          need a smarter model. This chapter introduces
+          <strong>Geometric Brownian Motion (GBM)</strong> — a random walk
+          on the LOG of price. From it we derive the log-normal distribution,
+          which is the engine behind every modern option pricer.
+        </p>
+        <p>
+          By the end you'll be able to: <strong>(a)</strong> compute the
+          probability of any future stock price, <strong>(b)</strong>
+          understand why "expected price" ≠ "most likely price",
+          <strong>(c)</strong> see why fat upside tails matter for buyers
+          and not for sellers.
+        </p>
+      </div>
+
+      <p>
+        If a stock at ₹100 falls 10% then rises 10%, you end at ₹99 — not ₹100.
+        Multiplicative moves don't commute. The fix: model the
+        <strong>logarithm</strong> of price as a random walk.
+      </p>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 2.1 — Geometric Brownian Motion</h3>
+        <button class="hb-info-btn" (click)="toggleVar('2.1')">
+          ⓘ {{ expandedVar() === '2.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        dS<sub>t</sub> = μ · S<sub>t</sub> · dt + σ · S<sub>t</sub> · dW<sub>t</sub>
+      </div>
+      @if (expandedVar() === '2.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>dS<sub>t</sub></strong></td><td>Tiny price change in time dt</td>
+              <td>The infinitesimal version of "how much did the price move?"</td></tr>
+          <tr><td><strong>S<sub>t</sub></strong></td><td>Current price at time t</td>
+              <td>Multiplying by S<sub>t</sub> means the move is proportional to current price.</td></tr>
+          <tr><td><strong>μ</strong></td><td>Drift (expected return per unit time)</td>
+              <td>The deterministic component. For Nifty, ~12%/year historically.</td></tr>
+          <tr><td><strong>σ</strong></td><td>Volatility</td>
+              <td>The random component's strength. Roughly 13-16% for Indian indices.</td></tr>
+          <tr><td><strong>dW<sub>t</sub></strong></td><td>Brownian increment</td>
+              <td>A normally distributed random shock with mean 0, variance dt.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Take Equation 1.1, divide both sides
+          by S to get a "percentage change," let the time step shrink to zero,
+          and impose continuity. The result is this stochastic differential
+          equation. The "geometric" part means we model
+          <em>percentage</em> changes (additive in log-space), not absolute changes.
+        </div>
+      </div>
+      }
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        In plain English: each tiny move is part <strong>predictable drift</strong>
+        (μ·dt — the expected growth) and part <strong>random shock</strong> (σ·dW —
+        the noise). Every modern option pricer assumes some version of this.
+        Believe it or not, this single line is the bedrock of all derivatives pricing.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 2.2 — closed-form solution</h3>
+        <button class="hb-info-btn" (click)="toggleVar('2.2')">
+          ⓘ {{ expandedVar() === '2.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        S<sub>t</sub> = S₀ · exp((μ − σ²/2) · t + σ · W<sub>t</sub>)
+      </div>
+      @if (expandedVar() === '2.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>S<sub>t</sub></strong></td><td>Price at time t</td>
+              <td>The unknown we're solving for.</td></tr>
+          <tr><td><strong>S₀</strong></td><td>Today's spot price</td>
+              <td>The starting point — observable.</td></tr>
+          <tr><td><strong>μ − σ²/2</strong></td><td>"Drift" of log-prices</td>
+              <td>The −σ²/2 is the <em>Itô correction</em>. Without it, prices would systematically be over-predicted.</td></tr>
+          <tr><td><strong>t</strong></td><td>Time in years</td>
+              <td>Fraction of year. 1 month = 1/12.</td></tr>
+          <tr><td><strong>W<sub>t</sub></strong></td><td>Cumulative Brownian motion</td>
+              <td>Normally distributed: W<sub>t</sub> ~ N(0, t).</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Apply Itô's lemma to Y = ln(S) on
+          the GBM equation. The result for Y is a simple Brownian motion with
+          drift (μ − σ²/2) and volatility σ. Exponentiate to recover S — that
+          gives this closed form.
+        </div>
+      </div>
+      }
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        S<sub>T</sub> = {{ S() }} · exp(({{ (mu()).toFixed(2) }} − ½ · {{ (sig()*sig()).toFixed(4) }}) · {{ T().toFixed(4) }} + {{ sig() }} · W<sub>T</sub>).
+        The drift contributes {{ ((mu() - 0.5 * sig() * sig()) * T() * 100).toFixed(3) }}%.
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        That weird <strong>−σ²/2</strong> is called the <em>Itô correction</em>.
+        Without it, models systematically over-predict prices because compounding
+        randomness is biased upward. As a trader: this is why "average" is not a
+        useful concept — you need the full distribution.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 2.3 — log returns are Normal</h3>
+        <button class="hb-info-btn" (click)="toggleVar('2.3')">
+          ⓘ {{ expandedVar() === '2.3' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        ln(S<sub>T</sub>/S₀) ~ N((μ − σ²/2)·T, σ²·T)
+      </div>
+      @if (expandedVar() === '2.3') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>ln(S<sub>T</sub>/S₀)</strong></td><td>Log return over time T</td>
+              <td>Logarithm of the price ratio. Approximates % return for small moves.</td></tr>
+          <tr><td><strong>~ N(m, v)</strong></td><td>"Distributed Normally with mean m and variance v"</td>
+              <td>The bell curve everyone learnt in school.</td></tr>
+          <tr><td><strong>(μ − σ²/2)·T</strong></td><td>Mean of the log return</td>
+              <td>Drift × time, minus the Itô correction.</td></tr>
+          <tr><td><strong>σ²·T</strong></td><td>Variance of log return</td>
+              <td>Volatility-squared × time. StDev is σ·√T.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Take ln of both sides of Equation 2.2.
+          ln(S<sub>T</sub>/S₀) = (μ − σ²/2)·T + σ·W<sub>T</sub>. Since W<sub>T</sub>
+          is Normally distributed with mean 0, variance T, the log return is
+          Normal with mean (μ − σ²/2)·T and variance σ²·T.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          If you take the LOG of the price ratio (price-then divided by
+          price-now), the result follows a <strong>bell curve</strong>. Most
+          outcomes cluster near the centre, fewer occur at the tails. This is
+          the same Normal distribution from your high school statistics class.
+        </p>
+        <p>
+          Why log? Because log returns ADD across periods (something % returns
+          can't do cleanly). And the Normal distribution makes computing
+          probabilities trivial — Φ(z) is in every spreadsheet.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        Mean of log return = ({{ (mu()).toFixed(2) }} − ½ · {{ (sig()*sig()).toFixed(4) }}) · {{ T().toFixed(4) }}
+        = <strong>{{ ((mu() - 0.5 * sig() * sig()) * T()).toFixed(5) }}</strong>.<br>
+        StDev = {{ sig() }} · √{{ T().toFixed(4) }}
+        = <strong>{{ (sig() * Math.sqrt(T())).toFixed(4) }}</strong> = {{ (sig() * Math.sqrt(T()) * 100).toFixed(2) }}% per cycle.
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        Once you know returns are Normal, you can compute "<strong>probability
+        of profit</strong>" for ANY trade. That's the input to risk-adjusted
+        position sizing. Every probability statement in this app — "70% chance
+        the strike stays OTM" — comes from this equation.
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        We don't model prices directly — we model <strong>log returns</strong>.
+        Why? Because returns are additive (1% gain + 1% loss ≠ 0% net), but
+        log returns ARE additive. This is the single most important
+        transformation in finance. From this Normal distribution, you can
+        compute the probability of ANY price level at expiry.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 2.4 — expected price grows at drift rate</h3>
+        <button class="hb-info-btn" (click)="toggleVar('2.4')">
+          ⓘ {{ expandedVar() === '2.4' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        𝔼[S<sub>T</sub>] = S₀ · e<sup>μT</sup>
+      </div>
+      @if (expandedVar() === '2.4') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>𝔼[S<sub>T</sub>]</strong></td><td>Expected (average) price at time T</td>
+              <td>The "centre of gravity" of the future price distribution.</td></tr>
+          <tr><td><strong>S₀</strong></td><td>Today's spot</td><td>Observable.</td></tr>
+          <tr><td><strong>e<sup>μT</sup></strong></td><td>Continuous compounding factor</td>
+              <td>For small μT, ≈ 1 + μT. For 12%/yr over 1 month: e^0.01 ≈ 1.01.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Take expectation of S<sub>T</sub>
+          = S₀·exp((μ−σ²/2)T + σW<sub>T</sub>). The exp(σW<sub>T</sub>) term has
+          expectation exp(σ²T/2) (moment-generating function of Normal). The σ²/2
+          terms cancel, leaving e^μT.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          On average, the stock grows at rate μ continuously compounded.
+          So if μ = 12%/year, after 1 year the average expected price
+          is S₀ × e^0.12 ≈ S₀ × 1.127. Notice this isn't the MOST LIKELY
+          price (that's lower) — it's the mean of the distribution, pulled
+          upward by the tiny chance of huge moves.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        𝔼[S<sub>T</sub>] = {{ S() }} · e<sup>{{ (mu()*T()).toFixed(4) }}</sup>
+        = <strong>{{ (S() * Math.exp(mu()*T())) | number:'1.0-0' }}</strong>
+        ({{ ((Math.exp(mu()*T())-1) * 100).toFixed(2) }}% expected gain over {{ Tdays() }}d).
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        𝔼[S<sub>T</sub>] = {{ S() }} · e<sup>{{ (mu()*T()).toFixed(4) }}</sup>
+        = <strong>{{ (S() * Math.exp(mu()*T())) | number:'1.0-0' }}</strong>
+        ({{ ((Math.exp(mu()*T())-1) * 100).toFixed(2) }}% expected gain over {{ Tdays() }}d).
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        Tells you the "centre of gravity" of the price distribution at expiry.
+        When you're deciding whether to write a CSP at strike K, this is the
+        first sanity check: <strong>is K below the expected end price?</strong>
+        If yes, the put is unlikely to assign. If no, you're betting against drift.
+      </div>
+
+      <!-- Interactive: log-normal density -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📊 Live: Probability density of S<sub>T</sub></span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="200" x2="580" y2="200" stroke="rgba(255,255,255,0.3)"/>
+          <line x1="40" y1="40" x2="40" y2="200" stroke="rgba(255,255,255,0.3)"/>
+          <text x="44" y="35" fill="rgba(255,255,255,0.7)" font-size="11">density</text>
+          <text x="540" y="220" fill="rgba(255,255,255,0.7)" font-size="11">S<tspan baseline-shift="sub">T</tspan></text>
+          <path [attr.d]="logNormalPath()" fill="rgba(56,126,209,0.30)" stroke="#387ed1" stroke-width="2"/>
+          <line x1="310" y1="40" x2="310" y2="200" stroke="rgba(255,255,255,0.4)" stroke-dasharray="2 2"/>
+          <text x="314" y="50" fill="rgba(255,255,255,0.8)" font-size="11">S₀ = {{ S() }}</text>
+          <text x="60" y="220" fill="rgba(255,255,255,0.6)" font-size="10">{{ (S()*0.7) | number:'1.0-0' }}</text>
+          <text x="540" y="220" fill="rgba(255,255,255,0.6)" font-size="10">{{ (S()*1.3) | number:'1.0-0' }}</text>
+        </svg>
+        <div class="hb-widget-note">
+          The shape is right-skewed — small probability of huge gains, more mass
+          below S₀. Change σ in the example bar; watch the density widen or
+          narrow. This is the single distribution every option pricer integrates
+          over.
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 2.5: ITM / ATM / OTM — The Language of Options                -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch-moneyness" class="hb-section">
+      <div class="hb-eyebrow">Basics</div>
+      <h2 class="hb-h2">ITM, ATM, OTM — The Language of Options</h2>
+      <div class="hb-deck">Before pricing, we need vocabulary. Where is the strike relative to the spot?</div>
+
+      <div class="hb-topic-intro">
+        <div class="hb-topic-intro-label">📖 What this chapter is about</div>
+        <p>
+          Every option has a strike (K) and at any moment, a spot price (S).
+          The relationship between these two determines whether the option
+          is <strong>In-The-Money</strong>, <strong>At-The-Money</strong>, or
+          <strong>Out-of-The-Money</strong>. This single concept is the
+          vocabulary every options trader must master.
+        </p>
+        <p>
+          By the end you'll: <strong>(a)</strong> instantly classify any
+          option as ITM/ATM/OTM, <strong>(b)</strong> see how each of the four
+          option positions (long/short × call/put) relates to spot,
+          <strong>(c)</strong> understand which positions WANT spot above
+          strike vs below.
+        </p>
+      </div>
+
+      <h3 class="hb-h3">The three states</h3>
+      <p>
+        For any option contract, at any moment:
+      </p>
+      <div class="hb-callout">
+        <strong>For CALLS</strong> (right to buy at K):<br>
+        • <strong>ITM</strong> — Spot &gt; Strike. The right to buy below market is valuable.<br>
+        • <strong>ATM</strong> — Spot ≈ Strike. The right is worth roughly its time value.<br>
+        • <strong>OTM</strong> — Spot &lt; Strike. The right to buy above market has only hope value.
+      </div>
+      <div class="hb-callout">
+        <strong>For PUTS</strong> (right to sell at K):<br>
+        • <strong>ITM</strong> — Spot &lt; Strike. The right to sell above market is valuable.<br>
+        • <strong>ATM</strong> — Spot ≈ Strike.<br>
+        • <strong>OTM</strong> — Spot &gt; Strike. The right to sell below market has only hope value.
+      </div>
+
+      <h3 class="hb-h3">Visual map — where ITM/OTM zones live</h3>
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📍 ITM / ATM / OTM zones</span>
+        </div>
+        <svg viewBox="0 0 600 200" class="hb-svg">
+          <!-- Number line -->
+          <line x1="40" y1="100" x2="580" y2="100" stroke="#475569" stroke-width="2"/>
+          <!-- Strike marker -->
+          <line x1="310" y1="40" x2="310" y2="160" stroke="#0f172a" stroke-width="2" stroke-dasharray="4 3"/>
+          <text x="294" y="175" fill="#0f172a" font-size="13" font-weight="700">Strike (K)</text>
+          <!-- Calls (top) -->
+          <text x="44" y="32" fill="#0f172a" font-size="13" font-weight="800">CALL options</text>
+          <rect x="40" y="50" width="270" height="20" fill="#fed7d7" stroke="#dc2626" stroke-width="0.5"/>
+          <text x="170" y="64" fill="#7f1d1d" font-size="12" font-weight="700" text-anchor="middle">OTM (Spot &lt; K)</text>
+          <rect x="310" y="50" width="270" height="20" fill="#bbf7d0" stroke="#059669" stroke-width="0.5"/>
+          <text x="445" y="64" fill="#064e3b" font-size="12" font-weight="700" text-anchor="middle">ITM (Spot &gt; K)</text>
+          <!-- Puts (bottom) -->
+          <text x="44" y="195" fill="#0f172a" font-size="13" font-weight="800">PUT options</text>
+          <rect x="40" y="130" width="270" height="20" fill="#bbf7d0" stroke="#059669" stroke-width="0.5"/>
+          <text x="170" y="144" fill="#064e3b" font-size="12" font-weight="700" text-anchor="middle">ITM (Spot &lt; K)</text>
+          <rect x="310" y="130" width="270" height="20" fill="#fed7d7" stroke="#dc2626" stroke-width="0.5"/>
+          <text x="445" y="144" fill="#7f1d1d" font-size="12" font-weight="700" text-anchor="middle">OTM (Spot &gt; K)</text>
+          <!-- Spot direction arrows -->
+          <text x="44" y="115" fill="#475569" font-size="11">← lower spot</text>
+          <text x="510" y="115" fill="#475569" font-size="11">higher spot →</text>
+        </svg>
+        <div class="hb-widget-note">
+          <strong>Mirror image:</strong> calls and puts have OPPOSITE moneyness
+          zones. A call at K=24,500 is OTM when Nifty is 24,000. A put at the
+          SAME K=24,500 is ITM at Nifty 24,000.
+        </div>
+      </div>
+
+      <h3 class="hb-h3">The four positions — who wants what?</h3>
+      <p>
+        Every options trade is one of four positions. Each has a different
+        ITM/OTM preference at expiry:
+      </p>
+
+      <!-- ─────── 1. LONG CALL ─────── -->
+      <h4 class="hb-h3" style="color: #059669;">1️⃣ Long Call (Call Buyer)</h4>
+      <div class="hb-callout">
+        <strong>Bet:</strong> Spot will rise above K + premium.<br>
+        <strong>Wants at expiry:</strong> ITM (Spot &gt; K) — and the more, the better.<br>
+        <strong>Max loss:</strong> Premium paid (capped).<br>
+        <strong>Max gain:</strong> Unlimited.
+      </div>
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📐 Long Call payoff</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="#94a3b8" stroke-dasharray="3 3"/>
+          <line x1="40" y1="40" x2="40" y2="200" stroke="#475569"/>
+          <line x1="310" y1="40" x2="310" y2="200" stroke="#0f172a" stroke-dasharray="2 2"/>
+          <text x="290" y="50" fill="#0f172a" font-size="11" font-weight="700">K</text>
+          <!-- OTM/ITM zones -->
+          <rect x="40" y="40" width="270" height="160" fill="#fed7d7" opacity="0.40"/>
+          <text x="170" y="218" fill="#7f1d1d" font-size="11" font-weight="700" text-anchor="middle">OTM zone — buyer loses</text>
+          <rect x="310" y="40" width="270" height="160" fill="#bbf7d0" opacity="0.40"/>
+          <text x="445" y="218" fill="#064e3b" font-size="11" font-weight="700" text-anchor="middle">ITM zone — buyer profits</text>
+          <!-- Payoff line -->
+          <polyline points="40,150 310,150 580,40" fill="none" stroke="#059669" stroke-width="3"/>
+          <!-- Breakeven dot -->
+          <circle cx="380" cy="120" r="5" fill="#0f172a"/>
+          <text x="386" y="116" fill="#0f172a" font-size="11" font-weight="700">breakeven (K + premium)</text>
+          <text x="44" y="158" fill="#7f1d1d" font-size="11">−premium</text>
+        </svg>
+      </div>
+
+      <!-- ─────── 2. SHORT CALL ─────── -->
+      <h4 class="hb-h3" style="color: #dc2626;">2️⃣ Short Call (Call Seller / Writer)</h4>
+      <div class="hb-callout">
+        <strong>Bet:</strong> Spot will stay below K + premium.<br>
+        <strong>Wants at expiry:</strong> OTM (Spot &lt; K) — and the further below, the better.<br>
+        <strong>Max gain:</strong> Premium received (capped).<br>
+        <strong>Max loss:</strong> Unlimited (rises with spot above K).
+      </div>
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📐 Short Call payoff (mirror of long call)</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="#94a3b8" stroke-dasharray="3 3"/>
+          <line x1="40" y1="40" x2="40" y2="200" stroke="#475569"/>
+          <line x1="310" y1="40" x2="310" y2="200" stroke="#0f172a" stroke-dasharray="2 2"/>
+          <text x="290" y="50" fill="#0f172a" font-size="11" font-weight="700">K</text>
+          <!-- ITM/OTM zones swapped — seller WANTS OTM -->
+          <rect x="40" y="40" width="270" height="160" fill="#bbf7d0" opacity="0.40"/>
+          <text x="170" y="218" fill="#064e3b" font-size="11" font-weight="700" text-anchor="middle">OTM zone — seller keeps premium</text>
+          <rect x="310" y="40" width="270" height="160" fill="#fed7d7" opacity="0.40"/>
+          <text x="445" y="218" fill="#7f1d1d" font-size="11" font-weight="700" text-anchor="middle">ITM zone — seller loses</text>
+          <!-- Payoff line — flipped -->
+          <polyline points="40,90 310,90 580,200" fill="none" stroke="#dc2626" stroke-width="3"/>
+          <text x="44" y="86" fill="#064e3b" font-size="11">+premium</text>
+        </svg>
+        <div class="hb-widget-note">
+          <strong>Symmetric:</strong> the seller's payoff is the BUYER's payoff
+          flipped vertically. The seller's gain comes only from the premium
+          received; the loss potential is unbounded if spot rallies.
+        </div>
+      </div>
+
+      <!-- ─────── 3. LONG PUT ─────── -->
+      <h4 class="hb-h3" style="color: #059669;">3️⃣ Long Put (Put Buyer)</h4>
+      <div class="hb-callout">
+        <strong>Bet:</strong> Spot will fall below K − premium.<br>
+        <strong>Wants at expiry:</strong> ITM (Spot &lt; K) — the further below, the better.<br>
+        <strong>Max loss:</strong> Premium paid (capped).<br>
+        <strong>Max gain:</strong> K − premium (if spot goes to 0).
+      </div>
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📐 Long Put payoff</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="#94a3b8" stroke-dasharray="3 3"/>
+          <line x1="40" y1="40" x2="40" y2="200" stroke="#475569"/>
+          <line x1="310" y1="40" x2="310" y2="200" stroke="#0f172a" stroke-dasharray="2 2"/>
+          <text x="290" y="50" fill="#0f172a" font-size="11" font-weight="700">K</text>
+          <!-- For puts: ITM is LEFT (spot &lt; K) -->
+          <rect x="40" y="40" width="270" height="160" fill="#bbf7d0" opacity="0.40"/>
+          <text x="170" y="218" fill="#064e3b" font-size="11" font-weight="700" text-anchor="middle">ITM zone — buyer profits</text>
+          <rect x="310" y="40" width="270" height="160" fill="#fed7d7" opacity="0.40"/>
+          <text x="445" y="218" fill="#7f1d1d" font-size="11" font-weight="700" text-anchor="middle">OTM zone — buyer loses</text>
+          <!-- Payoff line — slopes down to right -->
+          <polyline points="40,40 310,150 580,150" fill="none" stroke="#059669" stroke-width="3"/>
+          <circle cx="240" cy="120" r="5" fill="#0f172a"/>
+          <text x="120" y="116" fill="#0f172a" font-size="11" font-weight="700">breakeven (K − premium)</text>
+          <text x="44" y="158" fill="#7f1d1d" font-size="11">−premium</text>
+        </svg>
+      </div>
+
+      <!-- ─────── 4. SHORT PUT ─────── -->
+      <h4 class="hb-h3" style="color: #dc2626;">4️⃣ Short Put (Put Seller / Writer)</h4>
+      <div class="hb-callout">
+        <strong>Bet:</strong> Spot will stay above K − premium.<br>
+        <strong>Wants at expiry:</strong> OTM (Spot &gt; K).<br>
+        <strong>Max gain:</strong> Premium received.<br>
+        <strong>Max loss:</strong> K − premium (if spot goes to 0).
+      </div>
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📐 Short Put payoff (mirror of long put)</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="#94a3b8" stroke-dasharray="3 3"/>
+          <line x1="40" y1="40" x2="40" y2="200" stroke="#475569"/>
+          <line x1="310" y1="40" x2="310" y2="200" stroke="#0f172a" stroke-dasharray="2 2"/>
+          <text x="290" y="50" fill="#0f172a" font-size="11" font-weight="700">K</text>
+          <rect x="40" y="40" width="270" height="160" fill="#fed7d7" opacity="0.40"/>
+          <text x="170" y="218" fill="#7f1d1d" font-size="11" font-weight="700" text-anchor="middle">ITM zone — seller assigned</text>
+          <rect x="310" y="40" width="270" height="160" fill="#bbf7d0" opacity="0.40"/>
+          <text x="445" y="218" fill="#064e3b" font-size="11" font-weight="700" text-anchor="middle">OTM zone — seller keeps premium</text>
+          <!-- Payoff line — slopes UP to right -->
+          <polyline points="40,200 310,90 580,90" fill="none" stroke="#dc2626" stroke-width="3"/>
+          <text x="44" y="86" fill="#064e3b" font-size="11">+premium</text>
+        </svg>
+        <div class="hb-widget-note">
+          <strong>This is the CSP curve.</strong> Notice you collect a flat
+          premium when OTM, and "buy" the underlying at K when ITM.
+        </div>
+      </div>
+
+      <h3 class="hb-h3">The four-position cheat sheet</h3>
+      <div class="hb-callout">
+        <table style="width:100%; font-size:14px; border-collapse:collapse;">
+          <thead>
+            <tr style="border-bottom:1px solid #93c5fd;">
+              <th style="text-align:left; padding:8px;">Position</th>
+              <th style="text-align:left; padding:8px;">Wants spot to be</th>
+              <th style="text-align:left; padding:8px;">Wants ITM/OTM at expiry?</th>
+              <th style="text-align:left; padding:8px;">Max risk</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px dashed #cbd5e1;">
+              <td style="padding:8px;"><strong>Long Call</strong></td>
+              <td style="padding:8px;">Higher</td>
+              <td style="padding:8px; color:#059669;"><strong>ITM</strong> (Spot &gt; K)</td>
+              <td style="padding:8px;">Premium paid</td>
+            </tr>
+            <tr style="border-bottom:1px dashed #cbd5e1;">
+              <td style="padding:8px;"><strong>Short Call</strong></td>
+              <td style="padding:8px;">Lower or flat</td>
+              <td style="padding:8px; color:#059669;"><strong>OTM</strong> (Spot &lt; K)</td>
+              <td style="padding:8px; color:#dc2626;">Unlimited</td>
+            </tr>
+            <tr style="border-bottom:1px dashed #cbd5e1;">
+              <td style="padding:8px;"><strong>Long Put</strong></td>
+              <td style="padding:8px;">Lower</td>
+              <td style="padding:8px; color:#059669;"><strong>ITM</strong> (Spot &lt; K)</td>
+              <td style="padding:8px;">Premium paid</td>
+            </tr>
+            <tr>
+              <td style="padding:8px;"><strong>Short Put</strong></td>
+              <td style="padding:8px;">Higher or flat</td>
+              <td style="padding:8px; color:#059669;"><strong>OTM</strong> (Spot &gt; K)</td>
+              <td style="padding:8px; color:#dc2626;">K − premium (large)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="hb-h3">Why moneyness matters in trading</h3>
+      <ul class="hb-list">
+        <li><strong>Premium scaling:</strong> ITM options have intrinsic value; OTM options are pure time value. ITM premiums are HIGHER.</li>
+        <li><strong>Probability of finishing ITM:</strong> Roughly equals the option's delta. A 0.30-delta call has ~30% chance of ending ITM.</li>
+        <li><strong>Strategy choice:</strong>
+          <ul>
+            <li>Selling 2-3% OTM calls = aggressive premium (often gets challenged)</li>
+            <li>Selling 5-7% OTM calls = safer but tiny premium</li>
+            <li>Selling ATM calls = highest premium, highest chance of assignment</li>
+          </ul>
+        </li>
+        <li><strong>Roll triggers:</strong> "Spot crossed strike" → just went ITM → strategy decisions kick in.</li>
+      </ul>
+
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        Once you internalize ITM/ATM/OTM, you can read any option chain at a
+        glance: the green calls are ITM (spot &gt; K), the red ones are OTM
+        (spot &lt; K), and where the colors flip is where ATM lives. This is
+        the foundation of every strategy in the rest of the book.
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 3: Black-Scholes                                             -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch3-blackscholes" class="hb-section">
+      <div class="hb-eyebrow">Chapter 3</div>
+      <h2 class="hb-h2">Black-Scholes Pricing</h2>
+      <div class="hb-deck">The cornerstone equation. Five inputs in, one number out.</div>
+
+      <div class="hb-topic-intro">
+        <div class="hb-topic-intro-label">📖 What this chapter is about</div>
+        <p>
+          The Black-Scholes equation is to options trading what F=ma is to
+          mechanics. It says: given <strong>just five inputs</strong> — current
+          price, strike, time, interest rate, and volatility — the fair price
+          of a European option is uniquely determined.
+        </p>
+        <p>
+          By the end you'll: <strong>(a)</strong> know what every Nifty option
+          on your screen <em>should</em> cost, <strong>(b)</strong> be able to
+          identify when the market is over- or under-pricing options,
+          <strong>(c)</strong> understand why "implied volatility" is the only
+          mystery input — everything else is observable.
+        </p>
+      </div>
+
+      <p>
+        Black and Scholes (1973) proved that if you continuously rebalance a
+        mix of stock and bonds, you can perfectly replicate any European
+        option's payoff. The replicating portfolio's cost = the option's
+        no-arbitrage price.
+      </p>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 3.1 — d₁ and d₂</h3>
+        <button class="hb-info-btn" (click)="toggleVar('3.1')">
+          ⓘ {{ expandedVar() === '3.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        d₁ = [ln(S/K) + (r + σ²/2)·T] / (σ·√T)<br>
+        d₂ = d₁ − σ·√T
+      </div>
+      @if (expandedVar() === '3.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>d₁, d₂</strong></td><td>Standardised z-scores</td>
+              <td>Convert raw price/strike into "how many standard deviations away?"</td></tr>
+          <tr><td><strong>S</strong></td><td>Current spot price</td>
+              <td>From the live ticker. ({{ S() }} in our example.)</td></tr>
+          <tr><td><strong>K</strong></td><td>Strike price</td>
+              <td>The contract's strike — a free choice.</td></tr>
+          <tr><td><strong>r</strong></td><td>Risk-free rate (annual)</td>
+              <td>RBI repo or G-sec yield. ~6.5% in India.</td></tr>
+          <tr><td><strong>σ</strong></td><td>Volatility (annual, decimal)</td>
+              <td>Implied vol or historical vol. The only mystery input.</td></tr>
+          <tr><td><strong>T</strong></td><td>Time to expiry (years)</td>
+              <td>30 days = 30/365 ≈ 0.0822.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> d₂ is literally the z-score
+          measuring how far K is below the expected log-price at expiry,
+          ln(S₀) + (r − σ²/2)T, scaled by σ√T. d₁ shifts d₂ up by σ√T.
+          Both come from solving the Black-Scholes PDE with no-arbitrage
+          boundary conditions.
+        </div>
+      </div>
+      }
+      <div class="hb-plug">
+        <strong>With our example (call at K = {{ Kc() }}):</strong><br>
+        d₁ = [ln({{ S() }}/{{ Kc() }}) + ({{ (r()).toFixed(3) }} + ½·{{ (sig()*sig()).toFixed(4) }})·{{ T().toFixed(4) }}] / ({{ sig() }}·√{{ T().toFixed(4) }})<br>
+        = [{{ Math.log(S()/Kc()).toFixed(4) }} + {{ ((r() + 0.5*sig()*sig()) * T()).toFixed(5) }}] / {{ sigT().toFixed(4) }}
+        = <strong>{{ d1().toFixed(4) }}</strong><br>
+        d₂ = {{ d1().toFixed(4) }} − {{ sigT().toFixed(4) }} = <strong>{{ d2().toFixed(4) }}</strong>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        d₁ and d₂ look intimidating but they're really just <strong>standardised
+        z-scores</strong> — like in school stats. d₂ tells you "how many standard
+        deviations is the strike from the expected end-price?" Φ(d₂) = the
+        probability the call finishes ITM. So d₂ is literally measuring
+        moneyness in vol-units.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 3.2 — call price</h3>
+        <button class="hb-info-btn" (click)="toggleVar('3.2')">
+          ⓘ {{ expandedVar() === '3.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq hb-eq-large">
+        C = S · Φ(d₁) − K · e<sup>−rT</sup> · Φ(d₂)
+      </div>
+      @if (expandedVar() === '3.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>C</strong></td><td>Call option's fair price</td>
+              <td>What you should pay (or charge) per unit.</td></tr>
+          <tr><td><strong>Φ(x)</strong></td><td>Standard normal CDF</td>
+              <td>"Area under the bell curve up to x." Φ(0)=0.5, Φ(1)≈0.84.</td></tr>
+          <tr><td><strong>e<sup>−rT</sup></strong></td><td>Discount factor</td>
+              <td>Brings future K back to today's value. ≈ 1 for short T.</td></tr>
+          <tr><td><strong>S · Φ(d₁)</strong></td><td>Expected stock you receive on exercise</td>
+              <td>Probability-weighted spot at expiry, given exercise.</td></tr>
+          <tr><td><strong>K · e<sup>−rT</sup> · Φ(d₂)</strong></td><td>Expected discounted strike paid on exercise</td>
+              <td>What you'd pay K × probability-of-exercise.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Set up a self-financing portfolio
+          of stock + bonds that replicates the call's payoff. By no-arbitrage,
+          the cost of this portfolio = the call price. Solving the resulting
+          PDE (the Black-Scholes equation) gives this closed-form solution.
+        </div>
+      </div>
+      }
+      <div class="hb-plug">
+        <strong>With our example:</strong><br>
+        Φ(d₁) = Φ({{ d1().toFixed(3) }}) = <strong>{{ N(d1()).toFixed(4) }}</strong><br>
+        Φ(d₂) = Φ({{ d2().toFixed(3) }}) = <strong>{{ N(d2()).toFixed(4) }}</strong><br>
+        C = {{ S() }} · {{ N(d1()).toFixed(4) }} − {{ Kc() }} · e<sup>−{{ (r()*T()).toFixed(4) }}</sup> · {{ N(d2()).toFixed(4) }}<br>
+        = {{ (S() * N(d1())).toFixed(2) }} − {{ (Kc() * Math.exp(-r()*T()) * N(d2())).toFixed(2) }}
+        = <strong>{{ fmtRs(callPrice()) }}</strong> per unit
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        This is the price you should pay for a call (or charge if you're
+        selling). When the market quotes a different price, it's telling you
+        about <strong>implied volatility</strong> — the only "free" parameter
+        in the formula. If market price &gt; BS price → market thinks σ will
+        be higher than your assumption. As a trader: this is your edge
+        detector.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 3.3 — put-call parity</h3>
+        <button class="hb-info-btn" (click)="toggleVar('3.3')">
+          ⓘ {{ expandedVar() === '3.3' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        C − P = S − K · e<sup>−rT</sup>
+      </div>
+      @if (expandedVar() === '3.3') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>C</strong></td><td>Call price</td><td>Premium of the call at strike K.</td></tr>
+          <tr><td><strong>P</strong></td><td>Put price</td><td>Premium of the put at the SAME strike K, same expiry.</td></tr>
+          <tr><td><strong>S</strong></td><td>Spot</td><td>Today's price.</td></tr>
+          <tr><td><strong>K · e<sup>−rT</sup></strong></td><td>Discounted strike</td>
+              <td>Today's value of K paid at expiry.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Construct two portfolios.
+          Portfolio A: long call + cash K·e^−rT (invested at risk-free).
+          Portfolio B: long put + 1 share. At expiry both portfolios pay
+          max(S<sub>T</sub>, K). By no-arbitrage, they cost the same today.
+          Rearranging gives the parity.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Calls and puts at the same strike are tied together by an
+          unbreakable rule. If you know one, the other is fixed. The
+          difference C − P must equal the difference between today's spot
+          and the discounted strike. Any deviation = arbitrage = free money.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        S − K·e<sup>−rT</sup> = {{ S() }} − {{ Kc() }} · e<sup>−{{ (r()*T()).toFixed(4) }}</sup>
+        = <strong>{{ (S() - Kc() * Math.exp(-r()*T())) | number:'1.0-2' }}</strong>.
+        This must equal C − P for the same strike, or arbitrage exists.
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        S − K·e<sup>−rT</sup> = {{ S() }} − {{ Kc() }} · e<sup>−{{ (r()*T()).toFixed(4) }}</sup>
+        = <strong>{{ (S() - Kc() * Math.exp(-r()*T())) | number:'1.0-2' }}</strong>.
+        This must equal C − P for the same strike, or arbitrage exists.
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        A free check on every quote. If you see Nifty 24,000 CE at ₹500 and
+        24,000 PE at ₹300 with spot at 24,000, parity says <strong>(C−P) should
+        equal (S − K·e^−rT)</strong>. If it doesn't, there's arbitrage. Big
+        market makers test this constantly — knowing it lets you spot when
+        someone's pricing is broken.
+      </div>
+
+      <!-- Interactive: payoff diagram -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📐 Live: Long call payoff at expiry</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="rgba(255,255,255,0.3)" stroke-dasharray="3 3"/>
+          <line x1="40" y1="40" x2="40" y2="200" stroke="rgba(255,255,255,0.3)"/>
+          <text x="44" y="35" fill="rgba(255,255,255,0.7)" font-size="11">P&amp;L</text>
+          <text x="540" y="220" fill="rgba(255,255,255,0.7)" font-size="11">S<tspan baseline-shift="sub">T</tspan></text>
+          <line x1="310" y1="40" x2="310" y2="200" stroke="rgba(255,255,255,0.2)" stroke-dasharray="2 2"/>
+          <text x="290" y="50" fill="rgba(255,255,255,0.7)" font-size="11">K = {{ Kc() }}</text>
+          <path [attr.d]="payoffPath('long_call')" fill="none" stroke="#34d399" stroke-width="2.5"/>
+        </svg>
+        <div class="hb-widget-note">
+          You pay <strong>{{ fmtRs(callPrice()) }}</strong> upfront. Below K
+          you lose the premium; above K the gain is uncapped. Breakeven at
+          S<sub>T</sub> = K + premium = <strong>{{ fmtRs(Kc() + callPrice()) }}</strong>.
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 4: Greeks                                                    -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch4-greeks" class="hb-section">
+      <div class="hb-eyebrow">Chapter 4</div>
+      <h2 class="hb-h2">The Greeks — Sensitivities</h2>
+      <div class="hb-deck">How option price changes when the world changes.</div>
+
+      <div class="hb-topic-intro">
+        <div class="hb-topic-intro-label">📖 What this chapter is about</div>
+        <p>
+          Black-Scholes gives one number — the option's fair price right now.
+          The Greeks tell you <strong>how that price will change</strong> when
+          the underlying moves, time passes, or volatility shifts. Each Greek
+          is a partial derivative of the BS formula with respect to one input.
+        </p>
+        <p>
+          By the end you'll: <strong>(a)</strong> read any option position as
+          a portfolio of Δ, Γ, Θ, ν exposures, <strong>(b)</strong> know which
+          Greeks make money for sellers vs. buyers, <strong>(c)</strong>
+          understand why the system uses delta-based triggers (delta = the
+          most reliable risk meter).
+        </p>
+      </div>
+
+      <div class="hb-deep">
+        <span class="hb-deep-label">🔍 What is Delta really?</span>
+
+        <div class="hb-deep-row">
+          <span class="hb-deep-icon">🚗</span>
+          <div class="hb-deep-text">
+            <p><strong>The simplest analogy: Delta is your option's "speed."</strong>
+            If the underlying moves ₹1, the option moves ₹Δ. A 0.30 delta call
+            moves 30 paise per ₹1 of spot move. A 0.80 delta call moves 80 paise.</p>
+          </div>
+        </div>
+
+        <div class="hb-deep-row">
+          <span class="hb-deep-icon">🎯</span>
+          <div class="hb-deep-text">
+            <p><strong>Delta has THREE simultaneous meanings</strong> — every one is true:</p>
+            <ul>
+              <li><strong>Sensitivity:</strong> ₹X change in spot → ₹(X·Δ) change in option price.</li>
+              <li><strong>Hedge ratio:</strong> To neutralize the option's directional risk, hold |Δ| shares against it.</li>
+              <li><strong>Probability of ITM:</strong> Δ ≈ chance the option finishes in-the-money. A 0.30 delta = 30% probability.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h4 class="hb-deep-sub">📏 Range and what each value means</h4>
+        <p>
+          For <strong>calls</strong>, delta runs from <strong>0 to 1</strong>.
+          For <strong>puts</strong>, delta runs from <strong>−1 to 0</strong>
+          (mirror of calls). The absolute value tells the same story:
+        </p>
+        <div class="hb-range-scale">
+          <div class="hb-range-seg seg-1">Deep OTM</div>
+          <div class="hb-range-seg seg-2">OTM</div>
+          <div class="hb-range-seg seg-3">ATM</div>
+          <div class="hb-range-seg seg-4">ITM</div>
+          <div class="hb-range-seg seg-5">Deep ITM</div>
+        </div>
+        <div class="hb-range-axis">
+          <span>0.00</span><span>0.20</span><span>0.40</span><span>0.60</span><span>0.80</span><span>1.00</span>
+        </div>
+        <table class="hb-range-table">
+          <thead><tr><th>Δ value</th><th>Zone</th><th>What this means in practice</th></tr></thead>
+          <tbody>
+            <tr><td>0.00 – 0.15</td><td>Deep OTM</td>
+                <td>Almost dead. ~10% chance of ITM. Tiny premium, low sensitivity. Sellers love this — high probability of expiring worthless.</td></tr>
+            <tr><td>0.15 – 0.30</td><td>OTM</td>
+                <td>The "income zone" for option sellers. Moderate premium, ~15-30% probability of ITM. Most CSP/CC strategies live here.</td></tr>
+            <tr><td>0.30 – 0.45</td><td>Approaching ATM</td>
+                <td>Defensive zone. App's <strong>roll-up trigger fires at Δ ≥ 0.35</strong> — past this, the call is "uncomfortable."</td></tr>
+            <tr><td>0.45 – 0.55</td><td>At-the-money</td>
+                <td>Coin flip. Maximum gamma — most volatile zone. Premium = mostly time value.</td></tr>
+            <tr><td>0.55 – 0.75</td><td>Modestly ITM</td>
+                <td>Behaves more like stock than option. Has intrinsic value. Sellers usually closed/rolled by now.</td></tr>
+            <tr><td>0.75 – 0.95</td><td>ITM</td>
+                <td>Mostly intrinsic value, little time premium. Tracks underlying closely.</td></tr>
+            <tr><td>0.95 – 1.00</td><td>Deep ITM</td>
+                <td>Practically the stock itself. ₹1 spot move ≈ ₹1 option move. Used as stock-replacement, not for speculation.</td></tr>
+          </tbody>
+        </table>
+
+        <h4 class="hb-deep-sub">How professional traders use Delta</h4>
+        <ul>
+          <li><strong>Sizing positions:</strong> "I want 30% of a Nifty share's exposure" → sell a 0.30 delta call.</li>
+          <li><strong>Setting roll triggers:</strong> Delta ≥ 0.35 = roll-up threshold (the trade is becoming uncomfortable).</li>
+          <li><strong>Building delta-neutral books:</strong> Long 100 deltas + short 100 deltas = market-neutral (income from theta only).</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">⚠️ Common pitfalls</h4>
+        <ul>
+          <li><strong>Treating delta as constant:</strong> Delta itself changes (via gamma). A "small" position today can become a big one tomorrow.</li>
+          <li><strong>Confusing delta with directional view:</strong> Selling a 0.30 call isn't "30% bullish" — it's "70% chance you keep the premium."</li>
+          <li><strong>Ignoring near-expiry:</strong> Same 0.30 delta means very different risk on Day 30 vs Day 1.</li>
+        </ul>
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 4.1 — Delta (slope)</h3>
+        <button class="hb-info-btn" (click)="toggleVar('4.1')">
+          ⓘ {{ expandedVar() === '4.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        Δ = ∂C/∂S = Φ(d₁)
+      </div>
+      @if (expandedVar() === '4.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>Δ (Delta)</strong></td><td>Rate of change of option price w.r.t. spot</td>
+              <td>Range: 0 to 1 for calls, 0 to −1 for puts.</td></tr>
+          <tr><td><strong>∂C/∂S</strong></td><td>Partial derivative</td>
+              <td>"How much does C change when S changes by 1?"</td></tr>
+          <tr><td><strong>Φ(d₁)</strong></td><td>Same as in BS formula</td>
+              <td>Always between 0 and 1 — naturally a probability.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Take the BS call formula
+          (C = S·Φ(d₁) − K·e<sup>−rT</sup>·Φ(d₂)) and differentiate w.r.t. S.
+          The chain-rule terms involving Φ' cancel, leaving simply Φ(d₁).
+          Beautiful result: delta IS the probability of finishing ITM.
+        </div>
+      </div>
+      }
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        Δ = Φ({{ d1().toFixed(3) }}) = <strong>{{ delta().toFixed(4) }}</strong>.
+        If Nifty rises ₹1, the call rises ₹{{ delta().toFixed(2) }}.
+        Also ≈ probability the option finishes ITM:
+        <strong>{{ (delta()*100).toFixed(1) }}%</strong>.
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        Delta is your <strong>directional exposure</strong>. Sell a 0.30-delta
+        call: you're effectively short 30% of a Nifty share. This is also why
+        the system's "delta &ge; 0.35 → roll up" trigger exists — once delta
+        crosses that line, the call's behavior shifts from income tool to
+        loss generator.
+      </div>
+
+      <div class="hb-deep">
+        <span class="hb-deep-label">🔍 What is Gamma really?</span>
+
+        <div class="hb-deep-row">
+          <span class="hb-deep-icon">🏎️</span>
+          <div class="hb-deep-text">
+            <p><strong>If Delta is speed, Gamma is acceleration.</strong> It tells
+            you how fast your speed (delta) is itself changing. A car can be
+            slow (low Δ) but accelerating hard (high Γ) — about to become fast.</p>
+          </div>
+        </div>
+
+        <div class="hb-deep-row">
+          <span class="hb-deep-icon">📊</span>
+          <div class="hb-deep-text">
+            <p><strong>Gamma is the curvature of the option's price curve.</strong>
+            On a chart of "option price vs spot," gamma is how bent the curve
+            is. ATM = highly curved. Deep OTM/ITM = nearly straight. Where the
+            curve bends most is where small spot moves cause big delta swings.</p>
+          </div>
+        </div>
+
+        <h4 class="hb-deep-sub">When is Gamma highest?</h4>
+        <ul>
+          <li><strong>At-the-money strikes</strong> — the bend is sharpest right at K.</li>
+          <li><strong>Close to expiry</strong> — gamma EXPLODES as days-to-expiry shrinks. A weekly ATM option has 4-5× the gamma of a monthly ATM.</li>
+          <li><strong>High-IV environments</strong> reduce gamma slightly (uncertainty smooths the curve).</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">📏 Range and what each value means (Nifty options)</h4>
+        <p>
+          Gamma is reported as "delta change per ₹1 of spot move." Theoretical
+          range is <strong>0 to ∞</strong> for long options (negative for short).
+          For Nifty index options, real-world ranges:
+        </p>
+        <div class="hb-range-scale">
+          <div class="hb-range-seg seg-1">Negligible</div>
+          <div class="hb-range-seg seg-2">Low</div>
+          <div class="hb-range-seg seg-3">Moderate</div>
+          <div class="hb-range-seg seg-4">High</div>
+          <div class="hb-range-seg seg-5">Extreme</div>
+        </div>
+        <div class="hb-range-axis">
+          <span>0</span><span>0.0001</span><span>0.0005</span><span>0.002</span><span>0.005</span><span>0.01+</span>
+        </div>
+        <table class="hb-range-table">
+          <thead><tr><th>Γ value</th><th>Zone</th><th>What this means in practice</th></tr></thead>
+          <tbody>
+            <tr><td>&lt; 0.0001</td><td>Negligible</td>
+                <td>Far OTM/ITM or 60+ DTE. Delta won't shift meaningfully on a single spot move. Safe zone for sellers.</td></tr>
+            <tr><td>0.0001 – 0.0005</td><td>Low</td>
+                <td>Typical OTM option mid-life. A 100-pt Nifty move shifts delta by ~0.01-0.05. Manageable.</td></tr>
+            <tr><td>0.0005 – 0.002</td><td>Moderate</td>
+                <td>Approaching ATM with moderate DTE. A 100-pt move shifts delta by 0.05-0.20. Watch carefully.</td></tr>
+            <tr><td>0.002 – 0.01</td><td>High</td>
+                <td>ATM near expiry. A 100-pt move can flip delta by 0.20-1.00. Pin risk territory.</td></tr>
+            <tr><td>&gt; 0.01</td><td>Extreme</td>
+                <td>ATM on expiry day. Delta swings between 0 and 1 on tiny spot moves. AVOID holding here.</td></tr>
+          </tbody>
+        </table>
+
+        <h4 class="hb-deep-sub">Why Gamma matters: the Long vs Short Gamma debate</h4>
+        <ul>
+          <li><strong>Long gamma (option buyer):</strong> Loves big moves either way.
+            Each move makes you MORE delta-exposed in the right direction.
+            The trader's friend in volatile markets.</li>
+          <li><strong>Short gamma (option seller):</strong> Hates big moves.
+            Each adverse move hurts MORE than the previous (delta accelerating
+            against you). This is the math behind "crash days obliterate
+            short-options sellers."</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">How professionals use Gamma</h4>
+        <ul>
+          <li><strong>Gamma scalping:</strong> Buy ATM options + dynamically sell shares as delta rises and buy as it falls. Locks in volatility-based profit.</li>
+          <li><strong>Risk monitoring:</strong> Track total portfolio gamma — if it's strongly negative near expiry, scale down.</li>
+          <li><strong>Avoiding "pin risk":</strong> On expiry day, ATM positions have huge gamma — settled prices ±0.5% can flip P&amp;L by lakhs.</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">⚠️ Common pitfalls</h4>
+        <ul>
+          <li><strong>"It's only ₹X gamma" mindset:</strong> Gamma compounds with time near expiry. ₹100 gamma today can become ₹1,000 in two weeks.</li>
+          <li><strong>Selling ATM weekly options for "income":</strong> One bad day, the gamma blows up your premium income for the month.</li>
+          <li><strong>Ignoring it during quiet markets:</strong> Gamma is invisible until volatility hits — then it's the dominant risk.</li>
+        </ul>
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 4.2 — Gamma (curvature)</h3>
+        <button class="hb-info-btn" (click)="toggleVar('4.2')">
+          ⓘ {{ expandedVar() === '4.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        Γ = φ(d₁) / (S · σ · √T)
+      </div>
+      @if (expandedVar() === '4.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>Γ (Gamma)</strong></td><td>Rate of change of delta w.r.t. spot</td>
+              <td>Always positive for long options, negative for short.</td></tr>
+          <tr><td><strong>φ(d₁)</strong></td><td>Standard normal PDF (the bell curve height)</td>
+              <td>Maximum at d₁ = 0; decays toward zero in tails.</td></tr>
+          <tr><td><strong>S · σ · √T</strong></td><td>Scaling factor</td>
+              <td>Makes gamma "per ₹1 spot move" rather than per σ-unit.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Differentiate delta = Φ(d₁) w.r.t. S.
+          Chain rule: Γ = φ(d₁) · ∂d₁/∂S = φ(d₁) / (S·σ·√T).
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Gamma is the <strong>"acceleration"</strong> of an option. Delta tells
+          you the speed (price change per spot move); gamma tells you how fast
+          that speed itself changes. Highest exactly at the strike — that's
+          where small spot moves cause delta to swing dramatically.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        Γ = φ({{ d1().toFixed(3) }}) / ({{ S() }} · {{ sig() }} · √{{ T().toFixed(4) }})
+        = <strong>{{ gamma().toFixed(6) }}</strong> per Nifty point.
+        High Γ near strike = delta moves fast.
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        Gamma is "how fast your delta changes." Near expiry + near strike,
+        gamma explodes. That's why ATM options on expiry day are crazy
+        volatile — small spot moves cause huge delta swings. As an option
+        seller, you avoid positions with high gamma right before expiry —
+        they're unpredictable.
+      </div>
+
+      <div class="hb-deep">
+        <span class="hb-deep-label">🔍 What is Theta really?</span>
+
+        <div class="hb-deep-row">
+          <span class="hb-deep-icon">⏳</span>
+          <div class="hb-deep-text">
+            <p><strong>Theta is the price tag of holding an option as time
+            passes.</strong> Every day, an option loses some value — even if
+            nothing else in the market changes. Why? Because there's less
+            time for the option to become valuable. Tomorrow's option is
+            worth less than today's, all else equal.</p>
+          </div>
+        </div>
+
+        <div class="hb-deep-row">
+          <span class="hb-deep-icon">💧</span>
+          <div class="hb-deep-text">
+            <p><strong>Picture a bucket of premium with a leak.</strong> The
+            buyer paid for a full bucket; theta is the rate the water drains.
+            For sellers, that drained water flows directly into your account.
+            Day after day, drip after drip, no matter what spot does.</p>
+          </div>
+        </div>
+
+        <h4 class="hb-deep-sub">Theta is non-linear (this is critical)</h4>
+        <ul>
+          <li><strong>30+ days to expiry:</strong> Theta drips slowly. Daily decay is minimal.</li>
+          <li><strong>15-30 days:</strong> Decay accelerates. Most theta-harvesting strategies live here.</li>
+          <li><strong>5-15 days:</strong> Theta accelerates fast. Daily P&amp;L for sellers is meaningful.</li>
+          <li><strong>0-5 days:</strong> Theta crashes the option's value. ATM options can lose 50% in 2 days.</li>
+        </ul>
+        <p>This is why <strong>"sell at 30-45 DTE, close at 50% profit"</strong>
+        is the industry-standard theta-harvest playbook.</p>
+
+        <h4 class="hb-deep-sub">Where theta is highest</h4>
+        <ul>
+          <li><strong>At-the-money strikes</strong> — most uncertainty, most theta.</li>
+          <li><strong>Short-dated options</strong> — accelerated decay near expiry.</li>
+          <li><strong>High-IV environments</strong> — bigger premiums = bigger theta in absolute ₹.</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">📏 Range and what each value means (₹/day per unit)</h4>
+        <p>
+          Theta is reported in <strong>₹ per day per unit</strong>. Always
+          negative for option BUYERS (paying for time); positive for SELLERS
+          (collecting time premium). Sign aside, here's the magnitude scale:
+        </p>
+        <div class="hb-range-scale">
+          <div class="hb-range-seg seg-1">Slow</div>
+          <div class="hb-range-seg seg-2">Mild</div>
+          <div class="hb-range-seg seg-3">Active</div>
+          <div class="hb-range-seg seg-4">Aggressive</div>
+          <div class="hb-range-seg seg-5">Extreme</div>
+        </div>
+        <div class="hb-range-axis">
+          <span>₹0</span><span>₹3</span><span>₹10</span><span>₹30</span><span>₹100</span><span>₹100+</span>
+        </div>
+        <table class="hb-range-table">
+          <thead><tr><th>|θ| value</th><th>Zone</th><th>What this means in practice</th></tr></thead>
+          <tbody>
+            <tr><td>₹0 – ₹3</td><td>Slow burn</td>
+                <td>Far OTM or 60+ DTE option. Decay barely moves the needle. Buyer's "cheap insurance" zone.</td></tr>
+            <tr><td>₹3 – ₹10</td><td>Mild decay</td>
+                <td>Mid-life moderate-OTM options. Sellers' bread-and-butter income — predictable and slow.</td></tr>
+            <tr><td>₹10 – ₹30</td><td>Active income</td>
+                <td>Approaching ATM with 15-30 DTE. Sellers earn meaningful daily income but risk grows.</td></tr>
+            <tr><td>₹30 – ₹100</td><td>Aggressive</td>
+                <td>ATM weekly options or last 10 days of monthly. Big daily numbers but huge gamma underneath. Take profits early.</td></tr>
+            <tr><td>&gt; ₹100</td><td>Extreme</td>
+                <td>ATM on expiry day. Theta can wipe out an option's value in hours. Both opportunity (sellers) and danger (gamma).</td></tr>
+          </tbody>
+        </table>
+
+        <h4 class="hb-deep-sub">Theta is the option seller's income — but it's not free</h4>
+        <ul>
+          <li><strong>Long theta = short gamma.</strong> The two ALWAYS come together. Selling theta means accepting risk that big moves hurt you.</li>
+          <li><strong>The "theta trap":</strong> Watching ₹500/day flow in feels great — until one day spot moves 2σ and you lose ₹10,000.</li>
+          <li><strong>Net theta is what matters.</strong> Your gross theta minus expected gamma loss = real edge.</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">⚠️ Common pitfalls</h4>
+        <ul>
+          <li><strong>Holding short positions to expiry:</strong> The last 5 days have the most theta but also the most gamma. Take profit at 50% — leave the dangerous part for someone else.</li>
+          <li><strong>Selling weekly for "more theta":</strong> Yes, weekly options decay faster, but their gamma is far higher. Risk-adjusted, monthly often beats weekly.</li>
+          <li><strong>Ignoring theta on long calls:</strong> Buying a call costs you theta every single day you hold it. If spot doesn't move, you lose by default.</li>
+        </ul>
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 4.3 — Theta (time decay)</h3>
+        <button class="hb-info-btn" (click)="toggleVar('4.3')">
+          ⓘ {{ expandedVar() === '4.3' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        θ = [−S·φ(d₁)·σ / (2·√T) − r·K·e<sup>−rT</sup>·Φ(d₂)] / 365
+      </div>
+      @if (expandedVar() === '4.3') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>θ (Theta)</strong></td><td>Daily price decay</td>
+              <td>Negative for long options (lose value daily). Positive for sellers.</td></tr>
+          <tr><td><strong>−S·φ(d₁)·σ / (2·√T)</strong></td><td>Vega-related decay</td>
+              <td>How time uncertainty shrinks each day.</td></tr>
+          <tr><td><strong>−r·K·e<sup>−rT</sup>·Φ(d₂)</strong></td><td>Discount unwinding</td>
+              <td>Strike's discount factor erodes daily.</td></tr>
+          <tr><td><strong>/ 365</strong></td><td>Convert annual to per-day</td>
+              <td>Theta is reported as "₹ per day".</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Differentiate the BS call price
+          w.r.t. T (time-to-expiry). The negative sign flips because we want
+          decay AS time passes (T decreases). Divide by 365 for per-day units.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Every day, the option loses some of its value to "time decay" — even
+          if NOTHING in the market changes. That's because there's less and
+          less time left for the option to become valuable. For sellers, this
+          decay IS the income — money flows from buyers to sellers as time
+          passes. The closer to expiry, the faster theta accelerates.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        θ = <strong>₹{{ theta().toFixed(2) }}</strong> per day.
+        Every 24 hours of no-spot-move costs the call buyer this much, and
+        pays the seller the same. <em>This is your income.</em>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        Theta is <strong>literally how option sellers make money</strong>.
+        If nothing else changes, every day adds θ × qty to your account.
+        That's why we sell options instead of buying them. Theta is also
+        why short-dated weekly options decay faster — they have less time
+        for theta to "unfold," so each day eats a bigger fraction.
+      </div>
+
+      <div class="hb-deep">
+        <span class="hb-deep-label">🔍 What is Vega really?</span>
+
+        <div class="hb-deep-row">
+          <span class="hb-deep-icon">🌊</span>
+          <div class="hb-deep-text">
+            <p><strong>Vega is the option's exposure to traders' opinions about
+            future volatility.</strong> Spot can stay perfectly still and your
+            option price can still move — because the MARKET'S BELIEF about
+            future σ changed. Vega measures how sensitive your option is to
+            this belief.</p>
+          </div>
+        </div>
+
+        <div class="hb-deep-row">
+          <span class="hb-deep-icon">😱</span>
+          <div class="hb-deep-text">
+            <p><strong>Vega is the "fear-and-greed" Greek.</strong> When markets
+            panic (VIX spikes), implied vol surges and ALL option prices rise —
+            even if spot itself didn't move. Long options gain; short options
+            lose. This is invisible damage that catches sellers off guard.</p>
+          </div>
+        </div>
+
+        <h4 class="hb-deep-sub">Where vega lives</h4>
+        <ul>
+          <li><strong>At-the-money options</strong> have the highest vega.</li>
+          <li><strong>Long-dated options</strong> have FAR more vega than short-dated. A 90-day ATM has ~3× the vega of a 30-day ATM.</li>
+          <li><strong>Deep ITM/OTM</strong> have low vega — there's not much uncertainty about whether they'll be exercised.</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">📏 Range and what each value means (₹ per 1% IV change)</h4>
+        <p>
+          Vega is reported as "₹ change in option price per 1 percentage point
+          change in IV." Always positive for option BUYERS (longer IV → more
+          option value); negative for SELLERS. Magnitude scale:
+        </p>
+        <div class="hb-range-scale">
+          <div class="hb-range-seg seg-1">Tiny</div>
+          <div class="hb-range-seg seg-2">Low</div>
+          <div class="hb-range-seg seg-3">Moderate</div>
+          <div class="hb-range-seg seg-4">High</div>
+          <div class="hb-range-seg seg-5">Extreme</div>
+        </div>
+        <div class="hb-range-axis">
+          <span>₹0</span><span>₹3</span><span>₹15</span><span>₹50</span><span>₹150</span><span>₹150+</span>
+        </div>
+        <table class="hb-range-table">
+          <thead><tr><th>ν value</th><th>Zone</th><th>What this means in practice</th></tr></thead>
+          <tbody>
+            <tr><td>₹0 – ₹3</td><td>Tiny</td>
+                <td>Far OTM/ITM, or very short-dated (DTE &lt; 5). IV moves barely affect the option. "Vol-immune" zone.</td></tr>
+            <tr><td>₹3 – ₹15</td><td>Low</td>
+                <td>Short-dated OTM/moderate options. A typical 1-2% IV jump shifts price by ₹3-30 — manageable.</td></tr>
+            <tr><td>₹15 – ₹50</td><td>Moderate</td>
+                <td>30-day ATM options. A 5% VIX spike can swing P&amp;L by ₹75-250 per unit. The CC seller's typical exposure.</td></tr>
+            <tr><td>₹50 – ₹150</td><td>High</td>
+                <td>60-90 day ATM, or pre-event positions. Vol-sensitive — big VIX moves dominate over delta moves.</td></tr>
+            <tr><td>&gt; ₹150</td><td>Extreme</td>
+                <td>Long-dated ATM (6mo+) or LEAPS. Pure vega plays — used for vol-trading, not delta-trading.</td></tr>
+          </tbody>
+        </table>
+
+        <h4 class="hb-deep-sub">Why Vega is "the hidden Greek"</h4>
+        <ul>
+          <li><strong>Retail ignores it.</strong> Most traders only watch delta. They don't realize a quiet day where VIX rose 3 points just cost them as much as a spot move.</li>
+          <li><strong>It can dominate other Greeks.</strong> Near a major event (RBI policy, earnings, election), vega moves can dwarf delta and theta.</li>
+          <li><strong>It comes in waves.</strong> IV mean-reverts. After a vol spike, IV usually deflates — selling vega after spikes is a real trade.</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">How professionals use Vega</h4>
+        <ul>
+          <li><strong>Sell vega before catalysts:</strong> RBI meeting, earnings, budget — IV pumps. Selling premium when IV is rich, buying back after IV crushes.</li>
+          <li><strong>Vega-neutral structures:</strong> Iron Condors are nearly delta and vega neutral — pure theta plays.</li>
+          <li><strong>"Long-vol" hedges:</strong> Buy long-dated puts as crash protection. They benefit from BOTH spot drops AND IV spikes.</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">⚠️ Common pitfalls</h4>
+        <ul>
+          <li><strong>Selling options into a panic:</strong> Vega is at peak; you collect more premium but your downside is enormous if VIX spikes further.</li>
+          <li><strong>Buying long-dated calls in low VIX:</strong> If IV expands later, your call gains; but if IV crushes, you lose even with spot up.</li>
+          <li><strong>Ignoring vega on long-dated covered calls:</strong> A 6-month CC has 5× the vega of a monthly CC. IV spikes = your short calls lose value rapidly.</li>
+        </ul>
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 4.4 — Vega (IV sensitivity)</h3>
+        <button class="hb-info-btn" (click)="toggleVar('4.4')">
+          ⓘ {{ expandedVar() === '4.4' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        ν = S · φ(d₁) · √T / 100
+      </div>
+      @if (expandedVar() === '4.4') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>ν (Vega)</strong></td><td>Price change per 1% IV change</td>
+              <td>Always positive (option price rises with σ).</td></tr>
+          <tr><td><strong>S · φ(d₁)</strong></td><td>"Probability mass" near strike</td>
+              <td>How much price uncertainty matters at this strike.</td></tr>
+          <tr><td><strong>√T</strong></td><td>Time amplifier</td>
+              <td>Longer-dated options are more vega-sensitive.</td></tr>
+          <tr><td><strong>/ 100</strong></td><td>Per-1%-of-IV scaling</td>
+              <td>Reports vega as "₹ per 1% IV move" instead of per absolute σ.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Differentiate BS call price w.r.t. σ.
+          The chain rule gives S·φ(d₁)·√T. Divide by 100 to express the result
+          per percentage point of IV (the standard convention).
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Vega tells you <strong>how much the option's price moves when traders
+          change their mind about future volatility</strong>. If IV rises 1%
+          (from say 15% to 16%), the option price rises by ν rupees — even if
+          spot doesn't move. This is why selling options just before earnings
+          (high IV) and buying back after (lower IV) is a real strategy.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        ν = ₹<strong>{{ vega().toFixed(2) }}</strong> per 1% change in IV.
+        If implied vol jumps from 15% to 17%, the call gains
+        ≈ ₹{{ (vega()*2).toFixed(0) }} even with no spot movement.
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        Vega is the hidden killer. You can be right on direction (NB drops as
+        you predicted) and STILL lose because IV spiked — your short option
+        value rose despite intrinsic value falling. This is why selling
+        options into a falling, panicking market is dangerous. Watch VIX
+        before you write.
+      </div>
+
+      <!-- Interactive: Greeks profile -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📊 Live: Greek profiles vs spot</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="200" x2="580" y2="200" stroke="rgba(255,255,255,0.3)"/>
+          <line x1="40" y1="40" x2="40" y2="200" stroke="rgba(255,255,255,0.3)"/>
+          <line x1="310" y1="40" x2="310" y2="200" stroke="rgba(255,255,255,0.2)" stroke-dasharray="2 2"/>
+          <text x="290" y="50" fill="rgba(255,255,255,0.7)" font-size="11">K = {{ Kc() }}</text>
+          <path [attr.d]="greekPath('delta')" fill="none" stroke="#34d399" stroke-width="2.5"/>
+          <path [attr.d]="greekPath('gamma')" fill="none" stroke="#fbbf24" stroke-width="2.5"/>
+          <path [attr.d]="greekPath('theta')" fill="none" stroke="#fca5a5" stroke-width="2.5"/>
+          <text x="500" y="60" fill="#34d399" font-size="11">Δ delta</text>
+          <text x="500" y="78" fill="#fbbf24" font-size="11">Γ gamma</text>
+          <text x="500" y="96" fill="#fca5a5" font-size="11">θ theta</text>
+        </svg>
+        <div class="hb-widget-note">
+          All three Greeks peak (or trough) at the strike. That's why ATM
+          options are the most "active" — every parameter has its largest effect there.
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 5: VRP                                                       -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch5-vrp" class="hb-section">
+      <div class="hb-eyebrow">Chapter 5</div>
+      <h2 class="hb-h2">Volatility Risk Premium</h2>
+      <div class="hb-deck">Why option sellers, on average, beat option buyers.</div>
+
+      <p>
+        Across virtually every liquid market — Nifty, S&amp;P 500, FX —
+        implied vol consistently exceeds <em>realised</em> vol. That's
+        the structural edge sellers harvest.
+      </p>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 5.1 — the volatility risk premium</h3>
+        <button class="hb-info-btn" (click)="toggleVar('5.1')">
+          ⓘ {{ expandedVar() === '5.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        VRP = 𝔼[σ<sub>implied</sub> − σ<sub>realised</sub>] ≈ 2-4%/year (Indian markets)
+      </div>
+      @if (expandedVar() === '5.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>VRP</strong></td><td>Volatility Risk Premium</td>
+              <td>The "excess" volatility priced into options vs. what actually realises.</td></tr>
+          <tr><td><strong>σ<sub>implied</sub></strong></td><td>Implied vol from option prices</td>
+              <td>What the market thinks future σ will be — visible as IV in option chains.</td></tr>
+          <tr><td><strong>σ<sub>realised</sub></strong></td><td>Actual vol that occurred</td>
+              <td>Measured AFTER the fact from price movements.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> This isn't a derivation — it's an
+          empirical fact measured across decades. Across Nifty, S&amp;P, FX
+          markets, IV averages 2-4 percentage points above realised vol.
+          Reasons: insurance demand, lottery-ticket bias, loss aversion.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          The market consistently OVERESTIMATES future volatility when pricing
+          options. Buyers pay for "more risk" than actually shows up.
+          Sellers, who collect that premium, get to keep the difference on
+          average. This isn't a bug — it's <strong>insurance</strong>. Just like
+          car-insurance companies make money even though some customers crash.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        This is THE structural reason any short-options strategy can work
+        long-term. The market tends to overpay for insurance and lottery
+        tickets. As a seller, you're the insurance company — you collect
+        more in premiums than you pay out in claims, on average.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 5.2 — expected payoff to a short option</h3>
+        <button class="hb-info-btn" (click)="toggleVar('5.2')">
+          ⓘ {{ expandedVar() === '5.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        𝔼[Π<sub>short</sub>] = p<sub>received</sub> − 𝔼[max(payoff, 0)]
+      </div>
+      @if (expandedVar() === '5.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>𝔼[Π<sub>short</sub>]</strong></td><td>Expected P&amp;L of a short option</td>
+              <td>Average outcome over many cycles — what you'd statistically earn.</td></tr>
+          <tr><td><strong>p<sub>received</sub></strong></td><td>Premium collected upfront</td>
+              <td>Cash in your pocket the moment you sell.</td></tr>
+          <tr><td><strong>𝔼[max(payoff, 0)]</strong></td><td>Expected obligation</td>
+              <td>What you'll pay out on average to the buyer.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Sell an option for premium p, then
+          owe max(payoff, 0) at expiry. Net P&amp;L = p − max(payoff, 0).
+          Take expectation over the price distribution to get the average
+          per-cycle profit. If priced under risk-neutral but realised under
+          μ &gt; r, this expectation is positive on average.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          When you SELL an option, you collect the premium upfront. But you
+          also owe the buyer their payoff at expiry. Your average profit is
+          (cash collected) minus (cash paid out on average). For sellers
+          to win on average, the premium received must exceed the long-run
+          average obligation. The VRP guarantees this.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example call at K = {{ Kc() }}:</strong><br>
+        p<sub>received</sub> = <strong>{{ fmtRs(callPrice()) }}</strong> (Black-Scholes price)<br>
+        Suppose realised σ comes in at 13% instead of priced 15%. The expected payoff
+        the buyer ACTUALLY receives is lower — sellers keep ~20% of premium as edge.
+      </div>
+
+      <!-- Interactive: VRP visualizer -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">⚖️ Implied vs realised σ — your edge</span>
+        </div>
+        <div class="hb-vrp-box">
+          <div class="hb-vrp-row">
+            <span>Implied σ (priced in):</span>
+            <strong>{{ (sig()*100).toFixed(1) }}%</strong>
+          </div>
+          <div class="hb-vrp-row">
+            <span>Realised σ (assume −2 pts):</span>
+            <strong>{{ ((sig()-0.02)*100).toFixed(1) }}%</strong>
+          </div>
+          <div class="hb-vrp-row hb-vrp-edge">
+            <span>Your seller edge (per cycle, approx):</span>
+            <strong class="hb-pos">≈ 2% × √T = {{ (2 * Math.sqrt(T()) * 100).toFixed(2) }}% of capital</strong>
+          </div>
+        </div>
+        <div class="hb-widget-note">
+          Try lowering σ in the example bar. Premium drops fast (premium ∝ σ),
+          but realised vol typically drops too — net edge may stay similar.
+          Markets with persistent VRP are where short-options strategies thrive.
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 6: Covered Call                                              -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch6-cc" class="hb-section">
+      <div class="hb-eyebrow">Chapter 6</div>
+      <h2 class="hb-h2">Covered Call Math</h2>
+      <div class="hb-deck">Long stock + short call. Decomposed.</div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 6.1 — payoff at expiry</h3>
+        <button class="hb-info-btn" (click)="toggleVar('6.1')">
+          ⓘ {{ expandedVar() === '6.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        Π = L · [min(S<sub>T</sub>, K) − S₀ + p<sub>c</sub>]
+      </div>
+      @if (expandedVar() === '6.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>Π</strong></td><td>Total profit at expiry</td><td>What you net per lot when option settles.</td></tr>
+          <tr><td><strong>L</strong></td><td>Lot size</td><td>For Nifty: 75 contracts per lot.</td></tr>
+          <tr><td><strong>S<sub>T</sub></strong></td><td>Spot at expiry</td><td>Realised in the future; unknown today.</td></tr>
+          <tr><td><strong>K</strong></td><td>Call strike</td><td>The "cap" — your stock gets called away above this.</td></tr>
+          <tr><td><strong>S₀</strong></td><td>Spot at entry</td><td>What you paid for the stock originally.</td></tr>
+          <tr><td><strong>p<sub>c</sub></strong></td><td>Call premium received</td><td>Cash collected when you wrote the call.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> You hold L shares (each up by S<sub>T</sub>−S₀)
+          and are short a call (lose max(S<sub>T</sub>−K, 0) when it goes ITM).
+          Combined: gain (S<sub>T</sub>−S₀) − max(S<sub>T</sub>−K, 0) = min(S<sub>T</sub>, K) − S₀.
+          Add the premium received to get the full payoff.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Below the strike K, your profit is just like holding the stock plus
+          the premium. Above the strike, you're <strong>capped</strong> — you
+          get paid as if the stock only went up to K, not higher. The premium
+          is your bonus on the downside but it doesn't help when there's a big
+          rally.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        The "min(S<sub>T</sub>, K)" is the cap. Above strike K, your stock
+        is "called away" — you sell at K no matter how high spot goes. That's
+        the trade you accept in exchange for premium. Below K, you keep your
+        stock and the premium is your bonus.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 6.2 — maximum profit</h3>
+        <button class="hb-info-btn" (click)="toggleVar('6.2')">
+          ⓘ {{ expandedVar() === '6.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        Π<sub>max</sub> = L · (K − S₀ + p<sub>c</sub>)
+      </div>
+      @if (expandedVar() === '6.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>Π<sub>max</sub></strong></td><td>Best-case profit</td>
+              <td>What you earn when stock closes at or above K.</td></tr>
+          <tr><td><strong>K − S₀</strong></td><td>"Cap" gain</td>
+              <td>The upside you keep before the call kicks in.</td></tr>
+          <tr><td><strong>p<sub>c</sub></strong></td><td>Premium</td>
+              <td>Always added — yours regardless of expiry outcome.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> From Eq 6.1, set S<sub>T</sub> ≥ K.
+          Then min(S<sub>T</sub>, K) = K, so payoff = L·(K − S₀ + p<sub>c</sub>).
+          This is the ceiling — no further upside.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          The MOST you can ever make from a covered call cycle is:
+          <strong>(strike − entry) + premium per share</strong>, multiplied by
+          lot size. If you wrote a 24,500 CE while NB was at 24,000 for ₹100 premium,
+          your max possible profit per lot is (500 + 100) × 75 = ₹45,000.
+          You give up everything above that.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        Π<sub>max</sub> = {{ L() }} · ({{ Kc() }} − {{ S() }} + {{ callPrice().toFixed(2) }})
+        = <strong>{{ fmtRs(L() * (Kc() - S() + callPrice())) }}</strong>.
+        That's the cap on your gain.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 6.3 — breakeven</h3>
+        <button class="hb-info-btn" (click)="toggleVar('6.3')">
+          ⓘ {{ expandedVar() === '6.3' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        S<sub>BE</sub> = S₀ − p<sub>c</sub>
+      </div>
+      @if (expandedVar() === '6.3') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>S<sub>BE</sub></strong></td><td>Breakeven spot price</td>
+              <td>If stock closes here, you make exactly zero on the cycle.</td></tr>
+          <tr><td><strong>S₀</strong></td><td>Entry spot</td><td>Your cost basis.</td></tr>
+          <tr><td><strong>p<sub>c</sub></strong></td><td>Premium per unit</td><td>Cash buffer against drops.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Set Π = 0 in Eq 6.1. With
+          S<sub>T</sub> &lt; K (kept the stock), 0 = (S<sub>T</sub> − S₀ + p<sub>c</sub>).
+          Solve for S<sub>T</sub>: S<sub>BE</sub> = S₀ − p<sub>c</sub>.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          The premium gives you a small cushion against the stock dropping.
+          If NB falls more than the premium per share, you start losing money.
+          E.g. if you collected ₹1.33 of premium per NB share, you can absorb
+          a 0.55% drop before going negative.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        How far down the stock can drop before you start losing money on the
+        cycle. The premium gives you a small downside cushion — but it's small.
+        Covered calls don't actually protect you from drops; they just slightly
+        delay the pain.
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        S<sub>BE</sub> = {{ S() }} − {{ callPrice().toFixed(2) }}
+        = <strong>{{ (S() - callPrice()).toFixed(0) }}</strong>
+        ({{ ((callPrice()/S())*100).toFixed(2) }}% of downside cushion).
+      </div>
+
+      <!-- Interactive: CC payoff diagram -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📐 Live: Covered call P&amp;L diagram</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="rgba(255,255,255,0.3)" stroke-dasharray="3 3"/>
+          <line x1="40" y1="40" x2="40" y2="200" stroke="rgba(255,255,255,0.3)"/>
+          <text x="44" y="35" fill="rgba(255,255,255,0.7)" font-size="11">P&amp;L</text>
+          <line x1="310" y1="40" x2="310" y2="200" stroke="rgba(255,255,255,0.2)" stroke-dasharray="2 2"/>
+          <text x="290" y="50" fill="rgba(255,255,255,0.7)" font-size="11">K = {{ Kc() }}</text>
+          <path [attr.d]="payoffPath('covered_call')" fill="none" stroke="#387ed1" stroke-width="2.5"/>
+        </svg>
+        <div class="hb-widget-note">
+          Below S₀, you lose money on the stock (premium softens it slightly).
+          Above K, gains are capped — that's the price of premium. Move K_c
+          up in the example bar to see how a wider cap improves the right side
+          but reduces premium income.
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 7: CSP                                                       -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch7-csp" class="hb-section">
+      <div class="hb-eyebrow">Chapter 7</div>
+      <h2 class="hb-h2">Cash-Secured Put Math</h2>
+      <div class="hb-deck">Sell a put while holding the strike's cash. The mirror image.</div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 7.1 — payoff</h3>
+        <button class="hb-info-btn" (click)="toggleVar('7.1')">
+          ⓘ {{ expandedVar() === '7.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        Π = L · [p<sub>p</sub> − max(K − S<sub>T</sub>, 0)]
+      </div>
+      @if (expandedVar() === '7.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>p<sub>p</sub></strong></td><td>Put premium received</td><td>Cash collected upfront.</td></tr>
+          <tr><td><strong>K</strong></td><td>Put strike</td><td>The level at which you'd be forced to buy.</td></tr>
+          <tr><td><strong>max(K − S<sub>T</sub>, 0)</strong></td><td>Put intrinsic at expiry</td>
+              <td>Zero if spot ≥ K; positive (your liability) if spot drops.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Sell a put for premium p<sub>p</sub>.
+          At expiry, you owe max(K − S<sub>T</sub>, 0) to the buyer.
+          Net P&amp;L = premium − liability = p<sub>p</sub> − max(K − S<sub>T</sub>, 0).
+          Multiply by lot size for total ₹.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Above strike K → you keep the entire premium (zero liability).
+          Below K → you "buy" the stock at K (effective cost K − premium per
+          unit). Worst case: stock crashes to zero, you take a loss of K − premium per unit.
+        </p>
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 7.2 — buy-low edge on assignment</h3>
+        <button class="hb-info-btn" (click)="toggleVar('7.2')">
+          ⓘ {{ expandedVar() === '7.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        Δ<sub>BL</sub> = (S₀ − K) + p<sub>p</sub>  (per unit)
+      </div>
+      @if (expandedVar() === '7.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>Δ<sub>BL</sub></strong></td><td>Buy-low edge</td>
+              <td>The structural saving when CSP assigns vs. buying outright.</td></tr>
+          <tr><td><strong>S₀ − K</strong></td><td>Strike discount below current spot</td>
+              <td>Selling a put at K below S₀ means you'd buy at K, not S₀.</td></tr>
+          <tr><td><strong>p<sub>p</sub></strong></td><td>Premium kept</td>
+              <td>Adds to your savings.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Compare two paths to ownership.
+          Path A: buy at S₀. Cost = S₀. Path B: sell put at K, get assigned.
+          Cost = K paid − p<sub>p</sub> premium = K − p<sub>p</sub>.
+          Saving = S₀ − (K − p<sub>p</sub>) = (S₀ − K) + p<sub>p</sub>.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Instead of buying NB at the current price, you sell a put at a
+          lower strike. If assigned, you bought at the lower strike AND
+          collected premium — your effective entry is BELOW even the lower
+          strike. The CSP discount is structural alpha; it's not free, but
+          it IS positive in expectation.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        This is the <strong>structural alpha</strong> of CSPs: by selling a put
+        at strike K instead of buying outright at spot S₀, you save (S₀ − K) per
+        share AND collect premium. That's why CSP cycling beats market-buying —
+        you're getting paid to wait for a discounted entry.
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        Δ<sub>BL</sub> = ({{ S() }} − {{ Kp() }}) + {{ putPrice().toFixed(2) }}
+        = <strong>{{ ((S() - Kp()) + putPrice()).toFixed(2) }}</strong> per unit.
+        Per lot of {{ L() }}: <strong>{{ fmtRs(L() * ((S() - Kp()) + putPrice())) }}</strong>.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 7.3 — effective entry cost on assignment</h3>
+        <button class="hb-info-btn" (click)="toggleVar('7.3')">
+          ⓘ {{ expandedVar() === '7.3' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        Cost<sub>eff</sub> = K − p<sub>p</sub>
+      </div>
+      @if (expandedVar() === '7.3') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>Cost<sub>eff</sub></strong></td><td>Effective entry cost per share</td>
+              <td>What your true buy-in price was, after premium credit.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> When CSP assigns, you pay K to
+          receive the stock. But you'd already pocketed p<sub>p</sub> in premium.
+          Net out-of-pocket = K − p<sub>p</sub>.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Your "real" cost basis is the strike MINUS the premium you collected.
+          This becomes your reference point for the next phase — selling
+          covered calls. Many strategies use this number as the floor below
+          which they refuse to sell more options.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        Cost<sub>eff</sub> = {{ Kp() }} − {{ putPrice().toFixed(2) }}
+        = <strong>{{ (Kp() - putPrice()).toFixed(0) }}</strong>
+        instead of {{ S() }} (a {{ ((S() - (Kp() - putPrice())) / S() * 100).toFixed(2) }}% discount).
+      </div>
+
+      <!-- Interactive: CSP payoff -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📐 Live: Cash-secured put P&amp;L</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="rgba(255,255,255,0.3)" stroke-dasharray="3 3"/>
+          <line x1="40" y1="40" x2="40" y2="200" stroke="rgba(255,255,255,0.3)"/>
+          <line x1="310" y1="40" x2="310" y2="200" stroke="rgba(255,255,255,0.2)" stroke-dasharray="2 2"/>
+          <text x="290" y="50" fill="rgba(255,255,255,0.7)" font-size="11">K = {{ Kp() }}</text>
+          <path [attr.d]="payoffPath('csp', Kp())" fill="none" stroke="#387ed1" stroke-width="2.5"/>
+        </svg>
+        <div class="hb-widget-note">
+          Above K_p, keep premium (flat profit). Below K_p, you lose ₹1 for every
+          ₹1 the price drops below strike (assignment). Maximum loss occurs at S_T = 0.
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 8: Wheel                                                     -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch8-wheel" class="hb-section">
+      <div class="hb-eyebrow">Chapter 8</div>
+      <h2 class="hb-h2">The Wheel — A State Machine</h2>
+      <div class="hb-deck">CSP → assignment → CC → assignment → repeat.</div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 8.1 — assignment probabilities</h3>
+        <button class="hb-info-btn" (click)="toggleVar('8.1')">
+          ⓘ {{ expandedVar() === '8.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        q<sub>A</sub> = ℙ(S<sub>T</sub> &lt; K<sub>p</sub>) = Φ(−d₂<sup>μ</sup>)<br>
+        q<sub>B</sub> = ℙ(S<sub>T</sub> &gt; K<sub>c</sub>) = Φ(d₂<sup>μ</sup>)
+      </div>
+      @if (expandedVar() === '8.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>q<sub>A</sub></strong></td><td>Probability CSP gets assigned per cycle</td>
+              <td>Spot drops below put strike at expiry.</td></tr>
+          <tr><td><strong>q<sub>B</sub></strong></td><td>Probability CC gets assigned per cycle</td>
+              <td>Spot rises above call strike at expiry.</td></tr>
+          <tr><td><strong>d₂<sup>μ</sup></strong></td><td>z-score using REAL drift μ</td>
+              <td>Same as BS d₂ but with μ replacing r — gives real-world probabilities.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Under log-normal with drift μ,
+          ℙ(S<sub>T</sub> &lt; K) = ℙ(ln(S<sub>T</sub>/S₀) &lt; ln(K/S₀)).
+          Standardise: this equals Φ(−d₂<sup>μ</sup>) where d₂<sup>μ</sup> uses μ
+          instead of r in the drift term.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          What's the chance my CSP will get assigned this cycle? What's the
+          chance my CC will get assigned? These two probabilities drive the
+          ENTIRE Wheel — they tell you how often each "transition" happens.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        q<sub>A</sub> = <strong>{{ (probPutAssigns()*100).toFixed(2) }}%</strong>
+        (per cycle prob CSP assigns).<br>
+        q<sub>B</sub> = <strong>{{ (probCallAssigns()*100).toFixed(2) }}%</strong>
+        (per cycle prob CC assigns).
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 8.2 — expected dwell times (geometric)</h3>
+        <button class="hb-info-btn" (click)="toggleVar('8.2')">
+          ⓘ {{ expandedVar() === '8.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        N<sub>A</sub> = 1 / q<sub>A</sub>,&nbsp;&nbsp;
+        N<sub>B</sub> = 1 / q<sub>B</sub>,&nbsp;&nbsp;
+        T<sub>cycle</sub> = N<sub>A</sub> + N<sub>B</sub>
+      </div>
+      @if (expandedVar() === '8.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>N<sub>A</sub></strong></td><td>Avg cycles spent in Phase A</td>
+              <td>How many CSPs you'll write before one assigns.</td></tr>
+          <tr><td><strong>N<sub>B</sub></strong></td><td>Avg cycles in Phase B</td>
+              <td>How many CCs before one assigns.</td></tr>
+          <tr><td><strong>T<sub>cycle</sub></strong></td><td>Full Wheel cycle length</td>
+              <td>From cash → assigned → covered → assigned → back to cash.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Geometric distribution. If the
+          probability of "success" (assignment) on each trial is q, the
+          expected number of trials until success is 1/q. Apply to each phase.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Higher assignment probability ⇒ shorter dwell time ⇒ faster cycles.
+          A 20% per-cycle assignment rate means you'd expect 1/0.20 = 5 cycles
+          before assignment. That's how the Wheel "rotates" mathematically.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        N<sub>A</sub> = <strong>{{ wheelN_A().toFixed(2) }}</strong> months in cash phase.<br>
+        N<sub>B</sub> = <strong>{{ wheelN_B().toFixed(2) }}</strong> months long.<br>
+        T<sub>cycle</sub> = <strong>{{ wheelCycleMonths().toFixed(2) }}</strong> months
+        per full Wheel rotation.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 8.3 — three sources of edge</h3>
+        <button class="hb-info-btn" (click)="toggleVar('8.3')">
+          ⓘ {{ expandedVar() === '8.3' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        𝔼[Π] = N<sub>A</sub>·G<sub>A</sub> + Δ<sub>BL</sub> + N<sub>B</sub>·G<sub>B</sub> + Δ<sub>SH</sub>
+      </div>
+      @if (expandedVar() === '8.3') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>G<sub>A</sub></strong></td><td>Per-cycle gain in Phase A</td>
+              <td>Premium + cash yield while waiting for CSP.</td></tr>
+          <tr><td><strong>G<sub>B</sub></strong></td><td>Per-cycle gain in Phase B</td>
+              <td>Premium + capped stock drift while holding NB.</td></tr>
+          <tr><td><strong>Δ<sub>BL</sub></strong></td><td>Buy-low edge per cycle</td>
+              <td>One-time when CSP assigns: (S₀ − K<sub>p</sub>)·shares.</td></tr>
+          <tr><td><strong>Δ<sub>SH</sub></strong></td><td>Sell-high edge per cycle</td>
+              <td>One-time when CC assigns: (K<sub>c</sub> − S₀)·shares.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Sum income over each cycle:
+          (premium income while in Phase A) + (buy-low credit on assignment)
+          + (premium income in Phase B) + (sell-high credit on assignment).
+          Each term multiplied by expected count or one-shot value.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Wheel total profit = (premium drip in Phase A) + (the discount you
+          got when assigned) + (premium drip in Phase B) + (the price gain when
+          your CC was called away). FOUR contribution lines — most of which
+          ordinary buy-and-hold investors miss entirely.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        The Wheel doesn't just collect premium. It captures THREE separate
+        edges: <strong>premium income</strong>, <strong>buy-low</strong> on
+        each CSP assignment, <strong>sell-high</strong> on each CC assignment.
+        That's why the Wheel often beats pure CC despite slower cycle times —
+        the assignment edges accumulate.
+      </div>
+      <div class="hb-plug">
+        <strong>With our example, the structural buy-low + sell-high edge:</strong><br>
+        Δ<sub>BL</sub> = (S₀ − K<sub>p</sub>) · NB shares = ({{ S() }} − {{ Kp() }}) · {{ L() }}
+        = <strong>{{ fmtRs(wheelBuyLow()) }}</strong>.<br>
+        Δ<sub>SH</sub> = (K<sub>c</sub> − S₀) · NB shares = ({{ Kc() }} − {{ S() }}) · {{ L() }}
+        = <strong>{{ fmtRs(wheelSellHigh()) }}</strong>.<br>
+        Combined structural edge: <strong>{{ fmtRs(wheelBuyLow() + wheelSellHigh()) }}</strong>
+        per cycle, on top of premium income.
+      </div>
+
+      <!-- Interactive: state machine viz -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">⚙️ Wheel state machine — your example</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <circle cx="160" cy="120" r="64" fill="rgba(56,126,209,0.15)" stroke="#387ed1" stroke-width="2"/>
+          <text x="160" y="110" fill="#93c5fd" font-size="14" font-weight="700" text-anchor="middle">Phase A</text>
+          <text x="160" y="128" fill="rgba(255,255,255,0.85)" font-size="11" text-anchor="middle">Cash + sell CSP</text>
+          <text x="160" y="146" fill="#fbbf24" font-size="11" text-anchor="middle">{{ wheelN_A().toFixed(1) }} months</text>
+          <circle cx="440" cy="120" r="64" fill="rgba(16,185,129,0.15)" stroke="#34d399" stroke-width="2"/>
+          <text x="440" y="110" fill="#34d399" font-size="14" font-weight="700" text-anchor="middle">Phase B</text>
+          <text x="440" y="128" fill="rgba(255,255,255,0.85)" font-size="11" text-anchor="middle">Long + sell CC</text>
+          <text x="440" y="146" fill="#fbbf24" font-size="11" text-anchor="middle">{{ wheelN_B().toFixed(1) }} months</text>
+          <path d="M 224 100 Q 300 60 376 100" fill="none" stroke="#fbbf24" stroke-width="1.5" marker-end="url(#hbarrow)"/>
+          <text x="300" y="50" fill="#fbbf24" font-size="11" text-anchor="middle">put assigns</text>
+          <text x="300" y="68" fill="rgba(255,255,255,0.65)" font-size="10" text-anchor="middle">prob = {{ (probPutAssigns()*100).toFixed(1) }}%</text>
+          <path d="M 376 145 Q 300 195 224 145" fill="none" stroke="#fca5a5" stroke-width="1.5" marker-end="url(#hbarrow)"/>
+          <text x="300" y="215" fill="#fca5a5" font-size="11" text-anchor="middle">call assigns</text>
+          <text x="300" y="232" fill="rgba(255,255,255,0.65)" font-size="10" text-anchor="middle">prob = {{ (probCallAssigns()*100).toFixed(1) }}%</text>
+          <defs>
+            <marker id="hbarrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="rgba(255,255,255,0.85)"/>
+            </marker>
+          </defs>
+        </svg>
+        <div class="hb-widget-note">
+          Move K_p and K_c in the example bar — wider strikes increase dwell
+          time but reduce assignment frequency. The full cycle takes
+          <strong>{{ wheelCycleMonths().toFixed(1) }} months</strong> on average.
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 9: Protected Wheel                                           -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch9-protected" class="hb-section">
+      <div class="hb-eyebrow">Chapter 9</div>
+      <h2 class="hb-h2">Protected Wheel — Insurance Math</h2>
+      <div class="hb-deck">Wheel + a continuously rolled long put.</div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 9.1 — hedge cost (amortised)</h3>
+        <button class="hb-info-btn" (click)="toggleVar('9.1')">
+          ⓘ {{ expandedVar() === '9.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        C<sub>h</sub><sup>monthly</sup> = p<sub>h</sub> · L / T<sub>h</sub><sup>months</sup>
+      </div>
+      @if (expandedVar() === '9.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>C<sub>h</sub><sup>monthly</sup></strong></td><td>Hedge cost per month</td>
+              <td>Average insurance bill, amortised across the put's life.</td></tr>
+          <tr><td><strong>p<sub>h</sub></strong></td><td>Protective put premium</td>
+              <td>Black-Scholes price of the long-dated OTM put.</td></tr>
+          <tr><td><strong>T<sub>h</sub><sup>months</sup></strong></td><td>Put expiry in months</td>
+              <td>Use 3 (quarterly) or longer for cost efficiency.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Pay p<sub>h</sub>·L for a put
+          lasting T<sub>h</sub> months. Divide cost by months to get
+          per-month average burn rate.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          You pay one big upfront for the protective put, but you spread that
+          cost mentally over the months of coverage. Buying a 90-day put once
+          is cheaper per month than buying a fresh 30-day put each month —
+          because option premium scales with √T, not T.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        Why we use <strong>quarterly puts</strong> instead of monthly: per-month
+        cost is half. Premium scales with √T not T, so a 90-day put costs only
+        ~1.7× a 30-day put while giving you 3× the coverage time. Buying
+        cheaper, longer insurance = better strategy.
+      </div>
+      <div class="hb-plug">
+        <strong>With our example (90-day put at K<sub>h</sub> = {{ Kh() }}):</strong><br>
+        p<sub>h</sub> = <strong>₹{{ hedgePutPrice().toFixed(2) }}</strong> per unit (Black-Scholes price).<br>
+        Cost per month = {{ hedgePutPrice().toFixed(2) }} · {{ L() }} / 3
+        = <strong>{{ fmtRs(hedgePutPrice() * L() / 3) }}</strong>.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 9.2 — expected hedge payout</h3>
+        <button class="hb-info-btn" (click)="toggleVar('9.2')">
+          ⓘ {{ expandedVar() === '9.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        𝔼[payout] = K<sub>h</sub>·Φ(−d₂<sup>μ</sup>) − S₀·e<sup>μT<sub>h</sub></sup>·Φ(−d₁<sup>μ</sup>)
+      </div>
+      @if (expandedVar() === '9.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>𝔼[payout]</strong></td><td>Expected payment from the put</td>
+              <td>Average rupees per unit, integrated over price distribution.</td></tr>
+          <tr><td><strong>K<sub>h</sub></strong></td><td>Hedge put strike</td>
+              <td>Typically 7% below current spot.</td></tr>
+          <tr><td><strong>d₁<sup>μ</sup>, d₂<sup>μ</sup></strong></td><td>z-scores using real-world drift</td>
+              <td>Different from BS d₁/d₂ because we use μ, not r.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Compute 𝔼[max(K<sub>h</sub> − S<sub>T</sub>, 0)]
+          under log-normal with drift μ. Decomposes into K·Φ(−d₂<sup>μ</sup>) −
+          S₀·e<sup>μT</sup>·Φ(−d₁<sup>μ</sup>) — analogous to BS put price but
+          under real-world rather than risk-neutral measure.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          On average, what does the put PAY OUT? In normal years, very little
+          (it expires worthless). In crash years, a lot. Expected payout is
+          the long-run average, weighted by probability of each price ending
+          up below the hedge strike.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        Most months the put expires worthless (loss = full premium).
+        On the rare crash year, payout = ₹(K<sub>h</sub> − S<sub>T</sub>) per unit
+        — easily 5-10× the annual premium spent.
+      </div>
+
+      <!-- Interactive: net hedge effect -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">🛡️ Hedge ledger</span>
+        </div>
+        <div class="hb-vrp-box">
+          <div class="hb-vrp-row">
+            <span>Annual hedge cost (4 quarterly rolls):</span>
+            <strong class="hb-neg">−{{ fmtRs(hedgePutPrice() * L() * 4) }}</strong>
+          </div>
+          <div class="hb-vrp-row">
+            <span>Crash payout (15% drop scenario):</span>
+            <strong class="hb-pos">+{{ fmtRs((Kh() - S()*0.85) * L()) }}</strong>
+            (if it happens)
+          </div>
+          <div class="hb-vrp-row hb-vrp-edge">
+            <span>Even one such crash every {{ ((Kh() - S()*0.85) / hedgePutPrice() / 4).toFixed(1) }} years pays for the strategy.</span>
+          </div>
+        </div>
+        <div class="hb-widget-note">
+          Move K_h in the example bar — a tighter (closer-to-spot) hedge costs
+          more but pays off in milder drops. Wider hedge is cheaper insurance
+          for tail-risk only.
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 10: Iron Condor                                              -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch10-iron" class="hb-section">
+      <div class="hb-eyebrow">Chapter 10</div>
+      <h2 class="hb-h2">Iron Condor — Defined Risk</h2>
+      <div class="hb-deck">Sell put-spread + call-spread. Capped both ways.</div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 10.1 — net premium collected</h3>
+        <button class="hb-info-btn" (click)="toggleVar('10.1')">
+          ⓘ {{ expandedVar() === '10.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        P<sub>net</sub> = (p<sub>p</sub><sup>S</sup> − p<sub>p</sub><sup>L</sup>) + (p<sub>c</sub><sup>S</sup> − p<sub>c</sub><sup>L</sup>)
+      </div>
+      @if (expandedVar() === '10.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>p<sub>p</sub><sup>S</sup></strong></td><td>Short put premium (received)</td>
+              <td>The closer-to-spot put you sell.</td></tr>
+          <tr><td><strong>p<sub>p</sub><sup>L</sup></strong></td><td>Long put premium (paid)</td>
+              <td>The further-from-spot put you buy as protection.</td></tr>
+          <tr><td><strong>p<sub>c</sub><sup>S</sup></strong></td><td>Short call premium (received)</td><td>Closer-to-spot call sold.</td></tr>
+          <tr><td><strong>p<sub>c</sub><sup>L</sup></strong></td><td>Long call premium (paid)</td><td>Further OTM call purchased.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Iron Condor is two short legs and two
+          long legs. Net premium = total received − total paid. Always a credit
+          (positive) at entry.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          You collect more from selling the inner options than you pay for the
+          outer "wings" of protection. The difference is your net credit — the
+          maximum profit you can make on this Iron Condor.
+        </p>
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 10.2 — max loss (defined risk)</h3>
+        <button class="hb-info-btn" (click)="toggleVar('10.2')">
+          ⓘ {{ expandedVar() === '10.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        L<sub>max</sub> = w · L − P<sub>net</sub> · L
+      </div>
+      <p>where w is the spread width (e.g., 480 Nifty points).</p>
+      @if (expandedVar() === '10.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>L<sub>max</sub></strong></td><td>Worst-case loss per cycle</td>
+              <td>Cap on how much you can lose.</td></tr>
+          <tr><td><strong>w</strong></td><td>Spread width (in price points)</td>
+              <td>Distance from short to long strike on each side.</td></tr>
+          <tr><td><strong>P<sub>net</sub></strong></td><td>Net premium collected</td>
+              <td>From Eq 10.1.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> If spot blows past one of the wings,
+          you owe (w − P<sub>net</sub>) per unit. Multiply by lot size for total
+          rupees. The long wing caps your downside — without it, loss would be
+          unlimited.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          The worst you can ever lose is fixed and known. That's why IC is
+          "defined risk." This number is also your margin requirement —
+          your broker holds it aside until expiry. If everything goes wrong,
+          you lose exactly this; not a rupee more.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        This is what makes IC <strong>capital-efficient</strong>. Max loss is
+        also your margin requirement — typically ₹3-5L for a Nifty IC.
+        Compare to a covered call needing ₹18L of NB. So per rupee of capital,
+        IC sells more option premium than any other strategy.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 10.3 — probability of full premium retention</h3>
+        <button class="hb-info-btn" (click)="toggleVar('10.3')">
+          ⓘ {{ expandedVar() === '10.3' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        ℙ(max profit) = ℙ(K<sub>p</sub><sup>S</sup> &lt; S<sub>T</sub> &lt; K<sub>c</sub><sup>S</sup>)
+      </div>
+      @if (expandedVar() === '10.3') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>ℙ(max profit)</strong></td><td>Probability of keeping all premium</td>
+              <td>Spot lands between the two short strikes at expiry.</td></tr>
+          <tr><td><strong>K<sub>p</sub><sup>S</sup></strong></td><td>Short put strike</td>
+              <td>Lower edge of the profit zone.</td></tr>
+          <tr><td><strong>K<sub>c</sub><sup>S</sup></strong></td><td>Short call strike</td>
+              <td>Upper edge of the profit zone.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Compute ℙ(K<sub>p</sub><sup>S</sup> &lt; S<sub>T</sub> &lt; K<sub>c</sub><sup>S</sup>)
+          under log-normal: Φ(d₂<sup>μ</sup> at K<sub>p</sub><sup>S</sup>) − Φ(d₂<sup>μ</sup> at K<sub>c</sub><sup>S</sup>).
+          That's the probability mass between the two strikes.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          What's the chance my Iron Condor wins fully? It's the probability
+          that the spot stays between my two short strikes at expiry.
+          Wider strikes → higher probability of winning, but smaller premium.
+        </p>
+      </div>
+      <div class="hb-plug">
+        <strong>With our example:</strong>
+        ℙ(stays between {{ Kp() }} and {{ Kc() }}) ≈ <strong>{{ ((1 - probPutAssigns() - probCallAssigns()) * 100).toFixed(1) }}%</strong>
+        — that's how often you'd keep the entire premium.
+      </div>
+
+      <!-- Interactive: IC payoff -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📐 Live: Iron Condor P&amp;L</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="rgba(255,255,255,0.3)" stroke-dasharray="3 3"/>
+          <line x1="40" y1="40" x2="40" y2="200" stroke="rgba(255,255,255,0.3)"/>
+          <line x1="310" y1="40" x2="310" y2="200" stroke="rgba(255,255,255,0.2)" stroke-dasharray="2 2"/>
+          <text x="290" y="50" fill="rgba(255,255,255,0.7)" font-size="11">S₀</text>
+          <path [attr.d]="payoffPath('iron_condor')" fill="none" stroke="#387ed1" stroke-width="2.5"/>
+        </svg>
+        <div class="hb-widget-note">
+          The plateau between short strikes is your max profit zone. Outside
+          the long strikes, loss is capped at L_max. Both wings are
+          insurance; both shorts are income.
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 11: Frictions                                                -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch11-friction" class="hb-section">
+      <div class="hb-eyebrow">Chapter 11</div>
+      <h2 class="hb-h2">Frictions: Tax + Slippage + Charges</h2>
+      <div class="hb-deck">Where the headline meets reality.</div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 11.1 — net return</h3>
+        <button class="hb-info-btn" (click)="toggleVar('11.1')">
+          ⓘ {{ expandedVar() === '11.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        R<sub>net</sub> = R<sub>gross</sub> · (1 − τ) · (1 + cess) − φ
+      </div>
+      @if (expandedVar() === '11.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>R<sub>net</sub></strong></td><td>Net annual return after taxes/fees</td>
+              <td>What actually lands in your account.</td></tr>
+          <tr><td><strong>R<sub>gross</sub></strong></td><td>Gross annual return</td>
+              <td>Before any deductions.</td></tr>
+          <tr><td><strong>τ</strong></td><td>Tax slab rate</td>
+              <td>F&amp;O income taxed at slab; for high-bracket = 30%.</td></tr>
+          <tr><td><strong>cess</strong></td><td>Health &amp; Education Cess</td>
+              <td>4% surcharge on the income tax itself.</td></tr>
+          <tr><td><strong>φ</strong></td><td>Annual friction</td>
+              <td>Brokerage + STT + slippage as a % of capital.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Start with gross return. Apply tax
+          on the gain (R · τ). Apply cess on the tax (× 1.04). Subtract per-year
+          friction (separate fixed deduction). Result is what you actually
+          take home.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          Take your headline return. Subtract the income tax on it. Subtract
+          another 4% cess. Subtract the running cost of trading. What remains
+          is your <strong>real</strong> compounding rate. It's usually 30-40%
+          smaller than the gross figure.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        Headline returns lie. A "20% gross" Wheel becomes ~13% net for a 30%
+        slab earner. Always compute post-tax before comparing strategies. F&amp;O
+        slab tax is the single biggest performance drag in Indian options
+        trading.
+      </div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 11.2 — F&amp;O income tax</h3>
+        <button class="hb-info-btn" (click)="toggleVar('11.2')">
+          ⓘ {{ expandedVar() === '11.2' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        Tax = R<sub>gross</sub> · τ · (1 + 0.04)
+      </div>
+      @if (expandedVar() === '11.2') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>Tax</strong></td><td>Income tax payable on F&amp;O profit</td>
+              <td>Calculated annually with your full tax return.</td></tr>
+          <tr><td><strong>τ</strong></td><td>Marginal slab rate</td>
+              <td>5%, 10%, 20%, or 30% depending on total income.</td></tr>
+          <tr><td><strong>0.04</strong></td><td>Cess multiplier</td>
+              <td>4% Health and Education Cess on tax.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> F&amp;O profits are non-speculative
+          business income. Add to your slab. Tax = slab rate × profit. Then
+          add 4% cess on top → multiplied by (1 + 0.04).
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          F&amp;O income is taxed AT YOUR INCOME SLAB — not as capital gains.
+          For a 30% bracket earner, ~31% of every rupee of F&amp;O profit goes
+          to tax. This is why F&amp;O strategies must <strong>significantly
+          beat</strong> equity hold returns to be worth the trouble post-tax.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        F&amp;O income is taxed at slab (up to 30%+cess). LTCG on equity is
+        12.5% above ₹1.25L exemption. So <strong>plain NB hold beats
+        comparable F&amp;O strategies post-tax unless gross spread &gt; 5%</strong>.
+        Run this calc before every strategy commitment.
+      </div>
+      <div class="hb-plug">
+        <strong>With our example (slab τ = {{ (slab()*100).toFixed(0) }}%):</strong><br>
+        On a 14% gross annual return:<br>
+        Tax = 14% · {{ slab().toFixed(2) }} · 1.04 = <strong>{{ (14 * slab() * 1.04).toFixed(2) }}%</strong> drag.<br>
+        Plus ~0.5% friction (brokerage/STT/slippage) → Net = <strong>{{ netReturn().toFixed(2) }}%</strong>.
+      </div>
+
+      <!-- Interactive: tax slider -->
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">🧮 Tax impact calculator</span>
+        </div>
+        <div class="hb-widget-controls">
+          <label>Your slab rate τ
+            <input type="range" min="0.05" max="0.40" step="0.05"
+                   [ngModel]="slab()" (ngModelChange)="slab.set($event)">
+            <span>{{ (slab()*100).toFixed(0) }}%</span>
+          </label>
+        </div>
+        <div class="hb-vrp-box">
+          <div class="hb-vrp-row">
+            <span>Gross annual return:</span>
+            <strong>14.00%</strong>
+          </div>
+          <div class="hb-vrp-row">
+            <span>F&amp;O tax + cess:</span>
+            <strong class="hb-neg">−{{ (14 * slab() * 1.04).toFixed(2) }}%</strong>
+          </div>
+          <div class="hb-vrp-row">
+            <span>Annual friction:</span>
+            <strong class="hb-neg">−0.50%</strong>
+          </div>
+          <div class="hb-vrp-row hb-vrp-edge">
+            <span>Net you keep:</span>
+            <strong class="hb-pos">{{ netReturn().toFixed(2) }}%</strong>
+          </div>
+        </div>
+        <div class="hb-widget-note">
+          Slide your slab. At 30% slab, tax alone eats ~30% of your gross.
+          F&amp;O income at slab vs equity at LTCG (12.5%) — that's the tax-cost
+          of every options strategy in India.
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- CHAPTER 12: Decision Framework                                       -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <section id="ch12-decision" class="hb-section">
+      <div class="hb-eyebrow">Chapter 12</div>
+      <h2 class="hb-h2">Decision Framework</h2>
+      <div class="hb-deck">When to pick which weapon — a math-driven choice.</div>
+
+      <div class="hb-eq-row">
+        <h3 class="hb-h3">Equation 12.1 — Sharpe ratio</h3>
+        <button class="hb-info-btn" (click)="toggleVar('12.1')">
+          ⓘ {{ expandedVar() === '12.1' ? 'Hide' : 'What do the variables mean?' }}
+        </button>
+      </div>
+      <div class="hb-eq">
+        Sharpe = (R<sub>strategy</sub> − R<sub>risk-free</sub>) / σ<sub>strategy</sub>
+      </div>
+      @if (expandedVar() === '12.1') {
+      <div class="hb-vars">
+        <div class="hb-vars-title">Variable definitions</div>
+        <table class="hb-vars-table">
+          <tr><td><strong>Sharpe</strong></td><td>Risk-adjusted return measure</td>
+              <td>Higher = more reward per unit of risk.</td></tr>
+          <tr><td><strong>R<sub>strategy</sub></strong></td><td>Strategy's annual return</td>
+              <td>Net of taxes/fees ideally.</td></tr>
+          <tr><td><strong>R<sub>risk-free</sub></strong></td><td>Risk-free rate</td>
+              <td>What you'd earn just sitting in G-secs (~7% in India).</td></tr>
+          <tr><td><strong>σ<sub>strategy</sub></strong></td><td>Strategy's volatility</td>
+              <td>How wildly returns swing year to year.</td></tr>
+        </table>
+        <div class="hb-vars-derivation">
+          <strong>How it's derived:</strong> Coined by William Sharpe (1966).
+          Excess return (over risk-free) divided by the standard deviation of
+          returns. A pure ratio — easy to compare across strategies.
+        </div>
+      </div>
+      }
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English, this equation says</div>
+        <p>
+          A strategy isn't just about absolute return — it's about return
+          ADJUSTED for the risk you took to get it. Sharpe = "how many
+          rupees of profit per rupee of volatility?" Two strategies returning
+          12% — one with 4% σ (Sharpe ≈ 1.25), one with 25% σ (Sharpe ≈ 0.20)
+          — are not the same investment.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        Returns alone are misleading. <strong>Sharpe = return per unit of risk</strong>.
+        A strategy returning 12% with 4% volatility (Sharpe ≈ 1.0) is BETTER
+        than 18% with 30% volatility (Sharpe ≈ 0.4). Always size positions
+        by Sharpe — that's how big institutions allocate. Higher Sharpe =
+        more compoundable wealth.
+      </div>
+      <div class="hb-plug">
+        <strong>With our example numbers:</strong><br>
+        At 14% gross, 9% net post-tax, 12% strategy σ, 7% risk-free:<br>
+        Sharpe = (9 − 7) / 12 = <strong>0.17</strong>
+        — modest but positive.
+      </div>
+
+      <h3 class="hb-h3">The decision tree</h3>
+      <ul class="hb-list">
+        <li><strong>Want to own equity long-term?</strong> → CC or Wheel</li>
+        <li><strong>Want pure income, no equity exposure?</strong> → Iron Condor or naked CSP</li>
+        <li><strong>Risk-averse (cap drawdowns)?</strong> → Add a 7-10% OTM hedge put</li>
+        <li><strong>High IV regime?</strong> → Sell premium aggressively</li>
+        <li><strong>Strong directional trend?</strong> → Don't fight the Wheel — switch to plain hold</li>
+      </ul>
+
+      <h3 class="hb-h3">A unifying perspective</h3>
+      <p>
+        Every strategy in this handbook is a way to <em>shape your exposure
+        to the volatility risk premium</em>. The Greeks tell you which risks
+        you're taking. Black-Scholes prices them. Frictions reduce them.
+        Your edge — if any — comes from picking the strategy whose math
+        matches the moment.
+      </p>
+
+      <p class="hb-final">
+        <em>
+          Your job isn't to find the magic strategy. It's to understand which
+          math is operating right now, and to choose the tool whose math
+          matches the moment.
+        </em>
+      </p>
+
+      <div class="hb-end-banner">
+        — End of Day 1 —<br>
+        <span>Tomorrow we go deep on one strategy: Protected Wheel.</span>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- DAY 2 — PROTECTED WHEEL MASTER CLASS                                 -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+
+    <div class="hb-day-banner">
+      <div class="hb-day-banner-eyebrow">Day 2 — Master Class</div>
+      <div class="hb-day-banner-title">🎯 The Protected Wheel — Top to Bottom</div>
+      <div class="hb-day-banner-sub">
+        Day 1 covered the math universally. Now we go deep on ONE strategy and
+        master every dial: position structure, strike selection, the combined
+        Greeks, expected returns, risk failure modes, profit maximization,
+        and entry/exit timing — with interactive graphs at every step.
+      </div>
+    </div>
+
+    <!-- ── PW · 1 — Why this strategy ────────────────────────────────────── -->
+    <section id="pw-overview" class="hb-section">
+      <div class="hb-eyebrow">Day 2 · Section 1</div>
+      <h2 class="hb-h2">Why Protected Wheel?</h2>
+      <div class="hb-deck">The case for paying for crash insurance instead of hoping.</div>
+
+      <div class="hb-topic-intro">
+        <div class="hb-topic-intro-label">📖 What this section is about</div>
+        <p>
+          Of all the strategies in Day 1, the Protected Wheel is the one most
+          likely to deliver <strong>steady 0.8-1.0% per month with bounded
+          drawdowns</strong>. It's the institutional retiree's strategy —
+          boring, profitable, and crash-resistant. This section makes the
+          mathematical case for it.
+        </p>
+        <p>
+          By the end you'll: <strong>(a)</strong> see why "Wheel + put" beats
+          "Wheel alone" in long-run risk-adjusted return, <strong>(b)</strong>
+          know when this strategy is appropriate vs. wrong, <strong>(c)</strong>
+          have the conviction to stick with it through dull months.
+        </p>
+      </div>
+
+      <h3 class="hb-h3">The fundamental trade-off</h3>
+      <p>
+        Pure Wheel earns ~14% pre-tax annual but suffers ~10% drawdown in crashes.
+        Adding a protective put costs ~2-3% per year but caps the worst-case
+        drawdown at ~3-4%. <strong>You give up upside in normal months to
+        survive the bad ones.</strong> Long-run, that survival drives bigger
+        compounding.
+      </p>
+
+      <div class="hb-callout">
+        <strong>The 1% sustained return formula:</strong>
+        Premium income (~10-12% annual) + NB drift (~5-7%) − hedge cost (~2-3%) − tax (~3-4%) − slippage (~0.5-1%)
+        ≈ <strong>~10% net annual = ~0.83% per month</strong>, with crash floor.
+      </div>
+
+      <h3 class="hb-h3">Comparison: Wheel vs Protected Wheel over 10 years</h3>
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📊 Hypothetical 10-year compounded growth</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="200" x2="580" y2="200" stroke="#94a3b8"/>
+          <line x1="40" y1="20" x2="40" y2="200" stroke="#94a3b8"/>
+          <text x="44" y="14" fill="#475569" font-size="11">capital ₹</text>
+          <text x="540" y="220" fill="#475569" font-size="11">years →</text>
+          <!-- Pure Wheel: bumpy but higher peak; gets hit in year 4 -->
+          <polyline points="40,180 90,165 140,148 190,132 240,140 290,98 340,84 390,72 440,55 490,42 540,28"
+                    fill="none" stroke="#dc2626" stroke-width="2.5"/>
+          <text x="430" y="50" fill="#dc2626" font-size="11" font-weight="700">Pure Wheel (high σ)</text>
+          <!-- Protected Wheel: smoother, slightly lower peak -->
+          <polyline points="40,180 90,168 140,156 190,144 240,135 290,120 340,108 390,95 440,80 490,68 540,55"
+                    fill="none" stroke="#059669" stroke-width="2.5"/>
+          <text x="380" y="78" fill="#059669" font-size="11" font-weight="700">Protected Wheel (low σ)</text>
+          <!-- Crash zone marker -->
+          <rect x="220" y="20" width="50" height="180" fill="rgba(220,38,38,0.10)"/>
+          <text x="245" y="14" fill="#991b1b" font-size="10" text-anchor="middle">crash</text>
+        </svg>
+        <div class="hb-widget-note">
+          During smooth markets Pure Wheel grows faster. But in the inevitable
+          crash year, it gives back ~10%. Protected Wheel survives the same
+          crash with only ~3% loss — and resumes compounding from a higher base.
+          <strong>10-year compounded outcomes are typically within 1% of each
+          other</strong>, but Protected Wheel's path is smoother.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PW · 2 — Position Anatomy ─────────────────────────────────────── -->
+    <section id="pw-anatomy" class="hb-section">
+      <div class="hb-eyebrow">Day 2 · Section 2</div>
+      <h2 class="hb-h2">Position Anatomy — The Four Legs</h2>
+      <div class="hb-deck">What you actually hold at any moment.</div>
+
+      <h3 class="hb-h3">The position decomposed</h3>
+      <p>
+        At any moment in Phase B (long underlying + short call + long hedge put),
+        your portfolio has four distinct legs:
+      </p>
+      <div class="hb-callout">
+        <ol style="margin: 0; padding-left: 22px; color: #1e293b;">
+          <li><strong>NB shares (long stock)</strong> — your equity exposure. ~95-100% of capital deployed.</li>
+          <li><strong>Short Call (CC)</strong> — premium income leg. Sold at strike K_c, ~3% above spot.</li>
+          <li><strong>Long Put (hedge)</strong> — crash insurance. Bought at strike K_h, ~7% below spot, 90 DTE.</li>
+          <li><strong>Cash residual</strong> — small float for transactions, margin, and rolls.</li>
+        </ol>
+      </div>
+
+      <h3 class="hb-h3">Combined payoff at a single moment</h3>
+      <p>
+        Three of the four legs contribute to the payoff curve at any given expiry
+        snapshot. Here's what your combined position looks like:
+      </p>
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📐 Live: Protected Wheel combined payoff</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="#94a3b8" stroke-dasharray="3 3"/>
+          <line x1="40" y1="20" x2="40" y2="220" stroke="#475569"/>
+          <!-- Strike markers -->
+          <line x1="170" y1="20" x2="170" y2="220" stroke="#dc2626" stroke-dasharray="2 2"/>
+          <text x="135" y="32" fill="#dc2626" font-size="10" font-weight="700">K_h (hedge)</text>
+          <line x1="430" y1="20" x2="430" y2="220" stroke="#059669" stroke-dasharray="2 2"/>
+          <text x="402" y="32" fill="#059669" font-size="10" font-weight="700">K_c (call)</text>
+          <line x1="300" y1="20" x2="300" y2="220" stroke="#0f172a" stroke-dasharray="2 2"/>
+          <text x="290" y="32" fill="#0f172a" font-size="10" font-weight="700">S₀</text>
+          <!-- Combined payoff curve -->
+          <path [attr.d]="protectedWheelPayoff().path" fill="none" stroke="#387ed1" stroke-width="3"/>
+          <text x="60" y="218" fill="#7f1d1d" font-size="11" font-weight="700">crash floor</text>
+          <text x="450" y="218" fill="#064e3b" font-size="11" font-weight="700">profit ceiling</text>
+        </svg>
+        <div class="hb-widget-note">
+          <strong>The shape:</strong> floor below K_h (hedge kicks in), upward
+          slope between K_h and K_c (NB gain), flat profit cap above K_c (CC
+          assigned). Drag K_h or K_c in the example bar to see the floor or
+          ceiling shift live.
+        </div>
+      </div>
+
+      <h3 class="hb-h3">Why this shape works</h3>
+      <ul class="hb-list">
+        <li><strong>Below K_h:</strong> Long put pays off, offsetting NB drop. Loss is bounded.</li>
+        <li><strong>Between K_h and S₀:</strong> Mild loss zone — premium income offsets some NB drop.</li>
+        <li><strong>Between S₀ and K_c:</strong> The "sweet spot" — NB rises, CC time-decays, hedge expires worthless. Pure profit.</li>
+        <li><strong>Above K_c:</strong> CC kicks in, capping further gains. You miss runaway upside.</li>
+      </ul>
+    </section>
+
+    <!-- ── PW · 3 — Entry checklist ──────────────────────────────────────── -->
+    <section id="pw-entry" class="hb-section">
+      <div class="hb-eyebrow">Day 2 · Section 3</div>
+      <h2 class="hb-h2">Entry Checklist — Before You Open</h2>
+      <div class="hb-deck">Pre-trade verification. Skip these and you're gambling.</div>
+
+      <h3 class="hb-h3">The 6-point pre-trade scan</h3>
+      <div class="hb-callout">
+        <strong>Run this BEFORE every cycle:</strong>
+        <ol style="margin: 8px 0 0; padding-left: 22px;">
+          <li><strong>VIX in range?</strong> 11-22 is the sweet spot. &lt; 11 → premiums too thin. &gt; 22 → IV crush risk.</li>
+          <li><strong>No major catalyst within 3-5 DTE?</strong> RBI policy, election results, earnings — these spike vega unpredictably.</li>
+          <li><strong>Capital sufficient?</strong> ~₹18L for 1 lot Nifty CC + cash for hedge ~₹10K.</li>
+          <li><strong>Trend regime?</strong> Range-bound or mild bull → ideal. Strong directional trend → consider plain hold instead.</li>
+          <li><strong>Strike chain liquid?</strong> OI &gt; 1000 on chosen strikes. Wide bid-ask = slippage drag.</li>
+          <li><strong>Tax efficiency?</strong> Are you in a slab where F&amp;O income is bearable? If 30% slab + you have other gains, consider holding NB &gt; 1 year for LTCG.</li>
+        </ol>
+      </div>
+
+      <h3 class="hb-h3">Equation 13.1 — Cycle-EV check</h3>
+      <p>
+        Before entering, compute the expected value of one cycle:
+      </p>
+      <div class="hb-eq">
+        EV<sub>cycle</sub> = p<sub>c</sub>·L · q<sub>otm</sub>
+        + (NB drift) · L · 100 · q<sub>otm</sub>
+        − E[loss if assigned] − hedge cost
+      </div>
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English</div>
+        <p>
+          Compute what you'd EXPECT to make from one cycle, given your current
+          parameters. Reject the cycle if EV is below ~0.5% of capital — the
+          math doesn't justify the friction.
+        </p>
+      </div>
+
+      <h3 class="hb-h3">Position sizing rule</h3>
+      <div class="hb-callout">
+        <strong>Never deploy more than 25-30% of total liquid wealth in one strategy.</strong>
+        Even with crash protection, concentration risk exists. The Protected Wheel is one
+        of several income streams in a balanced portfolio.
+      </div>
+    </section>
+
+    <!-- ── PW · 4 — Strike Selection ────────────────────────────────────── -->
+    <section id="pw-strikes" class="hb-section">
+      <div class="hb-eyebrow">Day 2 · Section 4</div>
+      <h2 class="hb-h2">Strike Selection — The Three Knobs</h2>
+      <div class="hb-deck">Choosing K_p (CSP), K_c (CC), and K_h (hedge) optimally.</div>
+
+      <h3 class="hb-h3">Equation 13.2 — Optimal CC strike (delta-based)</h3>
+      <div class="hb-eq">
+        K<sub>c</sub><sup>*</sup> = strike where Δ ∈ [0.25, 0.35]
+      </div>
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English</div>
+        <p>
+          Pick a CC strike whose delta is between <strong>0.25 and 0.35</strong>.
+          Below 0.25 = premium too thin. Above 0.35 = roll-up trigger fires
+          almost immediately on any bullish move.
+        </p>
+      </div>
+      <div class="hb-why">
+        <span class="hb-why-label">💡 Why this matters</span>
+        At Δ = 0.30, you have ~70% probability of keeping the entire premium.
+        That's the sweet spot between income and assignment risk.
+      </div>
+
+      <h3 class="hb-h3">Equation 13.3 — Optimal hedge strike</h3>
+      <div class="hb-eq">
+        K<sub>h</sub><sup>*</sup> = S₀ · (1 − α<sub>h</sub>),  where α<sub>h</sub> ∈ [0.06, 0.10]
+      </div>
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English</div>
+        <p>
+          Place the hedge put <strong>6-10% below current spot</strong>.
+          Tighter than 6% = expensive (high premium). Wider than 10% = slow
+          drops bypass the hedge entirely. The 7% sweet spot catches all
+          "sharp drop" events while staying cheap.
+        </p>
+      </div>
+
+      <h3 class="hb-h3">Visual: how strike width affects payoff</h3>
+      <div class="hb-widget">
+        <div class="hb-widget-head">
+          <span class="hb-widget-title">📐 Try different strike widths in the example bar</span>
+        </div>
+        <svg viewBox="0 0 600 240" class="hb-svg">
+          <line x1="40" y1="120" x2="580" y2="120" stroke="#94a3b8" stroke-dasharray="3 3"/>
+          <line x1="40" y1="20" x2="40" y2="220" stroke="#475569"/>
+          <line x1="300" y1="20" x2="300" y2="220" stroke="#0f172a" stroke-dasharray="2 2"/>
+          <text x="290" y="32" fill="#0f172a" font-size="10" font-weight="700">S₀</text>
+          <path [attr.d]="protectedWheelPayoff().path" fill="rgba(56,126,209,0.20)" stroke="#387ed1" stroke-width="2.5"/>
+        </svg>
+        <div class="hb-widget-note">
+          Drag K_h closer to S₀ → floor rises but cost increases.
+          Drag K_c further → ceiling rises but premium drops. Both balances
+          fight income against safety. Find your comfort zone.
+        </div>
+      </div>
+
+      <!-- ── DECISION RATIONALE NOTES (referenced by Protected Wheel UI) ─── -->
+      <div class="hb-deep">
+        <span class="hb-deep-label">📝 Decision Rationale — Strike Selection</span>
+
+        <h4 class="hb-deep-sub">When you pick the CC strike, the system asks itself:</h4>
+        <ul>
+          <li><strong>Q1: Is this strike above NB entry × 1.01?</strong> — If no, REJECT. Selling below entry guarantees a V-recovery loss.</li>
+          <li><strong>Q2: Is the delta in 0.25-0.35 range?</strong> — If above, premium too risky. If below, premium too thin.</li>
+          <li><strong>Q3: Is OI &gt; 1,000?</strong> — If no, liquidity risk. Bid-ask slippage will eat returns.</li>
+          <li><strong>Q4: Is this strike at least 2.5% above current spot?</strong> — Below 2.5% and small bull moves trigger rolls.</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">When you pick the hedge put strike:</h4>
+        <ul>
+          <li><strong>Q1: Is K_h between 5-10% below spot?</strong> — Tighter = expensive. Wider = doesn't catch sharp drops.</li>
+          <li><strong>Q2: Is the put premium &lt; 0.5% of capital per month amortized?</strong> — Above this, hedge eats too much income.</li>
+          <li><strong>Q3: Is the expiry 75-100 days out?</strong> — Sweet spot for cost-per-month efficiency (√T scaling).</li>
+        </ul>
+
+        <h4 class="hb-deep-sub">If a strike fails any test:</h4>
+        <ul>
+          <li>System shows you WHY (red flag indicator)</li>
+          <li>Suggests the next-best valid strike</li>
+          <li>You can override but with a confirmation dialog</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ── PW · 5 — Combined Greeks ──────────────────────────────────────── -->
+    <section id="pw-greeks" class="hb-section">
+      <div class="hb-eyebrow">Day 2 · Section 5</div>
+      <h2 class="hb-h2">Combined Greeks of the Position</h2>
+      <div class="hb-deck">How Δ, Γ, θ, ν of each leg add up.</div>
+
+      <h3 class="hb-h3">Equation 13.4 — Net Greeks</h3>
+      <div class="hb-eq">
+        Δ<sub>net</sub> = Δ<sub>NB</sub> − Δ<sub>CC</sub>·L + Δ<sub>hedge</sub>·L<br>
+        Γ<sub>net</sub> = − Γ<sub>CC</sub>·L + Γ<sub>hedge</sub>·L<br>
+        θ<sub>net</sub> = + θ<sub>CC</sub>·L − θ<sub>hedge</sub>·L<br>
+        ν<sub>net</sub> = − ν<sub>CC</sub>·L + ν<sub>hedge</sub>·L
+      </div>
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English</div>
+        <p>
+          Each Greek is the SUM of contributions from each leg, with sign
+          determined by long/short. NB is +Δ. Short CC is −Δ. Long hedge put
+          is also −Δ. Net = directional exposure of the whole portfolio.
+        </p>
+      </div>
+
+      <h3 class="hb-h3">Typical Greek values (per lot)</h3>
+      <div class="hb-callout">
+        <ul style="margin: 0;">
+          <li><strong>Net Δ ≈ +0.40 to +0.60</strong> — moderately bullish (NB dominates).</li>
+          <li><strong>Net Γ ≈ slightly negative</strong> — short CC gamma offset slightly by long hedge gamma.</li>
+          <li><strong>Net θ ≈ +₹600-1200/day</strong> — your daily income engine.</li>
+          <li><strong>Net ν ≈ slightly negative or near zero</strong> — short CC vega minus long hedge vega.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ── PW · 6 — Expected Return ──────────────────────────────────────── -->
+    <section id="pw-returns" class="hb-section">
+      <div class="hb-eyebrow">Day 2 · Section 6</div>
+      <h2 class="hb-h2">Expected Return Decomposition</h2>
+      <div class="hb-deck">Where every rupee of profit comes from.</div>
+
+      <h3 class="hb-h3">Equation 13.5 — Annual return components</h3>
+      <div class="hb-eq">
+        R<sub>annual</sub> = R<sub>premium</sub> + R<sub>NB-drift</sub> − R<sub>hedge-cost</sub> − R<sub>friction</sub> − R<sub>tax</sub>
+      </div>
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English</div>
+        <p>
+          Your annual return is built from FIVE distinct line items. Knowing
+          each lets you optimize each — boost the income side, shrink the cost
+          side.
+        </p>
+      </div>
+
+      <h3 class="hb-h3">Typical breakdown (₹18L capital)</h3>
+      <div class="hb-vrp-box">
+        <div class="hb-vrp-row"><span>+ Premium income (CC + CSP)</span><strong class="hb-pos">+₹1,80,000 (10%)</strong></div>
+        <div class="hb-vrp-row"><span>+ NB drift captured</span><strong class="hb-pos">+₹1,08,000 (6%)</strong></div>
+        <div class="hb-vrp-row"><span>− Hedge cost (annual)</span><strong class="hb-neg">−₹36,000 (-2%)</strong></div>
+        <div class="hb-vrp-row"><span>− Brokerage + STT + GST</span><strong class="hb-neg">−₹9,000 (-0.5%)</strong></div>
+        <div class="hb-vrp-row"><span>= Pre-tax return</span><strong>+₹2,43,000 (13.5%)</strong></div>
+        <div class="hb-vrp-row"><span>− F&amp;O income tax (30% slab)</span><strong class="hb-neg">−₹56,000 (-3%)</strong></div>
+        <div class="hb-vrp-row hb-vrp-edge"><span>Net annual return</span><strong>+₹1,87,000 (~10.4%)</strong></div>
+      </div>
+    </section>
+
+    <!-- ── PW · 7 — Risk & Failure Modes ─────────────────────────────────── -->
+    <section id="pw-risk" class="hb-section">
+      <div class="hb-eyebrow">Day 2 · Section 7</div>
+      <h2 class="hb-h2">Risk &amp; Failure Modes</h2>
+      <div class="hb-deck">When this strategy bleeds. Forewarned is forearmed.</div>
+
+      <h3 class="hb-h3">The 5 ways Protected Wheel loses money</h3>
+      <ol class="hb-list">
+        <li><strong>Slow grinding decline</strong> — NB drops 1-2%/month for 3+ months. Hedge never triggers (no sharp crash). Premiums don't offset slow bleed. <em>Worst-case scenario.</em></li>
+        <li><strong>Whipsaw / V-recovery</strong> — sharp drop then sharp rise. Hedge gains then loses time value. CC sold at the bottom gets ITM on rebound.</li>
+        <li><strong>Crash deeper than hedge strike</strong> — Nifty drops 15%+ when hedge is at K_h = S₀×0.93. First 7% is unprotected.</li>
+        <li><strong>Strong sustained bull</strong> — hedge cost wasted, CC capping NB upside repeatedly. You underperform plain NB hold by 4-6%.</li>
+        <li><strong>Low-vol rangebound</strong> — premium too thin to cover hedge cost. Net negative return — worse than FD.</li>
+      </ol>
+
+      <h3 class="hb-h3">Equation 13.6 — Maximum drawdown estimate</h3>
+      <div class="hb-eq">
+        DD<sub>max</sub> ≈ (S₀ − K<sub>h</sub>)/S₀ − p<sub>premium</sub>
+      </div>
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English</div>
+        <p>
+          Worst-case drawdown is approximately the gap from spot to hedge
+          strike, minus the premium you've collected. For 7% OTM hedge with
+          ~1% premium income, max drawdown ≈ 6% of capital.
+        </p>
+      </div>
+    </section>
+
+    <!-- ── PW · 8 — Maximizing Profits ───────────────────────────────────── -->
+    <section id="pw-maximize" class="hb-section">
+      <div class="hb-eyebrow">Day 2 · Section 8</div>
+      <h2 class="hb-h2">Maximizing Profits</h2>
+      <div class="hb-deck">Tuning every dial to push your edge higher.</div>
+
+      <h3 class="hb-h3">7 levers, in order of impact</h3>
+      <ol class="hb-list">
+        <li><strong>Strike floor rule (highest impact):</strong> Never sell calls below NB entry × 1.01. Eliminates V-recovery losses entirely.</li>
+        <li><strong>Delta-based roll trigger:</strong> Roll up at Δ ≥ 0.35 instead of price-based. ~80% cheaper rolls.</li>
+        <li><strong>Take-profit at 50% of premium:</strong> Don't ride to expiry. Capture fast theta, redeploy.</li>
+        <li><strong>Quarterly hedge instead of monthly:</strong> ~50% cheaper per month thanks to √T scaling.</li>
+        <li><strong>Skip cycles when VIX &lt; 12:</strong> Hedge cost stays constant; premium yields collapse. Sit out.</li>
+        <li><strong>Long-hold NB for LTCG:</strong> If NB held &gt; 1 year, capital gains tax drops 30% → 12.5%.</li>
+        <li><strong>Cash yield optimization:</strong> Pledge unused cash to liquid funds at 6.5% pa. Free yield while waiting.</li>
+      </ol>
+    </section>
+
+    <!-- ── PW · 9 — Exit & Rolling ───────────────────────────────────────── -->
+    <section id="pw-exit" class="hb-section">
+      <div class="hb-eyebrow">Day 2 · Section 9</div>
+      <h2 class="hb-h2">Exit &amp; Rolling Strategy</h2>
+      <div class="hb-deck">Knowing when to act — and when to do nothing.</div>
+
+      <h3 class="hb-h3">The 4 exit triggers</h3>
+      <div class="hb-callout">
+        <ol style="margin:0; padding-left:22px;">
+          <li><strong>Take-profit:</strong> Call price drops to ≤ 50% of entry premium → close, sell new cycle.</li>
+          <li><strong>Roll-up:</strong> Call delta ≥ 0.35 AND DTE &gt; 5 → close + sell at higher strike.</li>
+          <li><strong>Assignment defense:</strong> DTE ≤ 1 AND ITM → close to avoid auto-assignment.</li>
+          <li><strong>Hedge roll:</strong> Hedge put has 30 DTE remaining → roll to new 90-day put.</li>
+        </ol>
+      </div>
+
+      <h3 class="hb-h3">Equation 13.7 — Roll cost-benefit</h3>
+      <div class="hb-eq">
+        Roll<sub>EV</sub> = (new premium) − (close cost) − friction
+      </div>
+      <div class="hb-explain">
+        <div class="hb-explain-label">📝 In plain English</div>
+        <p>
+          Only roll if the new premium meaningfully exceeds the close cost
+          plus friction. Rolling for ₹500 when friction is ₹400 = wasted
+          motion.
+        </p>
+      </div>
+
+      <!-- ── DECISION RATIONALE: EXIT TRIGGERS (referenced from PW UI) ─── -->
+      <div class="hb-deep">
+        <span class="hb-deep-label">📝 Decision Rationale — Exit Triggers</span>
+
+        <h4 class="hb-deep-sub">Take-Profit (50% rule) — when to fire</h4>
+        <p>
+          Premium drops to ≤ 50% of entry → close.
+          <strong>Why?</strong> Theta decay is non-linear. The first 50% of
+          decay happens in the first ~⅓ of the option's life. Capturing it
+          and redeploying earns more than waiting for the slow back half
+          while exposing yourself to gamma reversal.
+        </p>
+
+        <h4 class="hb-deep-sub">Roll-Up (delta 0.35) — when to fire</h4>
+        <p>
+          Call delta crosses 0.35 → roll to higher strike.
+          <strong>Why 0.35?</strong> At delta 0.35, the call has crossed
+          from "income tool" to "loss generator." Probability of finishing
+          ITM has hit 35%. Rolling NOW (still OTM) is cheap; rolling AFTER
+          spot crosses strike costs 4-5x more in intrinsic.
+        </p>
+
+        <h4 class="hb-deep-sub">Assignment Defense (DTE ≤ 1 + ITM) — when to fire</h4>
+        <p>
+          Call is ITM with 1 day or less to expiry → close immediately.
+          <strong>Why?</strong> Letting it auto-assign sells your NB at the
+          strike — losing the rest of the cycle's potential. Closing manually
+          is always cheaper than assignment costs.
+        </p>
+
+        <h4 class="hb-deep-sub">Hedge Roll (30 DTE remaining) — when to fire</h4>
+        <p>
+          Long hedge put has 30 DTE remaining → roll to new 90-day put.
+          <strong>Why 30 DTE?</strong> Below 30 DTE, gamma on the long put
+          accelerates. Time decay also picks up. Rolling at 30 DTE preserves
+          the put's effectiveness without paying for accelerating decay.
+        </p>
+
+        <h4 class="hb-deep-sub">The priority hierarchy</h4>
+        <p>
+          When multiple stops fire simultaneously, the system follows
+          priority: <strong>Stop 3 (Assignment) &gt; Stop 2 (Roll-Up) &gt;
+          Stop 1 (Take-Profit) &gt; Stop 4 (Hold)</strong>.
+          Higher priority wins. This prevents conflicting actions.
+        </p>
+      </div>
+    </section>
+
+    <!-- ── PW · 10 — Common Pitfalls ─────────────────────────────────────── -->
+    <section id="pw-pitfalls" class="hb-section">
+      <div class="hb-eyebrow">Day 2 · Section 10</div>
+      <h2 class="hb-h2">Common Pitfalls</h2>
+      <div class="hb-deck">What kills the strategy in real-world execution.</div>
+
+      <h3 class="hb-h3">The 8 most common ways traders blow up Protected Wheel</h3>
+      <ol class="hb-list">
+        <li><strong>Forgetting to roll the hedge:</strong> Hedge expires and you're suddenly naked. ONE crash and your year is gone.</li>
+        <li><strong>Selling below NB entry:</strong> Locks in losses on V-recovery. Always anchor to entry × 1.01 floor.</li>
+        <li><strong>Greedy strike picking:</strong> Selling 1% OTM for max premium → 50%+ of cycles get assigned, killing returns.</li>
+        <li><strong>Ignoring VIX regime:</strong> Selling premium in low-IV markets means hedge cost dominates premium.</li>
+        <li><strong>Holding ATM positions to expiry:</strong> Last 5 days have insane gamma — take profit at 50% rule.</li>
+        <li><strong>Using monthly hedge puts:</strong> 2× the cost of quarterly. Strategy collapses on hedge friction alone.</li>
+        <li><strong>Not pledging cash for yield:</strong> Leaving ₹3L idle = ₹19,500 of free annual yield missed.</li>
+        <li><strong>Trading against your slab:</strong> 30% slab earner without LTCG planning = 30% of every gross rupee lost to tax.</li>
+      </ol>
+
+      <p class="hb-final">
+        <em>
+          The Protected Wheel is a discipline strategy. The math gives you the
+          edge; the rules keep you alive long enough to compound it. Master
+          the rules, and 0.8-1% per month is genuinely achievable.
+        </em>
+      </p>
+
+      <div class="hb-end-banner">
+        — End of Day 2 —<br>
+        <span>Master class complete. Now apply it.</span>
+      </div>
+    </section>
+
+  </article>
+</div>

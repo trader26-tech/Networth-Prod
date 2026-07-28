@@ -1,0 +1,132 @@
+<div class="sh-page">
+
+  <!-- Hero header -->
+  <header class="sh-hero">
+    <div class="sh-hero-eyebrow">📂 Home</div>
+    <h1 class="sh-hero-title">Saved Strategies</h1>
+    <p class="sh-hero-sub">
+      Your library of strategies — pick one to deploy or track. All executed
+      strategy instances will appear here in future iterations: open positions,
+      cycle history, lifetime P&amp;L per strategy. For now, this is the catalogue
+      of available strategies fully wired to live Kite data.
+    </p>
+
+    <!-- Stats bar -->
+    <div class="sh-stats">
+      <div class="sh-stat">
+        <div class="sh-stat-num">{{ countActive() }}</div>
+        <div class="sh-stat-lbl">Live now</div>
+      </div>
+      <div class="sh-stat-divider"></div>
+      <div class="sh-stat">
+        <div class="sh-stat-num">{{ countComing() }}</div>
+        <div class="sh-stat-lbl">Coming soon</div>
+      </div>
+      <div class="sh-stat-divider"></div>
+      <div class="sh-stat">
+        <div class="sh-stat-num">{{ countTotal() }}</div>
+        <div class="sh-stat-lbl">Total</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Filter chips -->
+  <div class="sh-filters">
+    <button class="sh-chip" [class.active]="filter() === 'all'"
+            (click)="setFilter('all')">All ({{ countTotal() }})</button>
+    <button class="sh-chip" [class.active]="filter() === 'active'"
+            (click)="setFilter('active')">Live ({{ countActive() }})</button>
+    <button class="sh-chip" [class.active]="filter() === 'coming-soon'"
+            (click)="setFilter('coming-soon')">Coming Soon ({{ countComing() }})</button>
+  </div>
+
+  <!-- Strategy cards grid -->
+  <div class="sh-grid">
+    @for (s of strategies(); track s.id) {
+      <div class="sh-card"
+           [class.is-active]="s.status === 'active'"
+           [class.is-disabled]="s.status !== 'active'"
+           [style.--accent]="s.themeColor"
+           (click)="open(s)">
+
+        <!-- Top accent bar -->
+        <div class="sh-card-accent"></div>
+
+        <!-- Card header -->
+        <div class="sh-card-head">
+          <div class="sh-card-icon">{{ s.icon }}</div>
+          <div class="sh-card-titles">
+            <h2 class="sh-card-name">{{ s.name }}</h2>
+            <p class="sh-card-tagline">{{ s.tagline }}</p>
+          </div>
+          @if (s.badge) {
+            <span class="sh-card-badge">{{ s.badge }}</span>
+          }
+        </div>
+
+        <!-- Status & metadata strip -->
+        <div class="sh-card-meta">
+          <div class="sh-meta-item">
+            <span class="sh-meta-lbl">Status</span>
+            <span class="sh-meta-val sh-status-{{ s.status }}">
+              @if (s.status === 'active') { ● }
+              @else if (s.status === 'coming-soon') { ◌ }
+              @else { ◐ }
+              {{ statusLabel(s.status) }}
+            </span>
+          </div>
+          <div class="sh-meta-item">
+            <span class="sh-meta-lbl">Risk</span>
+            <span class="sh-meta-val sh-risk-{{ s.riskLevel }}">{{ riskLabel(s.riskLevel) }}</span>
+          </div>
+          <div class="sh-meta-item">
+            <span class="sh-meta-lbl">Min capital</span>
+            <span class="sh-meta-val">{{ s.capitalMin }}</span>
+          </div>
+          <div class="sh-meta-item">
+            <span class="sh-meta-lbl">Target return</span>
+            <span class="sh-meta-val sh-meta-emphasis">{{ s.expectedReturn }}</span>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <p class="sh-card-desc">{{ s.description }}</p>
+
+        <!-- Key features -->
+        <div class="sh-card-features">
+          <div class="sh-features-title">Key features</div>
+          <ul>
+            @for (f of s.keyFeatures; track $index) {
+              <li>{{ f }}</li>
+            }
+          </ul>
+        </div>
+
+        <!-- Action footer -->
+        <div class="sh-card-footer">
+          @if (s.status === 'active') {
+            <button class="sh-card-btn sh-btn-primary">
+              Open Strategy →
+            </button>
+          } @else if (s.status === 'coming-soon') {
+            <button class="sh-card-btn sh-btn-disabled" disabled>
+              🔒 Coming Tomorrow
+            </button>
+          } @else {
+            <button class="sh-card-btn sh-btn-beta">
+              Beta — Try Now →
+            </button>
+          }
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Footer note -->
+  <div class="sh-footnote">
+    <strong>📚 Want to understand the math?</strong>
+    Visit the <a routerLink="/math-handbook">Math Handbook</a> to learn the equations,
+    or the <a routerLink="/strategy-math">Strategy Math</a> page for live analytics.
+  </div>
+
+</div>

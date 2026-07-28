@@ -1,0 +1,755 @@
+// Math Handbook — light theme with maximum readability
+
+// ── Color palette (light theme) ──────────────────────────────────────────────
+$bg-page:        #f7f9fc;
+$bg-article:     #ffffff;
+$bg-card:        #f8fafc;
+$bg-eq:          #eef2ff;
+$bg-eq-large:    #e0e7ff;
+$bg-plug:        #ecfdf5;
+$bg-callout:     #eff6ff;
+$bg-why:         #fffbeb;
+$bg-widget:      #f8fafc;
+
+$ink-strong:     #0f172a;
+$ink-body:       #1e293b;
+$ink-muted:      #475569;
+$ink-faint:      #64748b;
+
+$accent-blue:    #2563eb;
+$accent-indigo:  #4f46e5;
+$accent-green:   #059669;
+$accent-amber:   #d97706;
+$accent-red:     #dc2626;
+$accent-yellow:  #ca8a04;
+
+// ── Page & layout ────────────────────────────────────────────────────────────
+:host {
+  display: block;
+  background: $bg-page;
+  min-height: 100vh;
+}
+.hb-page {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 24px;
+  max-width: 1340px;
+  margin: 0 auto;
+  padding: 18px 22px 80px;
+  align-items: start;
+  color: $ink-body;
+  background: $bg-page;
+  transition: grid-template-columns 0.25s ease;
+
+  &.toc-collapsed {
+    grid-template-columns: 56px 1fr;
+  }
+}
+
+// ── Sticky table of contents ─────────────────────────────────────────────────
+.hb-toc {
+  position: sticky;
+  top: 18px;
+  background: $bg-article;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 14px;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+
+  &.is-collapsed {
+    padding: 8px 4px;
+    overflow: hidden;
+  }
+}
+.hb-toc-head-row {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 8px; margin-bottom: 14px;
+}
+.hb-toc-toggle, .hb-toc-expand {
+  background: $accent-indigo;
+  border: none;
+  color: #ffffff;
+  font-size: 14px; font-weight: 800;
+  padding: 5px 10px; border-radius: 6px;
+  cursor: pointer; line-height: 1.1;
+  &:hover { background: #4338ca; }
+}
+.hb-toc-expand {
+  width: 100%; height: 60px;
+  font-size: 18px;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 2px;
+}
+.hb-toc-head { font-size: 15px; font-weight: 800; color: $ink-strong; line-height: 1.2; }
+.hb-toc-sub  { font-size: 11.5px; color: $ink-muted; font-style: italic; margin-top: 4px; }
+
+.hb-toc-list { list-style: none; padding: 0 0 0 6px; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.hb-toc-link {
+  display: flex; flex-direction: column;
+  padding: 8px 10px; border-radius: 6px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: all 0.14s;
+
+  &:hover { background: #f1f5f9; }
+  &.active {
+    background: $bg-eq;
+    border-left-color: $accent-indigo;
+    .hb-toc-num   { color: $accent-indigo; }
+    .hb-toc-title { color: $ink-strong; font-weight: 700; }
+  }
+}
+.hb-toc-num   { font-size: 9.5px; color: $ink-faint; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+.hb-toc-title { font-size: 12.5px; color: $ink-body; line-height: 1.4; }
+
+// TOC groups
+.hb-toc-group {
+  margin-bottom: 4px;
+  border-radius: 6px;
+
+  &.is-day-2 .hb-toc-group-head {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-color: #f59e0b;
+    color: #78350f;
+  }
+}
+.hb-toc-group-head {
+  width: 100%;
+  display: flex; align-items: center; gap: 8px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-weight: 800; font-size: 12.5px;
+  color: $ink-strong;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+
+  &:hover { background: #e2e8f0; }
+  .hb-toc-group-icon { font-size: 14px; }
+  .hb-toc-group-label { flex: 1; text-align: left; }
+  .hb-toc-group-chev { color: $ink-muted; font-size: 11px; }
+  .hb-day-tag {
+    background: $accent-indigo;
+    color: #fff;
+    font-size: 9.5px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.4px;
+    flex-shrink: 0;
+  }
+  .hb-day-tag.day-2 { background: $accent-amber; }
+}
+
+// Day banner (large header for Day 2 sections)
+.hb-day-banner {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid #f59e0b;
+  border-radius: 12px;
+  padding: 18px 24px;
+  margin: 32px 0 28px;
+  text-align: center;
+
+  .hb-day-banner-eyebrow {
+    font-size: 11.5px; font-weight: 800;
+    color: #78350f;
+    text-transform: uppercase; letter-spacing: 1.2px;
+    margin-bottom: 8px;
+  }
+  .hb-day-banner-title {
+    font-size: 26px; font-weight: 900;
+    color: $ink-strong;
+    margin-bottom: 8px;
+    letter-spacing: -0.018em;
+  }
+  .hb-day-banner-sub {
+    font-size: 14.5px; color: $ink-body; line-height: 1.6;
+    max-width: 720px; margin: 0 auto;
+  }
+}
+
+// ── Article ──────────────────────────────────────────────────────────────────
+.hb-article {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 16.5px;
+  line-height: 1.78;
+  color: $ink-body;
+  background: $bg-article;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 32px 40px;
+  box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+
+  p { margin: 0 0 16px; color: $ink-body; font-weight: 400; }
+  strong { color: $ink-strong; font-weight: 700; }
+  em     { color: $accent-indigo; font-style: italic; }
+  code   {
+    font-family: 'JetBrains Mono', 'Menlo', monospace;
+    font-size: 0.90em;
+    background: #fef3c7;
+    color: #78350f;
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 600;
+    border: 1px solid #fde68a;
+  }
+}
+
+// ── Sticky example bar ───────────────────────────────────────────────────────
+.hb-example-bar {
+  position: sticky;
+  top: 8px;
+  z-index: 10;
+  background: linear-gradient(135deg, #ede9fe, #e0e7ff);
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 28px;
+  box-shadow: 0 4px 12px rgba(79,70,229,0.10);
+}
+.hb-example-bar-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+
+  .hb-example-bar-icon { font-size: 18px; }
+  strong { color: $ink-strong; font-size: 14px; }
+  .hb-example-bar-hint { font-size: 12px; color: $ink-muted; flex: 1; min-width: 200px; }
+}
+.hb-reset, .hb-close {
+  background: $accent-indigo;
+  border: none;
+  color: #fff; font-size: 12px; font-weight: 700;
+  padding: 5px 12px; border-radius: 5px; cursor: pointer;
+  &:hover { background: #4338ca; }
+}
+.hb-close { padding: 4px 10px; font-size: 13px; background: $accent-red;
+  &:hover { background: #b91c1c; }
+}
+.hb-example-reopen {
+  display: flex; align-items: center; gap: 8px;
+  background: $accent-indigo;
+  border: none;
+  color: #fff; font-size: 13px; font-weight: 700;
+  padding: 10px 18px; border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 28px;
+  &:hover { background: #4338ca; }
+}
+.hb-example-bar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+
+  label {
+    display: flex; flex-direction: column; gap: 3px;
+    font-size: 11.5px; font-weight: 700;
+    color: $ink-strong;
+    sub { font-size: 0.75em; }
+    input {
+      padding: 6px 10px;
+      border-radius: 5px;
+      border: 1px solid #c7d2fe;
+      background: #ffffff;
+      color: $ink-strong;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      &:focus { outline: none; border-color: $accent-indigo; box-shadow: 0 0 0 2px rgba(79,70,229,0.20); }
+    }
+  }
+}
+
+// ── Sections ─────────────────────────────────────────────────────────────────
+.hb-section {
+  margin-bottom: 64px;
+  scroll-margin-top: 100px;
+  &:not(:first-child) {
+    border-top: 1px solid #e2e8f0;
+    padding-top: 40px;
+  }
+}
+
+// ── Headings ─────────────────────────────────────────────────────────────────
+.hb-eyebrow {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1.6px;
+  font-weight: 800; color: $accent-indigo; margin-bottom: 8px;
+}
+.hb-h1 {
+  font-size: 36px; font-weight: 900; line-height: 1.15;
+  margin: 0 0 10px; color: $ink-strong;
+  letter-spacing: -0.022em;
+}
+.hb-h2 {
+  font-size: 28px; font-weight: 800; line-height: 1.2;
+  margin: 0 0 8px; color: $ink-strong;
+  letter-spacing: -0.018em;
+}
+.hb-h3 {
+  font-size: 18px; font-weight: 700; line-height: 1.35;
+  margin: 28px 0 10px; color: $accent-indigo;
+}
+.hb-deck {
+  font-size: 16.5px; font-style: italic; color: $ink-muted;
+  margin-bottom: 24px; line-height: 1.55; font-weight: 400;
+}
+.hb-lead {
+  font-size: 18px; line-height: 1.7; color: $ink-strong;
+  margin-bottom: 22px; font-weight: 400;
+}
+
+// ── Equations ────────────────────────────────────────────────────────────────
+.hb-eq {
+  font-family: 'Latin Modern Math', 'Cambria Math', 'STIX Two Math', 'Times New Roman', serif;
+  font-size: 18px;
+  line-height: 1.85;
+  background: $bg-eq;
+  border: 1px solid #c7d2fe;
+  border-left: 4px solid $accent-indigo;
+  padding: 16px 24px;
+  border-radius: 6px;
+  margin: 16px 0 8px;
+  color: $ink-strong;
+  font-weight: 500;
+
+  sub, sup { font-size: 0.72em; color: $accent-indigo; font-weight: 600; }
+  strong { color: $accent-amber; font-weight: 800; }
+}
+.hb-eq-large {
+  font-size: 22px;
+  text-align: center;
+  background: $bg-eq-large;
+  border: 2px solid $accent-indigo;
+  padding: 22px 22px;
+  font-weight: 600;
+}
+
+// ── "With our example" plug-in box ───────────────────────────────────────────
+.hb-plug {
+  background: $bg-plug;
+  border: 1px solid #6ee7b7;
+  border-left: 4px solid $accent-green;
+  border-radius: 6px;
+  padding: 16px 22px;
+  margin: 0 0 16px;
+  font-size: 15.5px;
+  line-height: 1.85;
+  color: $ink-strong;
+  font-weight: 400;
+
+  strong { color: $accent-green; font-weight: 700; }
+  strong:first-child { color: $accent-green; font-size: 13.5px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 800; }
+}
+
+// ── Range table inside Greek deep-dives ──────────────────────────────────
+.hb-range-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 14px; margin: 6px 0 12px;
+  th, td {
+    padding: 8px 10px; text-align: left;
+    border-bottom: 1px solid #fbb6ae;
+  }
+  th {
+    background: rgba(220,38,38,0.10);
+    color: #991b1b;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    font-weight: 800;
+  }
+  td:first-child {
+    font-family: 'JetBrains Mono', 'Menlo', monospace;
+    font-weight: 700; color: #991b1b;
+    white-space: nowrap;
+  }
+  td:nth-child(2) {
+    font-weight: 700; color: $ink-strong;
+    width: 30%;
+  }
+  td:nth-child(3) { color: $ink-body; }
+  tr:last-child td { border-bottom: none; }
+}
+.hb-range-scale {
+  display: flex; height: 28px;
+  border-radius: 5px; overflow: hidden;
+  margin: 8px 0 12px;
+  border: 1px solid #fbb6ae;
+  font-size: 10.5px; font-weight: 700;
+  .hb-range-seg {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: white;
+  }
+  .seg-1 { background: #34d399; }
+  .seg-2 { background: #fde047; color: #713f12; }
+  .seg-3 { background: #fb923c; }
+  .seg-4 { background: #ef4444; }
+  .seg-5 { background: #991b1b; }
+}
+.hb-range-axis {
+  display: flex; justify-content: space-between;
+  font-size: 10px; color: #991b1b;
+  margin-top: -6px; padding: 0 2px;
+  font-weight: 600; font-family: 'JetBrains Mono', monospace;
+}
+
+// ── "What is this really?" deep-dive box ──────────────────────────────────
+.hb-deep {
+  background: linear-gradient(135deg, #fef3f2, #fff1f0);
+  border: 1px solid #fbb6ae;
+  border-left: 4px solid #dc2626;
+  border-radius: 8px;
+  padding: 18px 24px;
+  margin: 0 0 24px;
+  font-size: 15.5px;
+  line-height: 1.75;
+  color: $ink-body;
+
+  .hb-deep-label {
+    display: inline-block;
+    font-size: 11.5px; font-weight: 800;
+    color: #dc2626;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 12px;
+  }
+  .hb-deep-row {
+    display: flex; gap: 14px; margin-bottom: 14px;
+    .hb-deep-icon { font-size: 24px; line-height: 1.4; flex: 0 0 auto; }
+    .hb-deep-text { flex: 1; }
+  }
+  .hb-deep-row strong { color: #991b1b; font-weight: 700; }
+  .hb-deep-row p { margin: 0 0 6px; font-size: 14.5px; color: $ink-body; }
+  .hb-deep-row p:last-child { margin-bottom: 0; }
+  h4.hb-deep-sub {
+    font-size: 13.5px; font-weight: 800; margin: 16px 0 8px;
+    color: #991b1b; text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  ul {
+    margin: 0 0 12px; padding-left: 22px;
+    li { margin-bottom: 4px; font-size: 14.5px; color: $ink-body; }
+    li strong { color: $ink-strong; }
+  }
+}
+
+// ── "In plain English" explanation box (after every equation) ──────────────
+.hb-explain {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #64748b;
+  border-radius: 6px;
+  padding: 14px 22px;
+  margin: 0 0 18px;
+  font-size: 15.5px;
+  line-height: 1.75;
+  color: $ink-body;
+
+  .hb-explain-label {
+    display: inline-block;
+    font-size: 11.5px; font-weight: 800;
+    color: #475569;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 8px;
+  }
+  p { margin: 0 0 8px; color: $ink-body; }
+  p:last-child { margin-bottom: 0; }
+  strong { color: $ink-strong; font-weight: 700; }
+  em { color: $accent-indigo; font-style: italic; }
+}
+
+// ── "Why this matters" callout ───────────────────────────────────────────────
+.hb-why {
+  background: $bg-why;
+  border: 1px solid #fde68a;
+  border-left: 4px solid $accent-amber;
+  border-radius: 6px;
+  padding: 14px 22px;
+  margin: 0 0 24px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: $ink-body;
+
+  .hb-why-label {
+    display: inline-block;
+    font-size: 11.5px; font-weight: 800;
+    color: $accent-amber;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 6px;
+  }
+  strong { color: #78350f; font-weight: 700; }
+}
+
+// ── Topic intro box ──────────────────────────────────────────────────────────
+.hb-topic-intro {
+  background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+  border: 1px solid #93c5fd;
+  border-left: 5px solid $accent-blue;
+  border-radius: 8px;
+  padding: 18px 24px;
+  margin: 0 0 28px;
+
+  .hb-topic-intro-label {
+    font-size: 11.5px; font-weight: 800;
+    color: $accent-blue;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 10px;
+  }
+  p {
+    font-size: 15.5px; line-height: 1.7; color: $ink-body; margin: 0 0 10px;
+    &:last-child { margin-bottom: 0; }
+  }
+  strong { color: $ink-strong; }
+}
+
+// ── Equation row with ⓘ button ───────────────────────────────────────────────
+.hb-eq-row {
+  display: flex; align-items: center; gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 28px;
+
+  .hb-h3 { margin: 0; }
+}
+.hb-info-btn {
+  background: $bg-eq;
+  border: 1px solid #c7d2fe;
+  color: $accent-indigo;
+  font-size: 12px; font-weight: 700;
+  padding: 5px 12px; border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+
+  &:hover {
+    background: $accent-indigo;
+    color: #fff;
+    border-color: $accent-indigo;
+  }
+}
+
+// ── Variable definitions panel ───────────────────────────────────────────────
+.hb-vars {
+  background: #fafbfc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin: 0 0 16px;
+  animation: hbVarsIn 0.2s ease-out;
+}
+@keyframes hbVarsIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.hb-vars-title {
+  font-size: 11.5px; font-weight: 800;
+  color: $accent-indigo;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  margin-bottom: 10px;
+}
+.hb-vars-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 14px; line-height: 1.55;
+  margin-bottom: 12px;
+
+  td {
+    padding: 7px 10px;
+    vertical-align: top;
+    border-bottom: 1px solid #e2e8f0;
+    color: $ink-body;
+  }
+  tr:last-child td { border-bottom: none; }
+  td:first-child {
+    font-family: 'Latin Modern Math', 'Cambria Math', serif;
+    color: $accent-indigo;
+    font-size: 16px;
+    width: 90px;
+    white-space: nowrap;
+    strong { color: $accent-indigo; font-weight: 700; }
+  }
+  td:nth-child(2) {
+    width: 30%;
+    color: $ink-strong;
+    font-weight: 600;
+  }
+  td:nth-child(3) {
+    color: $ink-muted;
+    font-style: italic;
+  }
+}
+.hb-vars-derivation {
+  background: $bg-eq;
+  border-left: 3px solid $accent-indigo;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: $ink-body;
+  strong { color: $accent-indigo; font-weight: 700; }
+  em { color: $ink-strong; font-style: italic; }
+}
+
+// ── Lists ────────────────────────────────────────────────────────────────────
+.hb-list {
+  margin: 14px 0 22px;
+  padding-left: 24px;
+  li {
+    margin-bottom: 8px;
+    line-height: 1.7;
+    color: $ink-body;
+    font-size: 16px;
+    strong { color: $ink-strong; font-weight: 700; }
+  }
+}
+
+// ── Callouts ─────────────────────────────────────────────────────────────────
+.hb-callout {
+  background: $bg-callout;
+  border: 1px solid #93c5fd;
+  border-left: 4px solid $accent-blue;
+  border-radius: 8px;
+  padding: 16px 22px;
+  margin: 22px 0;
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: $ink-body;
+
+  strong { color: $accent-blue; font-weight: 700; }
+}
+
+// ── Interactive widget container ─────────────────────────────────────────────
+.hb-widget {
+  background: $bg-widget;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 18px;
+  margin: 14px 0 28px;
+}
+.hb-widget-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+  .hb-widget-title { font-size: 14px; font-weight: 800; color: $ink-strong; }
+  .hb-widget-btn {
+    background: $accent-indigo;
+    border: none;
+    color: #ffffff;
+    font-size: 12px; font-weight: 700;
+    padding: 5px 12px; border-radius: 5px;
+    cursor: pointer;
+    &:hover { background: #4338ca; }
+  }
+}
+.hb-widget-controls {
+  display: flex; flex-wrap: wrap; gap: 14px;
+  margin-bottom: 12px;
+  label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 600; color: $ink-strong;
+    flex: 1; min-width: 220px;
+    input[type="range"] {
+      flex: 1; min-width: 120px;
+      accent-color: $accent-indigo;
+    }
+    span { color: $accent-indigo; font-weight: 800; min-width: 60px; text-align: right; font-variant-numeric: tabular-nums; }
+  }
+}
+.hb-svg {
+  width: 100%; height: auto;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 8px;
+
+  // Force SVG axis lines & labels to be readable on white
+  line[stroke^="rgba(255"]  { stroke: #94a3b8 !important; }
+  text[fill^="rgba(255"]    { fill:   #475569 !important; }
+}
+.hb-widget-note {
+  font-size: 13.5px; color: $ink-body;
+  font-style: italic; line-height: 1.65;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  margin-top: 6px;
+  strong { color: $ink-strong; font-weight: 700; font-style: normal; }
+}
+
+// VRP / ledger boxes inside widgets
+.hb-vrp-box {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px 20px;
+  margin-bottom: 8px;
+}
+.hb-vrp-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  &:not(:last-child) { border-bottom: 1px dashed #cbd5e1; }
+  span { color: $ink-body; font-weight: 500; }
+  strong { color: $ink-strong; font-weight: 700; }
+  &.hb-vrp-edge {
+    background: $bg-eq;
+    border-radius: 4px;
+    padding: 10px 12px; margin-top: 6px;
+    border-bottom: none !important;
+    span { color: $accent-indigo; font-weight: 600; }
+    strong { color: $accent-green; font-size: 17px; }
+  }
+}
+.hb-pos { color: $accent-green !important; }
+.hb-neg { color: $accent-red !important; }
+
+// ── End banner ───────────────────────────────────────────────────────────────
+.hb-final {
+  font-size: 17px; font-style: italic;
+  background: $bg-eq;
+  border-radius: 8px;
+  padding: 18px 22px;
+  margin: 32px 0;
+  border-left: 4px solid $accent-indigo;
+  color: $ink-strong;
+  em { color: $accent-indigo; font-weight: 600; }
+}
+.hb-end-banner {
+  text-align: center;
+  margin-top: 60px;
+  padding: 30px 20px;
+  border-top: 1px solid #e2e8f0;
+  font-size: 13px; letter-spacing: 0.8px;
+  color: $accent-indigo;
+  text-transform: uppercase;
+  font-weight: 700;
+  span {
+    display: block; margin-top: 8px;
+    font-size: 12px; text-transform: none; letter-spacing: normal;
+    color: $ink-muted; font-style: italic; font-weight: 400;
+  }
+}
+
+.hb-preface {
+  .hb-h1 { font-size: 42px; }
+}
+
+// ── Smaller desktop / tablet — keep TOC on the LEFT, just narrower ─────────
+@media (max-width: 1080px) {
+  .hb-page { grid-template-columns: 220px 1fr; gap: 18px; padding: 14px; }
+  .hb-toc { padding: 14px 10px; }
+  .hb-toc-title { font-size: 11.5px; }
+  .hb-toc-num { font-size: 9px; }
+  .hb-article { padding: 24px 26px; }
+}
+
+// ── Mobile only — stack the TOC at the top ─────────────────────────────────
+@media (max-width: 640px) {
+  .hb-page { grid-template-columns: 1fr; }
+  .hb-toc { position: static; max-height: none; margin-bottom: 24px; }
+  .hb-toc-list { flex-direction: row; flex-wrap: wrap; gap: 4px; overflow-x: auto; }
+  .hb-toc-link { flex: 0 0 auto; padding: 6px 10px; }
+  .hb-h1 { font-size: 28px; }
+  .hb-h2 { font-size: 22px; }
+  .hb-eq, .hb-eq-large { font-size: 15.5px; }
+  .hb-article { font-size: 15px; padding: 22px 18px; }
+}

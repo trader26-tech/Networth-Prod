@@ -1,0 +1,204 @@
+<div class="land-head">
+  <div>
+    <h1>Salary &amp; earned income</h1>
+    <p class="sub">Salary set for each person — and which bank account it's sent to. Foreign pay (e.g. Kuwaiti Dinar) converts to ₹ at today's live rate, counted as monthly income on your dashboard.</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" (click)="openAdd()">＋ Add salary</button>
+  </div>
+</div>
+
+<!-- Needs-migration notice -->
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head">
+      <span class="ni">⚙︎</span>
+      <div>
+        <strong>One-time setup — create the Supabase table</strong>
+        <p>Supabase is connected, but the <code>salary_entries</code> table doesn't exist yet. Paste the SQL from <b>SUPABASE.md → "Salary / income table"</b> into <b>Supabase → SQL Editor → Run</b>, then hit retry.</p>
+      </div>
+    </div>
+    <div class="notice-actions">
+      <button class="btn primary" (click)="reload()">I've run it — retry</button>
+    </div>
+  </div>
+}
+
+@if (error()) {
+  <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div>
+}
+
+@if (loading()) {
+  <div class="state">Loading income…</div>
+}
+
+<!-- Hero: total monthly income + FX status -->
+@if (!loading() && !needsMigration() && hasData() && summary(); as s) {
+  <div class="hero">
+    <div class="hero-main">
+      <span class="hero-label">Earned income · per month</span>
+      <span class="hero-value">{{ inr(s.monthly_inr) }}</span>
+      <span class="hero-exact">{{ inrFull(s.monthly_inr) }} per month</span>
+      @if (s.foreign.length && fx(); as f) {
+        <span class="live-tag" [class.stale]="f.stale || !f.ok">{{ f.stale || !f.ok ? '○ rate stale' : '● live' }} · {{ ago(f.updated_at) }}
+          <button class="pb-refresh" (click)="loadFx(true)" [disabled]="refreshingFx()" title="Refresh exchange rates">↻</button>
+        </span>
+      }
+
+      <div class="hero-stats">
+        <div class="hs"><span class="k">Per year</span><span class="v">{{ inr(s.annual_inr) }}</span></div>
+        <div class="hs"><span class="k">Income streams</span><span class="v">{{ s.count }}</span></div>
+        <div class="hs"><span class="k">Earners</span><span class="v">{{ s.people }}</span></div>
+        @if (s.foreign.length) {
+          @for (c of s.foreign; track c) {
+            <div class="hs fx"><span class="k">Rate · {{ c }}</span><span class="v">{{ inrFull(inrPer(c)) }}</span></div>
+          }
+        }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Empty -->
+@if (!loading() && !needsMigration() && !hasData()) {
+  <div class="empty">
+    <div class="empty-card">
+      <div class="big">💼</div>
+      <h2>No salaries yet</h2>
+      <p>Add each earner's take-home pay — pick the currency (₹ or foreign), say whether it's monthly or annual, and note which bank account it lands in. Foreign pay is converted to ₹ live, then shown as monthly income on your dashboard.</p>
+      <button class="btn primary" (click)="openAdd()">＋ Add the first salary</button>
+    </div>
+  </div>
+}
+
+<!-- Table -->
+@if (!loading() && hasData()) {
+  <div class="table-wrap">
+    <table class="land-table">
+      <colgroup>
+        <col class="c-name"><col class="c-earns"><col class="c-mo"><col class="c-yr"><col class="c-bank"><col class="c-act">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="has-tip" data-tip="Who earns it.">Person</th>
+          <th class="has-tip" data-tip="Take-home pay in its own currency, and how often.">Earns</th>
+          <th class="num has-tip" data-tip="Converted to ₹ at today's live rate, normalised to per-month.">₹ / month</th>
+          <th class="num has-tip" data-tip="Per-year equivalent in ₹.">₹ / year</th>
+          <th class="has-tip" data-tip="Which bank account it's deposited to.">Bank account</th>
+          <th class="act"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (it of items(); track it.id) {
+          <tr class="row" [class.open]="expandedId() === it.id" (click)="toggle(it)">
+            <td class="name" data-label="Person">{{ it.person }}
+              @if (it.region_label) { <span class="reg-tag" [class.kw]="it.region === 'kuwait'">{{ it.region_label }}</span> }
+            </td>
+            <td data-label="Earns">
+              <span class="earns">{{ money(it.amount, it.currency) }}<small>{{ freqLabel(it.frequency) }}</small></span>
+              @if (it.is_foreign) { <span class="fx-chip has-tip tip-right" [attr.data-tip]="rateNote(it.currency) + ' (live)'">{{ it.currency }}</span> }
+            </td>
+            <td class="num value" data-label="₹ / month">{{ inr(it.monthly_inr) }}</td>
+            <td class="num" data-label="₹ / year">{{ inr(it.annual_inr) }}</td>
+            <td data-label="Bank account">{{ it.bank_account || '—' }}</td>
+            <td class="act" data-label="">
+              <button class="trash" (click)="$event.stopPropagation(); remove(it)" title="Delete" aria-label="Delete">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                </svg>
+              </button>
+            </td>
+          </tr>
+
+          @if (expandedId() === it.id && editDraft(); as d) {
+            <tr class="edit-row">
+              <td [attr.colspan]="6">
+                <div class="edit-panel">
+                  <div class="edit-grid">
+                    <label class="fld"><span>Person *</span><input [ngModel]="d.person" (ngModelChange)="d.person = $event" placeholder="e.g. Dad"></label>
+                    <label class="fld"><span>Take-home amount</span><input type="number" [ngModel]="d.amount" (ngModelChange)="d.amount = $event" placeholder="net pay"></label>
+                    <label class="fld"><span>Currency</span>
+                      <select [ngModel]="d.currency" (ngModelChange)="d.currency = $event">
+                        @for (c of currencies(); track c) { <option [value]="c">{{ c }}</option> }
+                      </select>
+                    </label>
+                    <label class="fld"><span>How often</span>
+                      <div class="seg">
+                        <button type="button" [class.on]="d.frequency === 'monthly'" (click)="d.frequency = 'monthly'">Monthly</button>
+                        <button type="button" [class.on]="d.frequency === 'annual'" (click)="d.frequency = 'annual'">Annual</button>
+                      </div>
+                    </label>
+                    <label class="fld"><span>Bank account <em>· where it lands</em></span>
+                      <input list="bank-list" [ngModel]="d.bank_account" (ngModelChange)="d.bank_account = $event" placeholder="e.g. HDFC ••1234">
+                    </label>
+                    <label class="fld span2"><span>Source / employer <em>· how it's earned</em></span><textarea rows="2" [ngModel]="d.note" (ngModelChange)="d.note = $event" placeholder="e.g. Kuwait Oil Co — site engineer"></textarea></label>
+                  </div>
+                  <p class="preview">≈ <b>{{ inr(monthlyInrPreview(d)) }}</b> / month
+                    @if (isForeign(d.currency)) { <span class="muted">· {{ rateNote(d.currency) }} (live)</span> }
+                  </p>
+                  <div class="parcel-actions">
+                    <button class="btn danger" (click)="remove(it)">Delete</button>
+                    <div class="spacer"></div>
+                    <button class="btn ghost" (click)="toggle(it)">Cancel</button>
+                    <button class="btn primary" (click)="saveEdit(it)" [disabled]="saving() || !d.person.trim()">{{ saving() ? 'Saving…' : 'Save changes' }}</button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+  </div>
+}
+
+<!-- Bank-label auto-suggest (shared by add + edit inputs) -->
+<datalist id="bank-list">
+  @for (b of banks(); track b) { <option [value]="b"></option> }
+</datalist>
+
+<!-- Add modal -->
+@if (showAdd()) {
+  <div class="modal-back" (click)="closeAdd()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-head"><h3>Add salary</h3><button class="x" (click)="closeAdd()">✕</button></div>
+      <div class="edit-grid">
+        <label class="fld"><span>Person *</span><input [ngModel]="addDraft().person" (ngModelChange)="addDraft().person = $event" placeholder="e.g. Dad"></label>
+        <label class="fld"><span>Take-home amount</span><input type="number" [ngModel]="addDraft().amount" (ngModelChange)="addDraft().amount = $event" placeholder="net pay"></label>
+        <label class="fld"><span>Currency</span>
+          <select [ngModel]="addDraft().currency" (ngModelChange)="addDraft().currency = $event">
+            @for (c of currencies(); track c) { <option [value]="c">{{ c }}</option> }
+          </select>
+        </label>
+        <label class="fld"><span>How often</span>
+          <div class="seg">
+            <button type="button" [class.on]="addDraft().frequency === 'monthly'" (click)="addDraft().frequency = 'monthly'">Monthly</button>
+            <button type="button" [class.on]="addDraft().frequency === 'annual'" (click)="addDraft().frequency = 'annual'">Annual</button>
+          </div>
+        </label>
+        <label class="fld"><span>Bank account <em>· where it lands</em></span>
+          <input list="bank-list" [ngModel]="addDraft().bank_account" (ngModelChange)="addDraft().bank_account = $event" placeholder="e.g. HDFC ••1234">
+        </label>
+        <label class="fld span2"><span>Source / employer <em>· how it's earned</em></span><textarea rows="2" [ngModel]="addDraft().note" (ngModelChange)="addDraft().note = $event" placeholder="e.g. Kuwait Oil Co — site engineer"></textarea></label>
+      </div>
+      <p class="preview">≈ <b>{{ inr(monthlyInrPreview(addDraft())) }}</b> / month counted as income
+        @if (isForeign(addDraft().currency)) { <span class="muted">· {{ rateNote(addDraft().currency) }} (live)</span> }
+      </p>
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="closeAdd()">Cancel</button>
+        <button class="btn primary" (click)="submitAdd()" [disabled]="adding() || !addDraft().person.trim()">{{ adding() ? 'Saving…' : 'Save salary' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Undo toast -->
+@if (pendingDelete(); as pd) {
+  <div class="undo-toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+    <span>Deleted <b>{{ pd.item.person }}</b>'s salary</span>
+    <button class="undo-btn" (click)="undoDelete()">Undo</button>
+    <button class="undo-x" (click)="finalizeDelete()" title="Dismiss">✕</button>
+  </div>
+}

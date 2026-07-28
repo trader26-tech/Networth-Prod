@@ -1,0 +1,343 @@
+<div class="land-head">
+  <div>
+    <h1>Land</h1>
+    <p class="sub">Track every plot — purchase to today — with auto-computed CAGR, rate per sq ft, and your title documents in one place.</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" (click)="openAdd()">＋ Add parcel</button>
+  </div>
+</div>
+<!-- Needs-migration notice (Supabase on, tables not created yet) -->
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head">
+      <span class="ni">⚙︎</span>
+      <div>
+        <strong>One-time setup — create the Supabase tables</strong>
+        <p>Supabase is connected, but the <code>land_parcels</code> / <code>land_documents</code> tables don't exist yet. Paste this into <b>Supabase → SQL Editor → Run</b>, then hit retry. Storage for documents is created automatically.</p>
+      </div>
+    </div>
+    <pre class="sql">{{ migrationSql }}</pre>
+    <div class="notice-actions">
+      <button class="btn" (click)="copySql()">{{ copied() ? '✓ Copied' : 'Copy SQL' }}</button>
+      <button class="btn primary" (click)="reload()">I've run it — retry</button>
+    </div>
+  </div>
+}
+
+@if (error()) {
+  <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div>
+}
+
+@if (loading()) {
+  <div class="state">Loading your land portfolio…</div>
+}
+
+<!-- Summary hero -->
+@if (!loading() && !needsMigration() && hasData() && heroSummary(); as s) {
+  <div class="hero">
+    <div class="hero-main">
+      <span class="hero-label has-tip" data-tip="The sum of every parcel's current estimated market value (what you think it's worth today).">Current estimated value</span>
+      <span class="hero-value">{{ inr(s.current_value) }}</span>
+      <span class="hero-exact">{{ inrFull(s.current_value) }}</span>
+      <span class="hero-gain has-tip" data-tip="Current estimated value minus what you originally paid (invested cost), in ₹ and %." [class.pos]="s.total_gain >= 0" [class.neg]="s.total_gain < 0">
+        {{ s.total_gain >= 0 ? '▲' : '▼' }} {{ inr(s.total_gain) }}
+        <span class="muted">({{ pct(s.total_gain_pct) }}) over cost</span>
+      </span>
+    </div>
+    <div class="hero-stats">
+      <div class="hs has-tip tip-right" data-tip="Total of every parcel's bought price — your original cost across all land.">
+        <span class="k">Invested</span><span class="v">{{ inr(s.invested) }}</span></div>
+      <div class="hs has-tip tip-right" data-tip="What you'd actually pocket if you sold everything today: the after-brokerage price where set, otherwise the current estimate.">
+        <span class="k">If sold (net)</span><span class="v">{{ inr(s.realisable_value) }}</span></div>
+      <div class="hs has-tip tip-right" data-tip="Money-weighted IRR — the single rate r where Σ bought × (1+r)^years = Σ current value. Respects each parcel's own holding period (not a plain average of CAGRs).">
+        <span class="k">Blended CAGR</span>
+        <span class="v" [class.pos]="(s.blended_cagr ?? 0) >= 0" [class.neg]="(s.blended_cagr ?? 0) < 0">{{ pct(s.blended_cagr) }}</span>
+      </div>
+      <div class="hs has-tip tip-right" data-tip="Number of land parcels you're tracking."><span class="k">Parcels</span><span class="v">{{ s.parcel_count }}</span></div>
+      <div class="hs has-tip tip-right" data-tip="Total documents attached across all parcels (deeds, surveys, receipts)."><span class="k">Documents</span><span class="v">{{ s.document_count }}</span></div>
+    </div>
+  </div>
+}
+
+<!-- Empty state -->
+@if (!loading() && !needsMigration() && !hasData()) {
+  <div class="empty">
+    <div class="empty-card">
+      <div class="big">🌄</div>
+      <h2>No land parcels yet</h2>
+      <p>Add your first plot — its name, location, what you paid, and what it's worth today. We'll compute the CAGR and keep the sale deed, survey docs and receipts attached to it.</p>
+      <button class="btn primary" (click)="openAdd()">＋ Add your first parcel</button>
+    </div>
+  </div>
+}
+
+<!-- Parcels table -->
+@if (!loading() && hasData()) {
+  <!-- Filter / search bar -->
+  <div class="filters">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" placeholder="Search name, location, owner or notes…"
+             [ngModel]="search()" (ngModelChange)="search.set($event)">
+      @if (search()) { <button class="clr" (click)="search.set('')" title="Clear">✕</button> }
+    </div>
+
+    <label class="fsel">
+      <span>Owner</span>
+      <select [ngModel]="ownerFilter()" (ngModelChange)="ownerFilter.set($event)">
+        <option value="">All owners</option>
+        @for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }
+      </select>
+    </label>
+
+    <label class="fsel">
+      <span>Sort</span>
+      <select [ngModel]="sort()" (ngModelChange)="sort.set($event)">
+        <option value="value">Present value (high → low)</option>
+        <option value="gain">Gain (high → low)</option>
+        <option value="cagr">CAGR (high → low)</option>
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="name">Name (A → Z)</option>
+      </select>
+    </label>
+
+    <span class="count">{{ filtered().length }} of {{ parcels().length }}</span>
+    @if (hasFilters()) { <button class="clear-all" (click)="clearFilters()">Clear filters</button> }
+    <button class="select-toggle" [class.active]="selectMode()" (click)="toggleSelectMode()">
+      {{ selectMode() ? '✕ Done' : '☑ Select' }}
+    </button>
+  </div>
+
+  <!-- Selection summary — metrics for just the ticked parcels -->
+  @if (selectMode() && selStats().count > 0) {
+    <div class="sel-bar">
+      <div class="sel-head">
+        <span class="sel-count">{{ selStats().count }} selected</span>
+        <button class="sel-clear" (click)="clearSelection()">Clear</button>
+      </div>
+      <div class="sel-stats">
+        <div class="ss"><span class="k">Current value</span><span class="v">{{ inr(selStats().current) }}</span></div>
+        <div class="ss"><span class="k">Invested</span><span class="v">{{ inr(selStats().invested) }}</span></div>
+        <div class="ss"><span class="k">Gain</span>
+          <span class="v" [class.pos]="selStats().gain >= 0" [class.neg]="selStats().gain < 0">{{ inr(selStats().gain) }} <small>{{ pct(selStats().gain_pct) }}</small></span>
+        </div>
+        <div class="ss hi has-tip tip-right" data-tip="Money-weighted IRR over the selected parcels: rate r where Σ bought × (1+r)^years = Σ current value.">
+          <span class="k">Blended CAGR</span>
+          <span class="v" [class.pos]="(selStats().cagr ?? 0) >= 0" [class.neg]="(selStats().cagr ?? 0) < 0">{{ pct(selStats().cagr) }}</span>
+        </div>
+      </div>
+    </div>
+  }
+
+  <div class="table-wrap">
+    <table class="land-table">
+      <colgroup>
+        <col class="c-name"><col class="c-owner"><col class="c-loc"><col class="c-area"><col class="c-bought">
+        <col class="c-price"><col class="c-present"><col class="c-rate"><col class="c-gain"><col class="c-cagr"><col class="c-act">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="name-th">
+            @if (selectMode()) {
+              <label class="chk" (click)="$event.stopPropagation()" title="Select all">
+                <input type="checkbox" [checked]="allFilteredSelected()" (change)="toggleSelectAll()">
+              </label>
+            }
+            <span class="has-tip" data-tip="Your label for the parcel.">Name</span>
+          </th>
+          <th class="has-tip" data-tip="Who the property is owned by / in favour of.">Owner</th>
+          <th class="has-tip" data-tip="Village / survey number / city.">Location</th>
+          <th class="num has-tip" data-tip="Plot area in square feet.">Area</th>
+          <th class="num has-tip" data-tip="The date the parcel was purchased.">Bought</th>
+          <th class="num has-tip" data-tip="The price you originally paid.">Bought price</th>
+          <th class="num has-tip" data-tip="Present value = current estimated market value today. Click the row to correct it.">Present value</th>
+          <th class="num has-tip tip-right" data-tip="Present value ÷ area. Hover a value for the original rate you paid.">Rate / sq ft</th>
+          <th class="num has-tip tip-right" data-tip="Present value minus bought price — the unrealised gain.">Gain</th>
+          <th class="num has-tip tip-right" data-tip="CAGR = (present ÷ bought)^(1 ÷ years) − 1, with years measured from the bought date. Hover a value for the net (after-brokerage) figure.">CAGR</th>
+          <th class="act"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (p of filtered(); track p.id) {
+          <tr class="row" [class.open]="expandedId() === p.id" [class.selected]="isSelected(p.id)" (click)="toggle(p)">
+            <td class="name">
+              @if (selectMode()) {
+                <label class="chk" (click)="$event.stopPropagation()">
+                  <input type="checkbox" [checked]="isSelected(p.id)" (change)="toggleSelect(p.id)">
+                </label>
+              }
+{{ p.name }}
+            </td>
+            <td data-label="Owner">{{ p.owner || '—' }}</td>
+            <td class="loc" data-label="Location" [title]="p.location || ''">
+              @if (p.location) {
+                <a class="map-link" [href]="mapsUrl(p.location)" target="_blank" rel="noopener"
+                   (click)="$event.stopPropagation()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  <span>{{ locationLabel(p.location) }}</span>
+                </a>
+              } @else { <span class="muted">—</span> }
+            </td>
+            <td class="num" data-label="Area">{{ p.area_sqft ? (p.area_sqft | number:'1.0-0') + ' sq ft' : '—' }}</td>
+            <td class="num" data-label="Bought">{{ p.bought_date ? (p.bought_date | date:'MMM y') : '—' }}</td>
+            <td class="num" data-label="Bought price">{{ inr(p.bought_price) }}</td>
+            <td class="num present" data-label="Present value" [class.open]="expandedId() === p.id">
+              {{ inr(p.current_estimated_price) }} <span class="pen" title="Click row to edit">✎</span>
+            </td>
+            <td class="num has-tip tip-right" data-label="Rate / sq ft"
+                [attr.data-tip]="p.rate_per_sqft !== null ? 'Rate = present value ÷ area.' + (p.bought_rate_per_sqft !== null ? '  Bought at ' + inrFull(p.bought_rate_per_sqft) + ' / sq ft.' : '') : 'Present value ÷ area — set both to see it'">
+              {{ p.rate_per_sqft !== null ? inrFull(p.rate_per_sqft) : '—' }}
+            </td>
+            <td class="num gain has-tip tip-right" data-label="Gain"
+                [class.pos]="(p.gain ?? 0) > 0" [class.neg]="(p.gain ?? 0) < 0"
+                [attr.data-tip]="p.gain_pct !== null ? 'Gain = present − bought = ' + inr(p.gain) + ' (' + pct(p.gain_pct) + ' over cost)' : 'No cost price recorded'">
+              {{ inr(p.gain) }}
+            </td>
+            <td class="num cagr" data-label="CAGR">
+              <span class="has-tip tip-right" [class]="cagrClass(p.cagr)"
+                    [attr.data-tip]="'CAGR = (present ÷ bought)^(1 ÷ years) − 1' + (p.holding_years !== null ? ', held ' + p.holding_years + ' yrs = ' + pct(p.cagr) : '') + (p.net_cagr !== null && p.net_cagr !== p.cagr ? '.   Net (after-brokerage) = ' + pct(p.net_cagr) : '.')">
+                {{ pct(p.cagr) }}
+              </span>
+            </td>
+            <td class="act" data-label="">
+              <button class="trash" (click)="$event.stopPropagation(); remove(p)" title="Delete parcel" aria-label="Delete parcel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                </svg>
+              </button>
+            </td>
+          </tr>
+
+          <!-- Inline edit panel (revealed on row click) -->
+          @if (expandedId() === p.id && editDraft(); as d) {
+            <tr class="edit-row">
+              <td [attr.colspan]="11">
+                <div class="edit-panel">
+                  <div class="edit-grid">
+                    <label class="fld"><span>Name</span><input [ngModel]="d.name" (ngModelChange)="d.name = $event"></label>
+                    <label class="fld"><span>Owner</span><input [ngModel]="d.owner" (ngModelChange)="d.owner = $event" placeholder="In favour of / owned by"></label>
+                    <label class="fld span2">
+                      <span>Location
+                        @if (d.location.trim()) { <a class="mini-map" [href]="mapsUrl(d.location)" target="_blank" rel="noopener">Open in Maps ↗</a> }
+                      </span>
+                      <input [ngModel]="d.location" (ngModelChange)="d.location = $event" placeholder="Address, place name, or paste a Google Maps link">
+                    </label>
+                    <label class="fld"><span>Area (sq ft)</span><input type="number" [ngModel]="d.area_sqft" (ngModelChange)="setArea(d, $event)" placeholder="e.g. 2400"></label>
+                    <label class="fld"><span>Bought date</span><input type="date" [ngModel]="d.bought_date" (ngModelChange)="d.bought_date = $event"></label>
+                    <label class="fld"><span>Bought price (₹)</span><input type="number" [ngModel]="d.bought_price" (ngModelChange)="d.bought_price = $event"></label>
+                    <label class="fld"><span>Rate / sq ft (₹) <em>· sets present = rate × area</em></span><input type="number" [ngModel]="d.rate_sqft" (ngModelChange)="setRate(d, $event)" placeholder="e.g. 1500"></label>
+                    <label class="fld"><span>Present value — current estimate (₹)</span><input type="number" [ngModel]="d.current_estimated_price" (ngModelChange)="setPresent(d, $event)"></label>
+                    <label class="fld"><span>After-brokerage price (₹)</span><input type="number" [ngModel]="d.after_brokerage_price" (ngModelChange)="d.after_brokerage_price = $event"></label>
+                    <label class="fld"><span>Sellable on <em>· when you can sell it (buy planner)</em></span><input type="date" [ngModel]="d.sellable_on" (ngModelChange)="d.sellable_on = $event"></label>
+                    <label class="fld span2"><span>Notes</span><textarea rows="2" [ngModel]="d.notes" (ngModelChange)="d.notes = $event" placeholder="Survey number, boundaries, broker, anything"></textarea></label>
+                  </div>
+
+                  <!-- Documents -->
+                  <div class="docs">
+                    <div class="docs-head">
+                      <span>Documents</span>
+                      <label class="upload-btn">
+                        ＋ Upload
+                        <input type="file" multiple hidden (change)="onPickFiles(p, $event)">
+                      </label>
+                    </div>
+                    <div class="dropzone" (dragover)="$event.preventDefault()" (drop)="onDrop(p, $event)">
+                      @if (uploadingFor() === p.id) {
+                        <span class="up">Uploading…</span>
+                      } @else if (p.documents.length === 0) {
+                        <span class="hint">Drop sale deed, survey sketch, tax receipts here — or use Upload (max 20 MB each).</span>
+                      } @else {
+                        <div class="doc-list">
+                          @for (doc of p.documents; track doc.id) {
+                            <div class="doc">
+                              @if (renamingDoc() === doc.id) {
+                                <input class="doc-rename" [ngModel]="renameText()" (ngModelChange)="renameText.set($event)"
+                                       (keyup.enter)="saveRename(p, doc)" (keyup.escape)="cancelRename()"
+                                       (click)="$event.stopPropagation()" autofocus>
+                                <button class="doc-ok" (click)="saveRename(p, doc)" title="Save name">✓</button>
+                                <button class="doc-x" (click)="cancelRename()" title="Cancel">✕</button>
+                              } @else {
+                                <a class="doc-main" [href]="docUrl(doc)" target="_blank" rel="noopener">
+                                  <span class="g">{{ fileGlyph(doc.mime_type) }}</span>
+                                  <span class="dn">{{ doc.filename }}</span>
+                                  <span class="ds">{{ fmtBytes(doc.size) }}</span>
+                                </a>
+                                <button class="doc-edit" (click)="startRename(doc)" title="Rename">✎</button>
+                                <button class="doc-x" (click)="removeDoc(p, doc)" title="Remove">✕</button>
+                              }
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+
+                  <div class="parcel-actions">
+                    <button class="btn danger" (click)="remove(p)">Delete parcel</button>
+                    <div class="spacer"></div>
+                    <button class="btn ghost" (click)="toggle(p)">Cancel</button>
+                    <button class="btn primary" (click)="saveEdit(p)" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save changes' }}</button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+    @if (filtered().length === 0) {
+      <div class="no-match">
+        No parcels match your search. <button class="link" (click)="clearFilters()">Clear filters</button>
+      </div>
+    }
+  </div>
+}
+
+<!-- Add modal -->
+@if (showAdd()) {
+  <div class="modal-back" (click)="closeAdd()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-head">
+        <h3>Add a land parcel</h3>
+        <button class="x" (click)="closeAdd()">✕</button>
+      </div>
+      <div class="edit-grid">
+        <label class="fld"><span>Name *</span><input [ngModel]="addDraft().name" (ngModelChange)="addDraft().name = $event" placeholder="e.g. Mysore Road plot"></label>
+        <label class="fld"><span>Owner</span><input [ngModel]="addDraft().owner" (ngModelChange)="addDraft().owner = $event" placeholder="In favour of / owned by"></label>
+        <label class="fld span2"><span>Location</span><input [ngModel]="addDraft().location" (ngModelChange)="addDraft().location = $event" placeholder="Address, place name, or paste a Google Maps link"></label>
+        <label class="fld"><span>Area (sq ft)</span><input type="number" [ngModel]="addDraft().area_sqft" (ngModelChange)="setArea(addDraft(), $event)" placeholder="e.g. 2400"></label>
+        <label class="fld"><span>Bought date</span><input type="date" [ngModel]="addDraft().bought_date" (ngModelChange)="addDraft().bought_date = $event"></label>
+        <label class="fld"><span>Bought price (₹)</span><input type="number" [ngModel]="addDraft().bought_price" (ngModelChange)="addDraft().bought_price = $event"></label>
+        <label class="fld"><span>Rate / sq ft (₹) <em>· sets present = rate × area</em></span><input type="number" [ngModel]="addDraft().rate_sqft" (ngModelChange)="setRate(addDraft(), $event)" placeholder="e.g. 1500"></label>
+        <label class="fld"><span>Present value — current estimate (₹)</span><input type="number" [ngModel]="addDraft().current_estimated_price" (ngModelChange)="setPresent(addDraft(), $event)"></label>
+        <label class="fld"><span>After-brokerage price (₹)</span><input type="number" [ngModel]="addDraft().after_brokerage_price" (ngModelChange)="addDraft().after_brokerage_price = $event"></label>
+        <label class="fld"><span>Sellable on <em>· when you can sell it (buy planner)</em></span><input type="date" [ngModel]="addDraft().sellable_on" (ngModelChange)="addDraft().sellable_on = $event"></label>
+        <label class="fld span2"><span>Notes</span><textarea rows="2" [ngModel]="addDraft().notes" (ngModelChange)="addDraft().notes = $event"></textarea></label>
+      </div>
+      <p class="cagr-note">CAGR is computed automatically from the bought date &amp; prices — nothing to enter. You can attach documents after saving.</p>
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="closeAdd()">Cancel</button>
+        <button class="btn primary" (click)="submitAdd()" [disabled]="adding() || !addDraft().name.trim()">{{ adding() ? 'Saving…' : 'Save parcel' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Undo toast (one-click delete, no confirm) -->
+@if (pendingDelete(); as pd) {
+  <div class="undo-toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+    </svg>
+    <span>Deleted <b>{{ pd.parcel.name }}</b></span>
+    <button class="undo-btn" (click)="undoDelete()">Undo</button>
+    <button class="undo-x" (click)="finalizeDelete()" title="Dismiss">✕</button>
+  </div>
+}

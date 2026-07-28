@@ -1,0 +1,190 @@
+<div class="dashboard">
+
+  <!-- Strategy alerts from auto-SL/target -->
+  @for (alert of ticker.alerts(); track alert.id) {
+    <div class="alert-banner" [class.sl]="alert.type === 'sl_hit'" [class.target-hit]="alert.type === 'target_hit'">
+      <span class="alert-icon">{{ alert.type === 'sl_hit' ? '⛔' : '🎯' }}</span>
+      <span>
+        <b>{{ alert.type === 'sl_hit' ? 'Stop Loss Hit' : 'Target Reached' }}</b> —
+        {{ alert.strategy_name }}
+        &nbsp;<span [class.negative]="alert.pnl < 0" [class.positive]="alert.pnl >= 0">
+          {{ alert.pnl >= 0 ? '+' : '' }}₹{{ alert.pnl | number:'1.0-0' }}
+        </span>
+        <span class="alert-time">{{ alert.time }}</span>
+      </span>
+      <button class="alert-dismiss" (click)="dismissAlert(alert.id)">✕</button>
+    </div>
+  }
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-label">Today's P&L</div>
+      <div class="stat-value" [class.positive]="(stats()?.today_pnl ?? 0) >= 0" [class.negative]="(stats()?.today_pnl ?? 0) < 0">
+        {{ (stats()?.today_pnl ?? 0) >= 0 ? '+' : '' }}₹{{ (stats()?.today_pnl ?? 0) | number:'1.0-0' }}
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Win Rate</div>
+      <div class="stat-value">{{ stats()?.win_rate ?? 0 }}%</div>
+      <div class="stat-sub">{{ stats()?.wins ?? 0 }}W / {{ stats()?.losses ?? 0 }}L</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Open Strategies</div>
+      <div class="stat-value accent">{{ stats()?.open_count ?? 0 }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total P&L (all time)</div>
+      <div class="stat-value" [class.positive]="(stats()?.total_pnl ?? 0) >= 0" [class.negative]="(stats()?.total_pnl ?? 0) < 0">
+        {{ (stats()?.total_pnl ?? 0) >= 0 ? '+' : '' }}₹{{ (stats()?.total_pnl ?? 0) | number:'1.0-0' }}
+      </div>
+      <div class="stat-sub">{{ stats()?.total_trades ?? 0 }} trades</div>
+    </div>
+  </div>
+
+  <!-- Open strategies -->
+  <div class="card">
+    <div class="card-header-row">
+      <div class="card-title">Open Strategies</div>
+      <a routerLink="/strategy" class="new-link">+ New Strategy</a>
+    </div>
+    @if (openStrategies().length === 0) {
+      <div class="empty-state">No open strategies. <a routerLink="/strategy">Build one →</a></div>
+    } @else {
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th>Legs</th>
+            <th>Expiry</th>
+            <th class="text-right">Entry Net</th>
+            <th class="text-right">Live P&L</th>
+            <th class="text-right">SL</th>
+            <th class="text-right">Target</th>
+            <th class="text-right">Mode</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (s of openStrategies(); track s.id) {
+            <tr>
+              <td class="strat-name-cell">{{ s.name }}</td>
+              <td class="muted">{{ s.legs?.length ?? 0 }}</td>
+              <td class="muted time-cell">{{ s.expiry }}</td>
+              <td class="text-right" [class.positive]="s.net_credit > 0" [class.negative]="s.net_credit < 0">
+                {{ s.net_credit >= 0 ? '+' : '' }}₹{{ s.net_credit | number:'1.0-0' }}
+              </td>
+              <td class="text-right live-pnl-cell"
+                  [class.positive]="livePnl(s.id) >= 0"
+                  [class.negative]="livePnl(s.id) < 0">
+                {{ livePnl(s.id) >= 0 ? '+' : '' }}₹{{ livePnl(s.id) | number:'1.0-0' }}
+              </td>
+              <td class="text-right muted">{{ s.sl_amount != null ? ('₹' + (s.sl_amount | number:'1.0-0')) : '—' }}</td>
+              <td class="text-right muted">{{ s.target_amount != null ? ('₹' + (s.target_amount | number:'1.0-0')) : '—' }}</td>
+              <td class="text-right">
+                <span class="mode-badge" [class.real]="s.use_real">{{ s.use_real ? 'REAL' : 'PAPER' }}</span>
+              </td>
+              <td class="action-cell">
+                <button class="btn-edit" (click)="openEditSl(s)" title="Edit Stop Loss / Target">Edit SL</button>
+                <button class="btn-sq" (click)="requestSquareOff(s.id)">Square Off</button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+
+  <!-- P&L history chart -->
+  <div class="card">
+    <div class="card-title">Cumulative P&L</div>
+    @if (!hasPnlData()) {
+      <div class="empty-state pnl-empty">No closed trades yet — chart will appear after first strategy exit.</div>
+    }
+    <div #pnlChart class="pnl-chart"></div>
+  </div>
+
+  <!-- Trade history -->
+  @if (history().length > 0) {
+    <div class="card">
+      <div class="card-title">Trade History</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th>Underlying</th>
+            <th>Expiry</th>
+            <th class="text-right">Net Entry</th>
+            <th class="text-right">Exit P&L</th>
+            <th>Status</th>
+            <th>Entry</th>
+            <th>Exit</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (s of history(); track s.id) {
+            <tr>
+              <td>{{ s.name }}</td>
+              <td>{{ s.underlying }}</td>
+              <td class="muted time-cell">{{ s.expiry }}</td>
+              <td class="text-right" [class.positive]="s.net_credit > 0" [class.negative]="s.net_credit < 0">
+                {{ s.net_credit >= 0 ? '+' : '' }}₹{{ s.net_credit | number:'1.0-0' }}
+              </td>
+              <td class="text-right" [class.positive]="(s.exit_pnl ?? 0) >= 0" [class.negative]="(s.exit_pnl ?? 0) < 0">
+                {{ (s.exit_pnl ?? 0) >= 0 ? '+' : '' }}₹{{ (s.exit_pnl ?? 0) | number:'1.0-0' }}
+              </td>
+              <td><span class="status-badge" [class]="s.status">{{ s.status }}</span></td>
+              <td class="muted time-cell">{{ s.entry_time }}</td>
+              <td class="muted time-cell">{{ s.exit_time ?? '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</div>
+
+<!-- Edit SL/Target modal -->
+@if (editSlModal()) {
+  <div class="modal-overlay" (click)="closeEditSl()">
+    <div class="modal confirm-modal" (click)="$event.stopPropagation()">
+      <div class="modal-title">Edit SL / Target — {{ editSlModal()!.name }}</div>
+      <div class="sl-edit-fields">
+        <div class="modal-field">
+          <label class="form-label">Stop Loss (₹ loss amount)</label>
+          <input class="form-control" type="number" placeholder="e.g. 5000"
+                 [value]="editSlModal()!.sl"
+                 (input)="updateEditField('sl', $any($event.target).value)" />
+          <div class="field-hint">Auto-exit when loss reaches this amount. Leave blank to disable.</div>
+        </div>
+        <div class="modal-field">
+          <label class="form-label">Target (₹ profit amount)</label>
+          <input class="form-control" type="number" placeholder="e.g. 7500"
+                 [value]="editSlModal()!.target"
+                 (input)="updateEditField('target', $any($event.target).value)" />
+          <div class="field-hint">Auto-exit when profit reaches this amount. Leave blank to disable.</div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" (click)="closeEditSl()">Cancel</button>
+        <button class="btn btn-primary" [disabled]="savingSlTarget()" (click)="saveSlTarget()">
+          {{ savingSlTarget() ? 'Saving…' : 'Save' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Square-off confirmation modal -->
+@if (confirmSquareOff()) {
+  <div class="modal-overlay" (click)="cancelSquareOff()">
+    <div class="modal confirm-modal" (click)="$event.stopPropagation()">
+      <div class="modal-title">⚠ Confirm Square-Off</div>
+      <p class="modal-body">This will exit all legs of this strategy at market price immediately. This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" (click)="cancelSquareOff()">Cancel</button>
+        <button class="btn btn-sell" (click)="confirmSquareOffAction()">Confirm Square-Off</button>
+      </div>
+    </div>
+  </div>
+}

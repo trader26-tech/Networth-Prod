@@ -1,0 +1,631 @@
+<div class="pw-page">
+
+  <!-- ════════ Live Nifty ticker ═════════════════════════════════════════ -->
+  @if (scan(); as s) {
+  <div class="nifty-ticker">
+    <span class="nt-label">NIFTY 50</span>
+    <span class="nt-price">{{ s.spot | number:'1.0-0' }}</span>
+    <span class="nt-sep">·</span>
+    <span class="nt-label">NB</span>
+    <span class="nt-price">₹{{ s.nb_price | number:'1.2-2' }}</span>
+    <span class="nt-sep">·</span>
+    <span class="nt-label">VIX</span>
+    <span class="nt-price">{{ s.vix | number:'1.1-1' }}</span>
+    @if (s.atm_iv != null) {
+      <span class="nt-sep">·</span>
+      <span class="nt-label">ATM IV</span>
+      <span class="nt-price">{{ s.atm_iv | number:'1.1-1' }}%</span>
+    }
+    <span class="nt-sep">·</span>
+    <span class="nt-dot">●</span>
+    <span class="nt-live">live · {{ s.timestamp.slice(11,16) }}</span>
+  </div>
+  }
+
+  <!-- ════════ Header ════════════════════════════════════════════════════ -->
+  <header class="pw-header">
+    <a class="pw-back" routerLink="/strategies">← Strategies</a>
+    <div class="pw-title-row">
+      <span class="pw-icon">🎯</span>
+      <div class="pw-title-block">
+        <h1 class="pw-title">Protected Wheel</h1>
+        <p class="pw-tagline">A wheel runs in steps. Do one trade at a time. NB &amp; hedge stay constant.</p>
+      </div>
+      <div class="pw-header-actions">
+        <button class="pw-best-btn" (click)="openBestCycle()" title="Scan all legs and propose one optimal cycle plan">
+          🏆 Best Cycle Today
+        </button>
+        <a class="pw-handbook-link" routerLink="/math-handbook" fragment="pw-overview">
+          📚 Math &amp; Rationale →
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ════════ Capital + position controls ════════════════════════════════ -->
+  <div class="pw-controls">
+    <label class="pw-ctl">
+      <span>Capital</span>
+      <input type="number" min="0" step="50000"
+             [ngModel]="capital()" (change)="setCapital($any($event.target).valueAsNumber)">
+    </label>
+    @if (hasNbPos()) {
+      <label class="pw-ctl">
+        <span>NB entry (Nifty pts)</span>
+        <input type="number" step="50"
+               [ngModel]="nbEntry()" (change)="setNbEntry($any($event.target).valueAsNumber)">
+      </label>
+    }
+    <button class="pw-refresh-btn" (click)="loadScan()" [disabled]="loading()">
+      @if (loading()) { ↻ Loading… } @else { ↻ Refresh }
+    </button>
+  </div>
+
+  @if (loading()) {
+    <div class="pw-loading"><span class="pw-spinner"></span> Loading market data…</div>
+  } @else if (error()) {
+    <div class="pw-error">⚠ {{ error() }}</div>
+  } @else if (!scan()) {
+    <div class="pw-error">No data yet — click Refresh.</div>
+  } @else if (scan(); as s) {
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       CYCLE STATUS — where you are in the wheel
+       ════════════════════════════════════════════════════════════════════ -->
+  <section class="pw-cycle-status">
+    <div class="cs-head">
+      <span class="cs-label">Cycle status</span>
+      <span class="cs-step-pill">{{ cycleStepLabel() }}</span>
+      <div class="cs-phase-toggle">
+        <span class="cs-phase-lbl">Phase:</span>
+        <button class="cs-phase-btn"
+                [class.active]="phase() === 'A'"
+                (click)="setPhase('A')">
+          A · CSP
+        </button>
+        <button class="cs-phase-btn"
+                [class.active]="phase() === 'B'"
+                (click)="setPhase('B')">
+          B · CC
+        </button>
+      </div>
+    </div>
+
+    <!-- Cycle progress dots -->
+    <div class="cs-dots">
+      <div class="cs-dot" [class.done]="cycleStep() > 1" [class.current]="cycleStep() === 1">
+        <span class="cs-dot-num">1</span>
+        <span class="cs-dot-lbl">NB Entry</span>
+      </div>
+      <div class="cs-bar" [class.done]="cycleStep() > 1"></div>
+      <div class="cs-dot" [class.done]="cycleStep() > 2" [class.current]="cycleStep() === 2">
+        <span class="cs-dot-num">2</span>
+        <span class="cs-dot-lbl">Hedge Buy</span>
+      </div>
+      <div class="cs-bar" [class.done]="cycleStep() > 2"></div>
+      <div class="cs-dot"
+           [class.done]="cycleStep() > 3"
+           [class.current]="cycleStep() === 3 || cycleStep() === 4">
+        <span class="cs-dot-num">3</span>
+        <span class="cs-dot-lbl">Sell CSP</span>
+      </div>
+      <div class="cs-bar" [class.done]="cycleStep() > 4"></div>
+      <div class="cs-dot"
+           [class.done]="cycleStep() > 5"
+           [class.current]="cycleStep() === 5 || cycleStep() === 6">
+        <span class="cs-dot-num">4</span>
+        <span class="cs-dot-lbl">Sell CC</span>
+      </div>
+      <div class="cs-bar"></div>
+      <div class="cs-dot">
+        <span class="cs-dot-num">↻</span>
+        <span class="cs-dot-lbl">Repeat</span>
+      </div>
+    </div>
+
+    <p class="cs-hint">
+      Wheel rule: only ONE income leg (CSP <em>or</em> CC) is live at a time.
+      NB &amp; hedge stay open through the whole cycle and rarely change.
+    </p>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       BACKGROUND LEGS — NB + Hedge (compact, persistent)
+       ════════════════════════════════════════════════════════════════════ -->
+  <section class="pw-bg-legs">
+    <h3 class="bg-title">Background legs · stay constant</h3>
+
+    <!-- NB row -->
+    @if (cardNB(); as nb) {
+      <div class="bg-row" [class.bg-done]="hasNbPos()">
+        <div class="bg-id">
+          <span class="bg-icon">📦</span>
+          <span class="bg-name">NiftyBees</span>
+          @if (hasNbPos()) {
+            <span class="bg-state state-open">✓ OWNED</span>
+          } @else {
+            <span class="bg-state state-pending">○ Buy first</span>
+          }
+        </div>
+
+        @if (!hasNbPos()) {
+          <div class="bg-detail">
+            <div class="bg-trade-spec">
+              <span class="ts-side ts-buy">BUY</span>
+              <strong>{{ fmtNum(nb.shares) }} NB @ ₹{{ nb.nb_suggested_limit | number:'1.2-2' }}</strong>
+              <span class="ts-note">(LTP ₹{{ nb.nb_price | number:'1.2-2' }} · {{ fmtRs(nb.cost) }})</span>
+            </div>
+            <div class="bg-why">{{ nb.summary }}</div>
+            <div class="bg-checks">
+              @for (c of nb.checks; track c.name) {
+                <span class="bg-check" [class.ok]="c.ok" [class.bad]="!c.ok"
+                      [title]="c.rationale">
+                  {{ c.ok ? '✓' : '✗' }} {{ c.name }}: {{ c.value }}
+                </span>
+              }
+            </div>
+          </div>
+        } @else {
+          <div class="bg-detail-min">
+            Held at ₹{{ nbEntry() | number:'1.0-0' }} (Nifty)
+            · current spot {{ spot() | number:'1.0-0' }}
+            · drift {{ ((spot() - nbEntry()) / nbEntry() * 100) | number:'1.2-2' }}%
+          </div>
+        }
+
+        <div class="bg-actions">
+          @if (!hasNbPos()) {
+            <button class="bg-mark-btn" (click)="toggleNbHeld(true)">Mark as bought ✓</button>
+          } @else {
+            <button class="bg-undo-btn" (click)="toggleNbHeld(false)">Undo</button>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- Hedge row -->
+    @if (cardHedge(); as h) {
+      <div class="bg-row" [class.bg-done]="hasHedge()">
+        <div class="bg-id">
+          <span class="bg-icon">🛡️</span>
+          <span class="bg-name">Hedge Put</span>
+          @if (hasHedge()) {
+            <span class="bg-state state-open">✓ ACTIVE</span>
+          } @else {
+            <span class="bg-state state-pending">○ Buy after NB</span>
+          }
+        </div>
+
+        @if (!hasHedge() && !h.best) {
+          <div class="bg-detail">
+            <div class="bg-empty-msg">
+              ⚠ No hedge candidates found yet. This usually means: (a) the wide
+              put-chain isn't loading from Kite, or (b) no monthly expiry is
+              ≥ 45 DTE in scope. Try a manual <a routerLink="/options">option chain</a> lookup
+              or wait for the next monthly cycle.
+            </div>
+          </div>
+        }
+        @if (!hasHedge() && h.best; as best) {
+          <div class="bg-detail">
+            <div class="bg-trade-spec">
+              <span class="ts-side ts-buy">BUY</span>
+              <strong>{{ best.strike | number:'1.0-0' }} PE {{ best.expiry }} @ ₹{{ best.premium | number:'1.2-2' }}</strong>
+              <span class="ts-note">({{ best.dte }}d · {{ best.otm_pct | number:'1.1-1' }}% OTM · ₹{{ best.cost_per_protected | number:'1.3-3' }}/protected ₹)</span>
+            </div>
+            <div class="bg-why">{{ best.summary }}</div>
+
+            <!-- ── Math panel ─────────────────────────────────────────── -->
+            @if (best.math; as m) {
+              <details class="hedge-math">
+                <summary>📐 Math behind this hedge</summary>
+                <div class="hm-body">
+
+                  <!-- Headline stats -->
+                  <div class="hm-stats">
+                    <div class="hm-stat">
+                      <span class="hm-stat-lbl">Breakeven drop</span>
+                      <span class="hm-stat-val">{{ m.breakeven_drop_pct | number:'1.2-2' }}%</span>
+                      <span class="hm-stat-note">Nifty must fall this much before hedge pays net</span>
+                    </div>
+                    <div class="hm-stat">
+                      <span class="hm-stat-lbl">Annual drag</span>
+                      <span class="hm-stat-val"
+                            [class.neg]="m.annual_drag_pct >= 3"
+                            [class.warn]="m.annual_drag_pct >= 1.5 && m.annual_drag_pct < 3"
+                            [class.pos]="m.annual_drag_pct < 1.5">
+                        {{ m.annual_drag_pct | number:'1.2-2' }}%
+                      </span>
+                      <span class="hm-stat-note">≈ ₹{{ m.annual_cost | number:'1.0-0' }}/yr · {{ m.rolls_per_year }} rolls</span>
+                    </div>
+                    <div class="hm-stat">
+                      <span class="hm-stat-lbl">Crash efficiency</span>
+                      <span class="hm-stat-val"
+                            [class.pos]="m.efficiency >= 1"
+                            [class.warn]="m.efficiency >= 0 && m.efficiency < 1"
+                            [class.neg]="m.efficiency < 0">
+                        {{ m.efficiency | number:'1.2-2' }}×
+                      </span>
+                      <span class="hm-stat-note">avg net payoff at −5/−10/−15% ÷ premium</span>
+                    </div>
+                    <div class="hm-stat">
+                      <span class="hm-stat-lbl">1σ move ({{ best.dte }}d)</span>
+                      <span class="hm-stat-val">±{{ m.sigma_1d_pct | number:'1.2-2' }}%</span>
+                      <span class="hm-stat-note">expected range from IV (s = σ·√T)</span>
+                    </div>
+                  </div>
+
+                  <!-- Scenario payoff table -->
+                  <div class="hm-section-title">Crash scenarios (at expiry)</div>
+                  <table class="hm-scenarios">
+                    <thead>
+                      <tr>
+                        <th>Nifty drops</th>
+                        <th>S<sub>T</sub></th>
+                        <th>Gross payoff<br><span class="th-formula">max(K − S<sub>T</sub>, 0)</span></th>
+                        <th>Net payoff<br><span class="th-formula">gross − premium</span></th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (s of m.scenarios; track s.drop_pct) {
+                        <tr [class.itm]="s.in_the_money" [class.profitable]="s.net_payoff > 0">
+                          <td>{{ s.drop_pct }}%</td>
+                          <td>{{ s.nifty | number:'1.0-0' }}</td>
+                          <td>₹{{ s.gross_payoff | number:'1.0-2' }}</td>
+                          <td><strong>₹{{ s.net_payoff | number:'1.0-2' }}</strong></td>
+                          <td>{{ s.net_payoff > 0 ? '✓ profit' : (s.in_the_money ? 'covers part' : '— OTM') }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+
+                  <!-- Greeks -->
+                  <div class="hm-section-title">Greeks (Black-Scholes at current spot)</div>
+                  <div class="hm-greeks">
+                    <span class="hm-grk"><span class="hm-grk-l">Δ delta</span><strong>{{ m.delta | number:'1.3-3' }}</strong></span>
+                    <span class="hm-grk"><span class="hm-grk-l">Γ gamma</span><strong>{{ m.gamma | number:'1.5-5' }}</strong></span>
+                    <span class="hm-grk"><span class="hm-grk-l">Θ theta /day</span><strong>₹{{ m.theta_per_day | number:'1.2-3' }}</strong></span>
+                    <span class="hm-grk"><span class="hm-grk-l">ν vega /1% IV</span><strong>₹{{ m.vega_per_pct | number:'1.2-3' }}</strong></span>
+                  </div>
+
+                  <!-- Formulas -->
+                  <div class="hm-section-title">Formulas</div>
+                  <ul class="hm-formulas">
+                    <li><strong>Price:</strong> {{ m.formulas.price }}</li>
+                    <li><strong>Cost / protected ₹:</strong> {{ m.formulas.cost_per_protected }} = {{ best.cost_per_protected | number:'1.3-3' }}</li>
+                    <li><strong>Breakeven:</strong> {{ m.formulas.breakeven }} = ₹{{ m.breakeven_spot | number:'1.0-0' }} (drop {{ m.breakeven_drop_pct | number:'1.2-2' }}%)</li>
+                    <li><strong>Annual drag:</strong> {{ m.formulas.annual_drag }} = {{ m.annual_drag_pct | number:'1.2-2' }}%</li>
+                    <li><strong>Efficiency:</strong> {{ m.formulas.efficiency }} = {{ m.efficiency | number:'1.2-2' }}×</li>
+                  </ul>
+
+                  <p class="hm-note">
+                    Sanity check: strike is {{ best.otm_pct | number:'1.1-1' }}% OTM vs implied 1σ band of ±{{ m.sigma_1d_pct | number:'1.1-1' }}% over {{ best.dte }} days.
+                    {{ m.in_sigma_band ? '✓ Within plausible move range — hedge will be tested.'
+                                       : '⚠ Outside 1.5σ — hedge fires only on tail events.' }}
+                  </p>
+                </div>
+              </details>
+            }
+          </div>
+        } @else if (hasHedge()) {
+          <div class="bg-detail-min">Active · roll trigger fires at 30 DTE.</div>
+        }
+
+        <div class="bg-actions">
+          @if (!hasHedge()) {
+            <button class="bg-mark-btn" (click)="toggleHedge(true)">Mark as bought ✓</button>
+          } @else {
+            <button class="bg-undo-btn" (click)="toggleHedge(false)">Undo</button>
+          }
+        </div>
+      </div>
+    }
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       TODAY'S ACTION — single active income leg (CSP OR CC)
+       ════════════════════════════════════════════════════════════════════ -->
+  <section class="pw-action-card" [class.is-csp]="phase() === 'A'" [class.is-cc]="phase() === 'B'">
+    <header class="ac-head">
+      <span class="ac-step-num">{{ cycleStep() }}</span>
+      <h2 class="ac-title">
+        Today's action — {{ phase() === 'A' ? 'SELL CASH-SECURED PUT' : 'SELL COVERED CALL' }}
+      </h2>
+      <span class="ac-step-side">{{ phase() === 'A' ? 'Phase A' : 'Phase B' }}</span>
+    </header>
+
+    @if (phase() === 'A') {
+      <p class="ac-sub">
+        While in Phase A you collect put premium. Once the put is closed (at 50% capture, expired, or rolled), you switch to Phase B and start selling calls against your NB.
+      </p>
+    } @else {
+      <p class="ac-sub">
+        While in Phase B you collect call premium against your NB shares. Once the call is closed/rolled, you can either repeat (sell another CC) or switch back to Phase A and add a CSP cycle.
+      </p>
+    }
+
+    @if (phase() === 'A' && cardCSP(); as csp) {
+      @if (csp.available && csp.best; as best) {
+        <div class="ac-body">
+          <div class="ac-trade-line">
+            <span class="ts-side ts-sell">SELL</span>
+            <strong>{{ best.strike | number:'1.0-0' }} PE {{ csp.selected_expiry }}</strong>
+            <span class="ts-at">@</span>
+            <strong>₹{{ best.premium | number:'1.2-2' }}</strong>
+            <span class="ts-note">bid ₹{{ best.bid | number:'1.2-2' }} / ask ₹{{ best.ask | number:'1.2-2' }}</span>
+          </div>
+
+          <div class="ac-metrics">
+            <span>{{ best.otm_pct | number:'1.1-1' }}% OTM</span>
+            <span class="dot">·</span>
+            <span>Δ {{ best.delta | number:'1.2-2' }}</span>
+            <span class="dot">·</span>
+            <span>~{{ best.days_to_50pct }}d to 50% capture</span>
+            <span class="dot">·</span>
+            <span>≈{{ best.early_yield_pct | number:'1.1-1' }}% p.a.</span>
+            <span class="dot">·</span>
+            <span>{{ best.prob_safe_pct }}% odds expires worthless</span>
+          </div>
+
+          <div class="ac-summary">{{ best.summary }}</div>
+
+          <div class="ac-expiry-row">
+            <span>Change expiry:</span>
+            <select class="pw-expiry-pick"
+                    [ngModel]="cspExpiry()"
+                    (ngModelChange)="changeCspExpiry($event)">
+              @for (e of csp.expiries; track e) { <option [value]="e">{{ e }}</option> }
+            </select>
+            <span class="ac-dte-mini">DTE {{ csp.dte }}d</span>
+          </div>
+
+          @if (best.why_good?.length) {
+          <div class="ac-why ac-why-good">
+            <div class="ac-why-title">✓ Why this strike scores well</div>
+            <ul>@for (g of best.why_good; track $index) { <li>{{ g }}</li> }</ul>
+          </div>
+          }
+          @if (best.why_caution?.length) {
+          <div class="ac-why ac-why-caution">
+            <div class="ac-why-title">⚠ Trade-offs</div>
+            <ul>@for (c of best.why_caution; track $index) { <li>{{ c }}</li> }</ul>
+          </div>
+          }
+
+          <div class="ac-assignment">
+            <strong>If assigned:</strong> {{ best.assignment_note }}
+          </div>
+
+          <div class="ac-cta-row">
+            @if (!hasCspOpen()) {
+              <button class="ac-cta-primary" (click)="toggleCspOpen(true)">
+                ✓ I sold this CSP — track it
+              </button>
+            } @else {
+              <button class="ac-cta-secondary" (click)="toggleCspOpen(false)">
+                Close CSP / mark as exited
+              </button>
+            }
+            <a class="ac-cta-link" routerLink="/math-handbook" fragment="pw-strikes">Show math →</a>
+          </div>
+
+          @if (csp.alternatives.length) {
+            <details class="ac-alts-toggle">
+              <summary>See {{ csp.alternatives.length }} runner-up strike(s)</summary>
+              <div class="pw-alts">
+                @for (a of csp.alternatives; track a.strike) {
+                  <div class="alt-row">
+                    <span class="alt-rank">#{{ a.rank }}</span>
+                    <span class="alt-strike">{{ a.strike | number:'1.0-0' }} PE</span>
+                    <span>₹{{ a.premium | number:'1.2-2' }}</span>
+                    <span>Δ {{ a.delta | number:'1.2-2' }}</span>
+                    <span>{{ a.otm_pct | number:'1.1-1' }}% OTM</span>
+                    <span>~{{ a.days_to_50pct }}d to 50%</span>
+                    <span>{{ a.prob_safe_pct }}% safe</span>
+                    <span class="alt-score">score {{ a.score | number:'1.1-1' }}</span>
+                  </div>
+                }
+              </div>
+            </details>
+          }
+        </div>
+      } @else {
+        <div class="pw-empty">No suitable CSP candidates in the current chain.</div>
+      }
+    }
+
+    @if (phase() === 'B' && cardCC(); as cc) {
+      @if (!hasNbPos()) {
+        <div class="ac-blocked">
+          <strong>Phase B is locked.</strong> You need NB shares first — go to Phase A or buy NB outright (mark as bought above).
+        </div>
+      } @else if (cc.available && cc.best; as best) {
+        <div class="ac-body">
+          <div class="ac-trade-line">
+            <span class="ts-side ts-sell">SELL</span>
+            <strong>{{ best.strike | number:'1.0-0' }} CE {{ cc.selected_expiry }}</strong>
+            <span class="ts-at">@</span>
+            <strong>₹{{ best.premium | number:'1.2-2' }}</strong>
+            @if (best.above_floor === false) {
+              <span class="ts-floor-warn">⚠ below strike floor</span>
+            }
+          </div>
+
+          <div class="ac-metrics">
+            <span>{{ best.otm_pct | number:'1.1-1' }}% OTM</span>
+            <span class="dot">·</span>
+            <span>Δ {{ best.delta | number:'1.2-2' }}</span>
+            <span class="dot">·</span>
+            <span>~{{ best.days_to_50pct }}d to 50%</span>
+            <span class="dot">·</span>
+            <span>≈{{ best.early_yield_pct | number:'1.1-1' }}% p.a.</span>
+            <span class="dot">·</span>
+            <span>{{ best.prob_safe_pct }}% safe</span>
+          </div>
+
+          <div class="ac-summary">{{ best.summary }}</div>
+
+          <div class="ac-expiry-row">
+            <span>Change expiry:</span>
+            <select class="pw-expiry-pick"
+                    [ngModel]="ccExpiry()"
+                    (ngModelChange)="changeCcExpiry($event)">
+              @for (e of cc.expiries; track e) { <option [value]="e">{{ e }}</option> }
+            </select>
+            <span class="ac-dte-mini">DTE {{ cc.dte }}d</span>
+            @if (cc.strike_floor) {
+              <span class="ac-floor-mini" [title]="cc.strike_floor_basis">
+                Strike floor ₹{{ cc.strike_floor | number:'1.2-2' }}
+              </span>
+            }
+          </div>
+
+          @if (best.why_good?.length) {
+          <div class="ac-why ac-why-good">
+            <div class="ac-why-title">✓ Why this strike scores well</div>
+            <ul>@for (g of best.why_good; track $index) { <li>{{ g }}</li> }</ul>
+          </div>
+          }
+          @if (best.why_caution?.length) {
+          <div class="ac-why ac-why-caution">
+            <div class="ac-why-title">⚠ Trade-offs</div>
+            <ul>@for (c of best.why_caution; track $index) { <li>{{ c }}</li> }</ul>
+          </div>
+          }
+
+          <div class="ac-cta-row">
+            @if (!hasCcOpen()) {
+              <button class="ac-cta-primary" (click)="toggleCcOpen(true)">
+                ✓ I sold this CC — track it
+              </button>
+            } @else {
+              <button class="ac-cta-secondary" (click)="toggleCcOpen(false)">
+                Close CC / mark as exited
+              </button>
+            }
+            <a class="ac-cta-link" routerLink="/math-handbook" fragment="pw-strikes">Show math →</a>
+          </div>
+
+          @if (cc.alternatives.length) {
+            <details class="ac-alts-toggle">
+              <summary>See {{ cc.alternatives.length }} runner-up strike(s)</summary>
+              <div class="pw-alts">
+                @for (a of cc.alternatives; track a.strike) {
+                  <div class="alt-row" [class.alt-below-floor]="a.above_floor === false">
+                    <span class="alt-rank">#{{ a.rank }}</span>
+                    <span class="alt-strike">{{ a.strike | number:'1.0-0' }} CE</span>
+                    <span>₹{{ a.premium | number:'1.2-2' }}</span>
+                    <span>Δ {{ a.delta | number:'1.2-2' }}</span>
+                    <span>{{ a.otm_pct | number:'1.1-1' }}% OTM</span>
+                    <span>~{{ a.days_to_50pct }}d to 50%</span>
+                    <span>{{ a.prob_safe_pct }}% safe</span>
+                    <span class="alt-score">score {{ a.score | number:'1.1-1' }}</span>
+                  </div>
+                }
+              </div>
+            </details>
+          }
+        </div>
+      } @else {
+        <div class="pw-empty">No suitable CC candidates in the current chain.</div>
+      }
+    }
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       ROLL WATCH — only fires on the active income leg
+       ════════════════════════════════════════════════════════════════════ -->
+  @if (cardMonitor()) {
+  <section class="pw-roll-watch">
+    <header class="rw-head">
+      <h3>Roll Watch — {{ activeIncomeLeg() }} {{ phase() === 'A' ? '(Phase A)' : '(Phase B)' }}</h3>
+      <span class="rw-leg-pill">Active leg: {{ activeIncomeLeg() }}</span>
+    </header>
+
+    <p class="rw-sub">
+      These triggers are watched continuously while your {{ activeIncomeLeg() }} is open.
+      The hedge trigger runs in parallel (it's the persistent leg).
+    </p>
+
+    @if (activeAlerts().length) {
+      <div class="pw-alerts">
+        @for (a of activeAlerts(); track $index) {
+          <div class="pw-alert" [class.fires]="a.fires">
+            <div class="alert-head">
+              <span class="alert-leg">{{ a.leg }}</span>
+              <span class="alert-trigger">{{ a.trigger }}</span>
+              <span class="alert-state" [class.fires]="a.fires">
+                {{ a.fires ? '🔴 FIRES' : '🟢 OK' }}
+              </span>
+            </div>
+            <div class="alert-vals">
+              <span><strong>Now:</strong> {{ a.current_value }}</span>
+              <span><strong>Threshold:</strong> {{ a.threshold }}</span>
+            </div>
+            <div class="alert-why"><strong>Why:</strong> {{ a.why }}</div>
+          </div>
+        }
+      </div>
+    } @else {
+      <div class="pw-empty">No alerts to monitor — open a position to start tracking.</div>
+    }
+
+    <a class="pw-show-math" routerLink="/math-handbook" fragment="pw-exit">Show exit math →</a>
+  </section>
+  }
+
+  } <!-- end if scan() -->
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       BEST CYCLE MODAL
+       ════════════════════════════════════════════════════════════════════ -->
+  @if (bestModalOpen()) {
+  <div class="pw-modal-backdrop" (click)="closeBestCycle()">
+    <div class="pw-modal" (click)="$event.stopPropagation()">
+      <header class="pw-modal-head">
+        <h2>🏆 Best Cycle Today</h2>
+        <button class="pw-modal-close" (click)="closeBestCycle()">✕</button>
+      </header>
+
+      @if (bestLoading()) {
+        <div class="pw-loading"><span class="pw-spinner"></span> Scanning all legs across expiries…</div>
+      } @else if (bestCycle(); as bc) {
+        <div class="pw-modal-body">
+          <p class="pw-modal-summary">{{ bc.summary }}</p>
+
+          <div class="pw-monthly">
+            <div class="mn-row pos"><span>+ Gross premium / mo</span><strong>{{ fmtRs(bc.monthly_estimate.gross_premium) }}</strong></div>
+            <div class="mn-row neg"><span>− Hedge cost / mo</span><strong>{{ fmtRs(-bc.monthly_estimate.hedge_cost) }}</strong></div>
+            <div class="mn-row neg"><span>− Friction</span><strong>{{ fmtRs(-bc.monthly_estimate.friction) }}</strong></div>
+            <div class="mn-row total">
+              <span>= Net</span>
+              <strong>{{ fmtRs(bc.monthly_estimate.net) }} ({{ bc.monthly_estimate.net_pct | number:'1.2-2' }}% / mo)</strong>
+            </div>
+          </div>
+
+          <ol class="pw-plan-steps">
+            @for (s of bc.plan_steps; track s.step) {
+              <li class="plan-step">
+                <div class="ps-head">
+                  <span class="ps-num">{{ s.step }}</span>
+                  <span class="ps-leg">{{ s.leg }}</span>
+                </div>
+                <div class="ps-action">{{ s.action }}</div>
+                <div class="ps-rationale">{{ s.rationale }}</div>
+              </li>
+            }
+          </ol>
+
+          <p class="pw-modal-note">
+            ⚠ This plan combines the highest-scoring strikes from each leg. Live execution requires the trade-builder module — coming next iteration.
+          </p>
+        </div>
+      } @else {
+        <div class="pw-error">Failed to compute best cycle.</div>
+      }
+    </div>
+  </div>
+  }
+
+</div>

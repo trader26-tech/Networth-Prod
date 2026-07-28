@@ -1,0 +1,5 @@
+done 1)add delta to see at what price and what time what pAndL i will have
+done 2)at what point i have to keep adding more margin?
+no need 3)Find future price of ATM
+4) find best time to sell the option and nifty bees
+5)what should be the correct ratio to p[ledge]

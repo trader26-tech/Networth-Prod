@@ -1,0 +1,690 @@
+<div class="pf-page">
+
+  <!-- Header -->
+  <div class="pf-header">
+    <div class="pf-title-block">
+      <h1 class="pf-title">📂 Portfolio Analyzer</h1>
+      <p class="pf-sub">Upload your holdings sheet — we'll fetch live NSE prices and surface the 10 things you need to act on.</p>
+    </div>
+    @if (result()) {
+    <div class="pf-header-right">
+      @if (isFromCache()) {
+      <span class="pf-cache-badge" title="Result restored from browser cache — click Refresh for live prices">
+        ● Cached
+      </span>
+      }
+      <span class="pf-file-tag">📄 {{ fileName() }}</span>
+      <button class="pf-btn-secondary" (click)="refreshPrices()" [disabled]="refreshing()">
+        {{ refreshing() ? '↻ Refreshing…' : '⟳ Refresh prices' }}
+      </button>
+      <button class="pf-btn-secondary" (click)="clear()">✕ Clear</button>
+    </div>
+    }
+  </div>
+
+  <!-- Cache-restored notice -->
+  @if (result() && isFromCache()) {
+  <div class="pf-cache-notice">
+    <span class="pcn-icon">📋</span>
+    <span class="pcn-text">Showing your last analysis · prices may be stale</span>
+    <button class="pcn-refresh" (click)="refreshPrices()" [disabled]="refreshing()">
+      {{ refreshing() ? '↻ Refreshing…' : '⟳ Refresh for live prices' }}
+    </button>
+  </div>
+  }
+
+  <!-- Upload zone -->
+  @if (!result() && !preview() && !loading() && !previewLoading()) {
+  <div class="pf-dropzone" [class.dragging]="isDragging()"
+       (dragover)="onDragOver($event)" (dragleave)="onDragLeave($event)" (drop)="onDrop($event)">
+    <div class="pf-drop-icon">📊</div>
+    <div class="pf-drop-title">Drop your portfolio file here</div>
+    <div class="pf-drop-sub">Supports .xlsx · .xls · .csv</div>
+    <div class="pf-drop-cols">
+      Required columns: <code>SHARE</code> · <code>Total Qty</code><br>
+      Optional: <code>Avg CMP</code> · <code>Total Purchase Value</code> · <code>Price per share</code>
+    </div>
+    <label class="pf-pick-btn">
+      Browse file
+      <input type="file" accept=".xlsx,.xls,.csv" (change)="onFileSelected($event)" hidden>
+    </label>
+    @if (error()) { <div class="pf-error">⚠ {{ error() }}</div> }
+  </div>
+  }
+
+  @if (previewLoading()) {
+  <div class="pf-loading"><div class="pf-spinner"></div><div>Reading sheet…</div></div>
+  }
+
+  <!-- Preview + format-fix step -->
+  @if (preview(); as pv) {
+    @if (trimmedPreview(); as tp) {
+    <div class="pf-card pf-preview">
+      <div class="pf-preview-head">
+        <div class="pf-preview-title-block">
+          <div class="pf-preview-title">🔧 Fix file format</div>
+          <div class="pf-preview-sub">
+            📄 {{ fileName() }} · {{ pv.total_rows }} rows × {{ pv.total_cols }} cols
+            @if (pv.total_rows > pv.rows.length) {
+              <span class="pf-preview-warn">· showing first {{ pv.rows.length }}</span>
+            }
+          </div>
+        </div>
+        <button class="pf-btn-text" (click)="cancelPreview()">✕ Pick another file</button>
+      </div>
+      <div class="pf-fix-grid">
+        <div class="pf-fix-ctrl">
+          <label>Skip first rows</label>
+          <div class="pf-stepper">
+            <button (click)="bumpSkipRows(-1)" [disabled]="skipRows() === 0">−</button>
+            <input type="number" min="0" max="20" [ngModel]="skipRows()" (ngModelChange)="onSkipRowsChange($event)">
+            <button (click)="bumpSkipRows(1)">+</button>
+          </div>
+          <span class="pf-fix-hint">Drop summary rows above the header</span>
+        </div>
+        <div class="pf-fix-ctrl">
+          <label>Drop first columns</label>
+          <div class="pf-stepper">
+            <button (click)="bumpDropFirstCols(-1)" [disabled]="dropFirstCols() === 0">−</button>
+            <input type="number" min="0" max="20" [ngModel]="dropFirstCols()" (ngModelChange)="onDropFirstColsChange($event)">
+            <button (click)="bumpDropFirstCols(1)">+</button>
+          </div>
+          <span class="pf-fix-hint">Trim leading index / serial columns</span>
+        </div>
+        <div class="pf-fix-ctrl">
+          <label>Drop last columns</label>
+          <div class="pf-stepper">
+            <button (click)="bumpDropLastCols(-1)" [disabled]="dropLastCols() === 0">−</button>
+            <input type="number" min="0" max="20" [ngModel]="dropLastCols()" (ngModelChange)="onDropLastColsChange($event)">
+            <button (click)="bumpDropLastCols(1)">+</button>
+          </div>
+          <span class="pf-fix-hint">Drop trailing notes / blank columns</span>
+        </div>
+        <div class="pf-fix-actions">
+          <button class="pf-btn-secondary" (click)="resetFormatFixes()"
+                  [disabled]="skipRows() === 0 && dropFirstCols() === 0 && dropLastCols() === 0">
+            ↺ Reset
+          </button>
+        </div>
+      </div>
+      <div class="pf-preview-table-wrap">
+        <table class="pf-preview-table">
+          <thead>
+            <tr>
+              <th class="pf-preview-rownum">#</th>
+              @for (cell of tp.header; track $index) { <th>{{ cell || '—' }}</th> }
+            </tr>
+          </thead>
+          <tbody>
+            @if (tp.body.length === 0) {
+            <tr><td [attr.colspan]="tp.header.length + 1" class="pf-preview-empty">
+              No data rows after trimming. Reduce skip / drop values.
+            </td></tr>
+            } @else {
+              @for (row of tp.body; track $index) {
+              <tr>
+                <td class="pf-preview-rownum">{{ $index + 1 }}</td>
+                @for (cell of row; track $index) { <td>{{ cell }}</td> }
+              </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </div>
+      <div class="pf-preview-footer">
+        <div class="pf-preview-summary">
+          After trim: <strong>{{ tp.remaining_rows }}</strong> data rows · <strong>{{ tp.remaining_cols }}</strong> columns
+          @if (tp.header.length) { · header reads <em>{{ (tp.header[0] || '—') }}, {{ (tp.header[1] || '—') }}…</em> }
+        </div>
+        <button class="pf-btn-primary" (click)="confirmAndAnalyze()"
+                [disabled]="loading() || tp.body.length === 0">
+          {{ loading() ? 'Analyzing…' : 'Analyze →' }}
+        </button>
+      </div>
+      @if (error()) { <div class="pf-error">⚠ {{ error() }}</div> }
+    </div>
+    }
+  }
+
+  @if (loading()) {
+  <div class="pf-loading"><div class="pf-spinner"></div><div>Parsing sheet + fetching live prices…</div></div>
+  }
+
+  <!-- ══════════════════════ Result view ══════════════════════════════════ -->
+  @if (result(); as r) {
+
+  <!-- Live data status strip -->
+  <div class="pf-status-strip" [class.pf-status-warn]="!r.stats.live_data">
+    @if (r.stats.live_data) {
+    <span class="pf-dot pf-dot-live"></span>
+    <span>Live NSE data · {{ r.stats.priced_count }}/{{ r.stats.n_holdings }} priced from Kite</span>
+    } @else {
+    <span class="pf-dot pf-dot-warn"></span>
+    <span>Kite not connected — showing prices from your sheet. <strong>Connect API in settings for live data.</strong></span>
+    }
+    @if (r.stats.unmatched > 0) {
+    <span class="pf-status-extra">· {{ r.stats.unmatched }} share(s) couldn't be matched to NSE</span>
+    }
+    @if (r.stats.skipped_rows > 0) {
+    <span class="pf-status-extra"
+          [title]="'Skipped: ' + r.skipped_rows.length + ' aggregate / blank / total row(s) — these are not real holdings.'">
+      · {{ r.stats.skipped_rows }} aggregate row(s) auto-skipped
+    </span>
+    }
+  </div>
+
+  <!-- KPI insights — only Total Unrealised P&L + Portfolio Value -->
+  <div class="pf-insights-grid pf-insights-top">
+    @for (ins of filteredInsights(); track ins.id) {
+    <div class="pf-insight pf-tone-{{ ins.tone }}">
+      <div class="pf-ins-head">
+        <span class="pf-ins-icon">{{ ins.icon }}</span>
+        <span class="pf-ins-label">{{ ins.label }}</span>
+      </div>
+      <div class="pf-ins-value">{{ fmtInsightVal(ins) }}</div>
+      <div class="pf-ins-sub">{{ ins.sub }}</div>
+    </div>
+    }
+  </div>
+
+  <!-- ════════ Fundamentals · Snowflake ═══════════════════════════════════ -->
+  <div class="pf-card pf-snowflake-card">
+    <div class="pf-card-head">
+      <div>
+        <span class="pf-card-title">❄️ Fundamentals · Snowflake</span>
+        <span class="pf-card-sub">
+          6-axis score per holding · click a row to see all 45 metrics
+          @if (liveConnected()) { · <span class="pf-live-dot"></span>live LTP {{ liveLastUpdate() }} }
+          @else { · <span class="pf-warn-dot"></span>Kite not connected — using sheet prices }
+        </span>
+      </div>
+      <div class="pf-bucket-chips">
+        @for (b of [
+            {k: 'ALL',               l: 'All'},
+            {k: 'KEEP_AND_ADD',      l: 'Keep'},
+            {k: 'HOLD',              l: 'Hold'},
+            {k: 'TRIM',              l: 'Trim'},
+            {k: 'EXIT',              l: 'Exit'},
+            {k: 'INSUFFICIENT_DATA', l: 'Not trackable'}
+          ]; track b.k) {
+          <button class="pf-chip pf-chip-{{ b.k }}"
+                  [class.active]="snowflakeBucket() === b.k"
+                  (click)="setSnowflakeBucket(b.k)">
+            {{ b.l }}
+            <span class="pf-chip-n">
+              @if (b.k === 'ALL') { {{ visibleHoldings().length }} }
+              @else { {{ snowflakeBucketCounts()[b.k] || 0 }} }
+            </span>
+          </button>
+        }
+      </div>
+    </div>
+
+    @if (snowflakeUnavailable()) {
+      <div class="pf-snowflake-unavailable">
+        <div class="pf-snow-empty-title">📂 Snowflake universe not deployed</div>
+        <div class="pf-snow-empty-body">
+          The backend doesn't have <code>api/fundamentals/data/tickertape_universe.csv</code> on disk
+          (the file is gitignored — it holds your Tickertape Pro export and shouldn't be committed).
+          Upload the file to the server, or run the fundamentals pipeline locally and copy the
+          generated CSV to that path. Once it lands, restart the API and the scores will load.
+        </div>
+      </div>
+    }
+    @if (snowflakeLoading() && !snowflakeUnavailable()) {
+      <div class="pf-snowflake-loading">Loading Snowflake scores…</div>
+    }
+    @if (snowflakeError()) {
+      <div class="pf-error">⚠ Snowflake load failed: {{ snowflakeError() }}</div>
+    }
+
+    @if (fundamentalsRows().length) {
+    <div class="pf-snowflake-grid">
+      @for (row of fundamentalsRows(); track row.symbol) {
+        <div class="pf-snowflake-card-row"
+             role="button" tabindex="0"
+             (click)="openDetail(row)"
+             (keyup.enter)="openDetail(row)"
+             [class.has-snow]="row.snow"
+             [class.bucket-keep]="row.snow?.bucket === 'KEEP_AND_ADD'"
+             [class.bucket-hold]="row.snow?.bucket === 'HOLD'"
+             [class.bucket-trim]="row.snow?.bucket === 'TRIM'"
+             [class.bucket-exit]="row.snow?.bucket === 'EXIT'"
+             [class.bucket-insuff]="row.snow?.bucket === 'INSUFFICIENT_DATA'">
+          <div class="pf-snow-left">
+            <app-snowflake-radar
+              [axes_data]="row.snow?.axes ?? null"
+              [bucket]="row.snow?.bucket"
+              [composite]="row.snow?.composite ?? null"
+              [size]="180"
+              [pad]="28" />
+          </div>
+          <div class="pf-snow-mid">
+            <div class="pf-snow-head">
+              <span class="pf-snow-ticker">{{ row.symbol }}</span>
+              @if (row.snow) {
+                <span class="pf-bucket-pill pf-bucket-{{ row.snow.bucket }}">
+                  {{ bucketLabel(row.snow.bucket) }}
+                </span>
+              } @else {
+                <span class="pf-bucket-pill pf-bucket-UNSCORED">Unscored</span>
+              }
+            </div>
+            <div class="pf-snow-name">{{ row.share }}</div>
+            <div class="pf-snow-sub">
+              @if (row.snow?.subsector) { {{ row.snow.subsector }} · }
+              {{ row.snow?.cap_tier || 'unknown' }} cap
+              @if (row.snow?.market_cap_cr != null) { · ₹{{ row.snow.market_cap_cr | number:'1.0-0' }} Cr }
+            </div>
+            <div class="pf-snow-axes">
+              @if (row.snow) {
+                <span class="ax" [class.untracked]="!row.snow.axes.value.trackable">V
+                  <b>{{ row.snow.axes.value.trackable ? (row.snow.axes.value.score | number:'1.1-1') : 'n/a' }}</b></span>
+                <span class="ax" [class.untracked]="!row.snow.axes.future.trackable">F
+                  <b>{{ row.snow.axes.future.trackable ? (row.snow.axes.future.score | number:'1.1-1') : 'n/a' }}</b></span>
+                <span class="ax" [class.untracked]="!row.snow.axes.past.trackable">P
+                  <b>{{ row.snow.axes.past.trackable ? (row.snow.axes.past.score | number:'1.1-1') : 'n/a' }}</b></span>
+                <span class="ax" [class.untracked]="!row.snow.axes.health.trackable">H
+                  <b>{{ row.snow.axes.health.trackable ? (row.snow.axes.health.score | number:'1.1-1') : 'n/a' }}</b></span>
+                <span class="ax" [class.untracked]="!row.snow.axes.dividend.trackable">D
+                  <b>{{ row.snow.axes.dividend.trackable ? (row.snow.axes.dividend.score | number:'1.1-1') : 'n/a' }}</b></span>
+                <span class="ax" [class.untracked]="!row.snow.axes.governance.trackable">G
+                  <b>{{ row.snow.axes.governance.trackable ? (row.snow.axes.governance.score | number:'1.1-1') : 'n/a' }}</b></span>
+                <span class="ax composite">
+                  @if (row.snow.composite != null) {
+                    Composite <b>{{ row.snow.composite | number:'1.2-2' }}</b>/6
+                  } @else {
+                    <b>n/a</b> · only {{ row.snow.n_trackable || 0 }}/6 axes have data
+                  }
+                </span>
+              }
+            </div>
+            @if (row.spark) {
+              <div class="pf-snow-spark">
+                <app-sparkline [points]="row.spark.points"
+                               [changePct]="row.spark.change_pct"
+                               [width]="120" [height]="36" />
+                <span class="pf-spark-label"
+                      [class.positive]="row.spark.change_pct >= 0"
+                      [class.negative]="row.spark.change_pct < 0">
+                  1Y {{ row.spark.change_pct >= 0 ? '+' : '' }}{{ row.spark.change_pct | number:'1.1-1' }}%
+                </span>
+              </div>
+            }
+            <div class="pf-snow-tap-hint">Tap for full reasoning →</div>
+          </div>
+          <div class="pf-snow-right">
+            <div class="pf-snow-ltp">
+              <span class="lbl">LTP{{ row.is_live ? ' · live' : '' }}</span>
+              <span class="val">{{ row.ltp != null ? ('₹' + (row.ltp | number:'1.2-2')) : '—' }}</span>
+            </div>
+            <div class="pf-snow-pos">
+              <span class="lbl">Qty</span><span class="val">{{ row.qty | number }}</span>
+            </div>
+            <div class="pf-snow-pos">
+              <span class="lbl">Avg</span>
+              <span class="val">{{ row.avg_cmp != null ? ('₹' + (row.avg_cmp | number:'1.2-2')) : '—' }}</span>
+            </div>
+            <div class="pf-snow-pos">
+              <span class="lbl">Value</span>
+              <span class="val">{{ row.live_value != null ? ('₹' + (row.live_value | number:'1.0-0')) : '—' }}</span>
+            </div>
+            <div class="pf-snow-pnl"
+                 [class.positive]="row.live_pnl != null && row.live_pnl >= 0"
+                 [class.negative]="row.live_pnl != null && row.live_pnl < 0">
+              {{ row.live_pnl != null
+                  ? (row.live_pnl >= 0 ? '+₹' : '−₹') + ((row.live_pnl < 0 ? -row.live_pnl : row.live_pnl) | number:'1.0-0')
+                  : '—' }}
+              @if (row.live_pnl_pct != null) {
+                <span class="pct">
+                  ({{ row.live_pnl_pct >= 0 ? '+' : '' }}{{ row.live_pnl_pct | number:'1.2-2' }}%)
+                </span>
+              }
+            </div>
+            <div class="pf-snow-weight">{{ row.weight_pct | number:'1.2-2' }}% of portfolio</div>
+          </div>
+        </div>
+      }
+    </div>
+    } @else if (!snowflakeLoading() && result()?.holdings?.length) {
+      <div class="pf-snowflake-empty">No holdings match the selected bucket.</div>
+    }
+  </div>
+
+  <!-- ════════ P&L History chart ══════════════════════════════════════════ -->
+  <div class="pf-card pf-history-card">
+    <div class="pf-card-head">
+      <div>
+        <span class="pf-card-title">📈 P&L History</span>
+        <span class="pf-card-sub">Portfolio profit / loss over time</span>
+      </div>
+      <div class="pf-history-controls">
+        @if (historyData().length) {
+        <div class="pf-range-pills">
+          <button [class.active]="historyRange() === 7"  (click)="setHistoryRange(7)">1W</button>
+          <button [class.active]="historyRange() === 28" (click)="setHistoryRange(28)">4W</button>
+          <button [class.active]="historyRange() === 84" (click)="setHistoryRange(84)">12W</button>
+        </div>
+        }
+        @if (!historyData().length && !historyLoading()) {
+        <button class="pf-btn-secondary pf-load-btn" (click)="loadHistory()"
+                [disabled]="!r.stats.live_data">
+          {{ r.stats.live_data ? '⟳ Load history' : 'Kite required' }}
+        </button>
+        }
+        @if (historyLoading()) {
+        <span class="pf-history-loading"><span class="pf-spinner-sm"></span> Fetching…</span>
+        }
+      </div>
+    </div>
+
+    @if (historyData().length) {
+    <canvas #historyCanvas class="pf-history-canvas"></canvas>
+    } @else if (!historyLoading()) {
+    <div class="pf-history-empty">
+      @if (historyError()) {
+      <span class="pf-error-inline">⚠ {{ historyError() }}</span>
+      } @else {
+      <span>Click "Load history" to see your portfolio P&L over time</span>
+      }
+    </div>
+    }
+  </div>
+
+  <!-- ════════ Buy / Sell signals ═════════════════════════════════════════ -->
+  <div class="pf-signals-row">
+    <!-- Load button or spinner -->
+    @if (!signals() && !signalsLoading()) {
+    <div class="pf-signals-cta">
+      <div class="pf-signals-cta-text">
+        <div class="pf-signals-cta-title">🤖 AI Trading Signals</div>
+        <div class="pf-signals-cta-sub">RSI + Moving Average analysis of your holdings</div>
+      </div>
+      <button class="pf-btn-primary" (click)="loadSignals()" [disabled]="!r.stats.live_data">
+        {{ r.stats.live_data ? '⚡ Analyse signals' : 'Kite required' }}
+      </button>
+    </div>
+    }
+
+    @if (signalsLoading()) {
+    <div class="pf-signals-cta">
+      <span class="pf-spinner-sm"></span>
+      <span>Fetching 60 days of price history per holding — may take 10-20 s…</span>
+    </div>
+    }
+
+    @if (signalsError() && !signalsLoading()) {
+    <div class="pf-signals-cta"><span class="pf-error-inline">⚠ {{ signalsError() }}</span></div>
+    }
+
+    @if (signals(); as sig) {
+    <!-- Buy signals -->
+    <div class="pf-signal-card pf-signal-buy">
+      <div class="pf-signal-head">
+        <span class="pf-signal-icon">🟢</span>
+        <div>
+          <div class="pf-signal-title">Buy Today</div>
+          <div class="pf-signal-sub">RSI + Moving Average signals · {{ sig.analyzed }} holdings analysed</div>
+        </div>
+        <button class="pf-btn-text pf-signal-refresh" (click)="loadSignals()" title="Refresh signals">↻</button>
+      </div>
+      @if (sig.buys.length === 0) {
+      <div class="pf-signal-empty">No strong buy signals right now</div>
+      } @else {
+        @for (b of sig.buys; track b.symbol) {
+        <div class="pf-signal-row pf-signal-row-detail">
+
+          <!-- Row 1: symbol + RSI badge + confidence stars -->
+          <div class="pf-srd-top">
+            <span class="pf-srd-sym">{{ b.symbol }}</span>
+            <span class="pf-signal-rsi rsi-low">RSI {{ b.rsi | number:'1.1-1' }} — Oversold</span>
+            <span class="pf-srd-stars pf-stars-buy">{{ starScore(b.score, b.max_score) }}</span>
+            <span class="pf-srd-conf">{{ b.score }}/{{ b.max_score }} confidence</span>
+          </div>
+
+          <!-- Row 2: your position summary -->
+          <div class="pf-srd-pos">
+            <span class="pf-srd-label">Your position</span>
+            <span>{{ b.your_qty | number:'1.0-0' }} shares</span>
+            <span class="pf-srd-sep">·</span>
+            <span>Avg cost ₹{{ b.your_avg_cost | number:'1.2-2' }}</span>
+            <span class="pf-srd-sep">·</span>
+            <span>Invested {{ fmtRs(b.your_invested) }}</span>
+            <span class="pf-srd-sep">·</span>
+            <span [class.positive]="b.pnl_pct >= 0" [class.negative]="b.pnl_pct < 0">
+              {{ b.pnl_pct >= 0 ? '+' : '' }}{{ b.pnl_pct | number:'1.1-1' }}% P&L
+            </span>
+          </div>
+
+          <!-- Row 3: MA levels -->
+          <div class="pf-srd-ma">
+            <span class="pf-srd-label">Technicals</span>
+            @if (b.ma20) {
+              <span class="pf-ma-chip">
+                MA20 ₹{{ b.ma20 | number:'1.2-2' }}
+                <span [class.pf-ma-above]="b.price >= b.ma20" [class.pf-ma-below]="b.price < b.ma20">
+                  {{ maRelPct(b.price, b.ma20) }}
+                </span>
+              </span>
+            }
+            @if (b.ma50) {
+              <span class="pf-ma-chip">
+                MA50 ₹{{ b.ma50 | number:'1.2-2' }}
+                <span [class.pf-ma-above]="b.price >= b.ma50" [class.pf-ma-below]="b.price < b.ma50">
+                  {{ maRelPct(b.price, b.ma50) }}
+                </span>
+              </span>
+            }
+          </div>
+
+          <!-- Row 4: suggested action -->
+          <div class="pf-srd-action">
+            <span class="pf-signal-price pf-action-buy">BUY {{ b.qty }} shares @ ₹{{ b.price | number:'1.2-2' }} limit</span>
+            <span class="pf-srd-invest">~{{ fmtRs(b.investment) }} additional investment</span>
+          </div>
+
+          <!-- Row 5: full reason -->
+          <div class="pf-srd-reason">{{ b.reason }}</div>
+        </div>
+        }
+      }
+    </div>
+
+    <!-- Sell signals -->
+    <div class="pf-signal-card pf-signal-sell">
+      <div class="pf-signal-head">
+        <span class="pf-signal-icon">🔴</span>
+        <div>
+          <div class="pf-signal-title">Sell / Book Profits Today</div>
+          <div class="pf-signal-sub">Overbought or momentum-reversal candidates</div>
+        </div>
+      </div>
+      @if (sig.sells.length === 0) {
+      <div class="pf-signal-empty">No strong sell signals right now</div>
+      } @else {
+        @for (s of sig.sells; track s.symbol) {
+        <div class="pf-signal-row pf-signal-row-detail">
+
+          <!-- Row 1: symbol + RSI badge + confidence stars -->
+          <div class="pf-srd-top">
+            <span class="pf-srd-sym">{{ s.symbol }}</span>
+            <span class="pf-signal-rsi rsi-high">RSI {{ s.rsi | number:'1.1-1' }} — Overbought</span>
+            <span class="pf-srd-stars pf-stars-sell">{{ starScore(s.score, s.max_score) }}</span>
+            <span class="pf-srd-conf">{{ s.score }}/{{ s.max_score }} confidence</span>
+          </div>
+
+          <!-- Row 2: your position summary -->
+          <div class="pf-srd-pos">
+            <span class="pf-srd-label">Your position</span>
+            <span>{{ s.your_qty | number:'1.0-0' }} shares</span>
+            <span class="pf-srd-sep">·</span>
+            <span>Avg cost ₹{{ s.your_avg_cost | number:'1.2-2' }}</span>
+            <span class="pf-srd-sep">·</span>
+            <span>Invested {{ fmtRs(s.your_invested) }}</span>
+            <span class="pf-srd-sep">·</span>
+            <span [class.positive]="s.pnl_pct >= 0" [class.negative]="s.pnl_pct < 0">
+              {{ s.pnl_pct >= 0 ? '+' : '' }}{{ s.pnl_pct | number:'1.1-1' }}% P&L
+            </span>
+          </div>
+
+          <!-- Row 3: MA levels -->
+          <div class="pf-srd-ma">
+            <span class="pf-srd-label">Technicals</span>
+            @if (s.ma20) {
+              <span class="pf-ma-chip">
+                MA20 ₹{{ s.ma20 | number:'1.2-2' }}
+                <span [class.pf-ma-above]="s.price >= s.ma20" [class.pf-ma-below]="s.price < s.ma20">
+                  {{ maRelPct(s.price, s.ma20) }}
+                </span>
+              </span>
+            }
+            @if (s.ma50) {
+              <span class="pf-ma-chip">
+                MA50 ₹{{ s.ma50 | number:'1.2-2' }}
+                <span [class.pf-ma-above]="s.price >= s.ma50" [class.pf-ma-below]="s.price < s.ma50">
+                  {{ maRelPct(s.price, s.ma50) }}
+                </span>
+              </span>
+            }
+          </div>
+
+          <!-- Row 4: suggested action -->
+          <div class="pf-srd-action">
+            <span class="pf-signal-price pf-action-sell">SELL {{ s.qty }} shares @ ₹{{ s.price | number:'1.2-2' }} limit</span>
+            <span class="pf-srd-invest pf-book-profit">Book {{ fmtRs(s.qty * s.price) }} proceeds</span>
+          </div>
+
+          <!-- Row 5: full reason -->
+          <div class="pf-srd-reason">{{ s.reason }}</div>
+        </div>
+        }
+      }
+    </div>
+    }
+  </div>
+
+  <!-- ════════ Combined chart (Winners / Losers / ₹ Impact) ══════════════ -->
+  <div class="pf-card pf-combined-chart-card">
+    <div class="pf-combined-head">
+      <div class="pf-chart-tabs">
+        <button class="pf-tab-btn" [class.active]="chartTab() === 'winners'" (click)="chartTab.set('winners')">
+          🚀 Top Winners
+        </button>
+        <button class="pf-tab-btn" [class.active]="chartTab() === 'losers'" (click)="chartTab.set('losers')">
+          🚨 Top Losers
+        </button>
+        <button class="pf-tab-btn" [class.active]="chartTab() === 'contrib'" (click)="chartTab.set('contrib')">
+          💸 ₹ Impact
+        </button>
+      </div>
+      <span class="pf-chart-sub">
+        @if (chartTab() === 'winners') { Highest % gainers — review for partial profit booking }
+        @else if (chartTab() === 'losers') { Largest drawdowns — review thesis or cut losses }
+        @else { Absolute P&amp;L impact — these stocks move the needle most }
+      </span>
+    </div>
+    <canvas #combinedCanvas class="pf-combined-canvas"></canvas>
+  </div>
+
+  <!-- ════════ Sector breakdown pie ══════════════════════════════════════ -->
+  <div class="pf-card pf-sector-card">
+    <div class="pf-card-head">
+      <span class="pf-card-title">🥧 Sector Allocation</span>
+      <span class="pf-card-sub">By current value</span>
+    </div>
+    <canvas #sectorCanvas class="pf-sector-canvas"></canvas>
+  </div>
+
+  <!-- ════════ Holdings table ══════════════════════════════════════════════ -->
+  <div class="pf-card pf-holdings-card">
+    <div class="pf-card-head">
+      <div>
+        <span class="pf-card-title">📋 Holdings · {{ r.stats.n_holdings }} positions</span>
+        <span class="pf-card-sub">Sorted by current value · live prices in green, sheet prices in grey</span>
+      </div>
+      <div class="pf-holdings-controls">
+        <label class="pf-toggle-label">
+          <input type="checkbox" [checked]="hideSmall()" (change)="hideSmall.set(!hideSmall())">
+          <span class="pf-toggle-track"></span>
+          Hide &lt; {{ smallThresholdPct }}%
+        </label>
+        @if (hideSmall() && hiddenCount() > 0) {
+        <span class="pf-hidden-badge">{{ hiddenCount() }} hidden</span>
+        }
+      </div>
+    </div>
+    <div class="pf-table-wrap">
+      <table class="pf-table">
+        <thead>
+          <tr>
+            <th>Share</th>
+            <th>Sector</th>
+            <th class="num">Qty</th>
+            <th class="num">Avg cost</th>
+            <th class="num">Current price</th>
+            <th class="num">Invested</th>
+            <th class="num">Current value</th>
+            <th class="num">P&L</th>
+            <th class="num">P/L %</th>
+            <th class="num">Weight</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (h of visibleHoldings(); track h.share) {
+          <tr [class.has-live]="h.price_source === 'live'">
+            <td class="pf-share">
+              {{ h.share }}
+              @if (h.matched_symbol && h.matched_symbol !== h.share) {
+              <span class="pf-sym">{{ h.matched_symbol }}</span>
+              }
+            </td>
+            <td>
+              <span class="pf-sector-badge" [style.background]="sectorColor(h.sector) + '22'"
+                    [style.color]="sectorColor(h.sector)" [style.border-color]="sectorColor(h.sector) + '55'">
+                {{ h.sector }}
+              </span>
+            </td>
+            <td class="num">{{ h.qty | number:'1.0-0' }}</td>
+            <td class="num">{{ h.avg_cost | number:'1.2-2' }}</td>
+            <td class="num pf-price-cell" [class.pf-price-live]="h.price_source === 'live'"
+                [title]="h.price_source === 'live' ? 'Live NSE price' : (h.price_source === 'sheet' ? 'From your sheet (no live price)' : 'No price — using avg cost')">
+              ₹{{ h.live_price | number:'1.2-2' }}
+              @if (h.price_source === 'live') { <span class="pf-live-dot">●</span> }
+            </td>
+            <td class="num">{{ fmtRsPlain(h.invested) }}</td>
+            <td class="num">{{ fmtRsPlain(h.current_value) }}</td>
+            <td class="num" [class.positive]="h.pnl > 0" [class.negative]="h.pnl < 0">
+              {{ fmtRs(h.pnl) }}
+            </td>
+            <td class="num" [class.positive]="h.pnl_pct > 0" [class.negative]="h.pnl_pct < 0">
+              {{ h.pnl_pct >= 0 ? '+' : '' }}{{ h.pnl_pct | number:'1.2-2' }}%
+            </td>
+            <td class="num">{{ h.weight_pct | number:'1.2-2' }}%</td>
+          </tr>
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="5"><strong>TOTAL</strong></td>
+            <td class="num"><strong>{{ fmtRsPlain(r.stats.total_invested) }}</strong></td>
+            <td class="num"><strong>{{ fmtRsPlain(r.stats.total_value) }}</strong></td>
+            <td class="num" [class.positive]="r.stats.total_pnl >= 0" [class.negative]="r.stats.total_pnl < 0">
+              <strong>{{ fmtRs(r.stats.total_pnl) }}</strong>
+            </td>
+            <td class="num" [class.positive]="r.stats.total_pnl_pct >= 0" [class.negative]="r.stats.total_pnl_pct < 0">
+              <strong>{{ r.stats.total_pnl_pct >= 0 ? '+' : '' }}{{ r.stats.total_pnl_pct | number:'1.2-2' }}%</strong>
+            </td>
+            <td class="num"><strong>100%</strong></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  }
+</div>
+
+<!-- Stock-detail modal — opens when a snowflake row is clicked -->
+@if (selectedRow(); as r) {
+  <app-stock-detail [row]="r" (close)="closeDetail()" />
+}

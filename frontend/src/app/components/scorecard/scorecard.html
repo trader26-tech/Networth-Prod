@@ -1,0 +1,517 @@
+<div class="sc-page">
+
+  <!-- ════════ Header ═════════════════════════════════════════════════════ -->
+  <header class="sc-header">
+    <div>
+      <h1 class="sc-title">Scorecard</h1>
+      <p class="sc-sub">
+        6-category ranked leaderboard of stocks against their sub-sector peers.
+        Upload a Tickertape CSV with 16 metric columns + 4 anchors
+        (Name, Ticker, Sub-Sector, Market Cap) and we'll compute peer-percentile
+        scores for Performance, Valuation, Growth, Profitability, Entry Point,
+        and Dividend — then composite by adjustable weights.
+      </p>
+    </div>
+    <div class="sc-actions">
+      <label class="sc-upload-btn" [class.uploading]="uploading() || previewing()">
+        @if (uploading()) { Uploading… }
+        @else if (previewing()) { Parsing… }
+        @else { ⬆ Upload CSV(s) }
+        <input type="file" accept=".csv" multiple (change)="onUploadChange($event)" hidden>
+      </label>
+      @if (available()) {
+        <button class="sc-ghost-btn" (click)="clearAll()" title="Wipe master + raw">Clear All</button>
+      }
+    </div>
+  </header>
+
+  @if (error()) { <div class="sc-error">⚠ {{ error() }}</div> }
+
+  @if (bulkProgress(); as bp) {
+    <div class="sc-bulk-progress">
+      <div class="sc-bulk-head">
+        Uploading <b>{{ bp.done + 1 }} of {{ bp.total }}</b> — {{ bp.current }}
+      </div>
+      <div class="sc-bulk-bar">
+        <div class="sc-bulk-fill" [style.width.%]="(bp.done / bp.total) * 100"></div>
+      </div>
+    </div>
+  }
+  @if (uploadInfo(); as u) {
+    <div class="sc-upload-info">
+      ✓ Saved as <b>{{ u.saved_as }}</b> — {{ u.rows_in_file }} rows in upload;
+      <b>{{ u.unique_rows }}</b> unique stocks in master
+      <span class="sc-info-dim">({{ u.files_processed }} file(s) processed, {{ u.duplicates_dropped }} duplicate(s) overwritten)</span>
+    </div>
+  }
+
+  <!-- ════════ Empty state ════════════════════════════════════════════════ -->
+  @if (!available() && !loading()) {
+    <div class="sc-empty">
+      <div class="sc-empty-icon">📊</div>
+      <h2>No scorecard data yet</h2>
+      <p>Export your watchlist from Tickertape with all 16 metric columns and click <b>Upload CSV</b>. Expected columns:</p>
+      <div class="sc-cols">
+        <span>Name</span><span>Ticker</span><span>Sub-Sector</span><span>Market Cap</span>
+        <span>1Y Return</span><span>5Y CAGR</span><span>Sharpe Ratio</span>
+        <span>PE Ratio</span><span>PB Ratio</span><span>EV/EBITDA Ratio</span>
+        <span>5Y Hist Rev Growth</span><span>5Y Hist EPS Growth</span><span>1Y Fwd EPS Growth</span>
+        <span>ROCE</span><span>5Y Avg ROE</span><span>Net Profit Margin</span>
+        <span>% Away From 52W High</span><span>RSI – 14D</span>
+        <span>Dividend Yield</span><span>Payout Ratio</span>
+      </div>
+      <p class="sc-empty-tip">Tickertape caps each export at ~3000 rows — you can select multiple CSVs at once and we'll merge them all. Files stay on the server, dedupe by Ticker (last upload wins).</p>
+    </div>
+  }
+
+  <!-- ════════ KPI Strip ══════════════════════════════════════════════════ -->
+  @if (available() && summary(); as s) {
+    <div class="sc-kpis">
+      <div class="sc-kpi">
+        <div class="sc-kpi-lbl">Total stocks</div>
+        <div class="sc-kpi-val">{{ s.total }}</div>
+      </div>
+      <div class="sc-kpi">
+        <div class="sc-kpi-lbl">Sub-sectors</div>
+        <div class="sc-kpi-val">{{ s.distinct_sectors }}</div>
+      </div>
+      <div class="sc-kpi">
+        <div class="sc-kpi-lbl">Showing</div>
+        <div class="sc-kpi-val">{{ sortedRows().length }}</div>
+      </div>
+      <div class="sc-kpi">
+        <div class="sc-kpi-lbl">Active preset</div>
+        <div class="sc-kpi-val sc-kpi-preset">{{ activePreset() }}</div>
+      </div>
+    </div>
+  }
+
+  <!-- ════════ Persisted files ═══════════════════════════════════════════ -->
+  @if (files().length) {
+    <div class="sc-card sc-files-card">
+      <div class="sc-card-head">
+        <div>
+          <h2>Uploaded files <span class="sc-files-count">{{ files().length }}</span></h2>
+          <div class="sc-card-sub">
+            Stored on the server — you don't need to re-upload. Each upload's data is merged into the master, deduped on Ticker (last upload wins).
+          </div>
+        </div>
+      </div>
+      <div class="sc-files-list">
+        @for (f of files(); track f.name) {
+          <div class="sc-file-row">
+            <div class="sc-file-main">
+              <div class="sc-file-name">{{ f.name }}</div>
+              <div class="sc-file-meta">
+                <span class="sc-file-when">📅 {{ fmtUploadedAt(f.uploaded_at) }}</span>
+                <span>·</span>
+                <span><b>{{ f.rows }}</b> rows</span>
+                <span>·</span>
+                <span><b>{{ f.sub_sector_count }}</b> sub-sector{{ f.sub_sector_count === 1 ? '' : 's' }}</span>
+                <span>·</span>
+                <span class="sc-info-dim">{{ fmtSize(f.size_bytes) }}</span>
+              </div>
+              @if (f.sub_sectors?.length) {
+                <div class="sc-file-sectors">
+                  @for (ss of f.sub_sectors.slice(0, 6); track ss) {
+                    <span class="sc-file-sec-pill">{{ ss }}</span>
+                  }
+                  @if (f.sub_sectors.length > 6) {
+                    <span class="sc-file-sec-pill more">+{{ f.sub_sectors.length - 6 }} more</span>
+                  }
+                </div>
+              }
+            </div>
+            <button class="sc-file-del" (click)="deleteFile(f.name)" title="Delete this file and rebuild master">
+              ✕
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ════════ Weights panel ══════════════════════════════════════════════ -->
+  @if (available()) {
+    <div class="sc-card sc-weights">
+      <div class="sc-card-head">
+        <div>
+          <h2>Weights</h2>
+          <div class="sc-card-sub">
+            How much each category contributes to the composite score (auto-normalized to 100).
+          </div>
+        </div>
+        <div class="sc-presets">
+          @for (p of ['quality', 'value', 'growth', 'income']; track p) {
+            <button class="sc-pill" [class.active]="activePreset() === p" (click)="applyPreset(p)">
+              {{ p | titlecase }}
+            </button>
+          }
+          <button class="sc-pill sc-reset" (click)="resetWeights()">↺ Reset</button>
+          <button class="sc-pill sc-toggle" (click)="weightsExpanded.set(!weightsExpanded())">
+            {{ weightsExpanded() ? '▴ Collapse' : '▾ Customize' }}
+          </button>
+        </div>
+      </div>
+
+      @if (weightsExpanded()) {
+        <div class="sc-sliders">
+          @for (c of CATEGORIES; track c.key) {
+            <div class="sc-slider-row">
+              <div class="sc-slider-label" [style.color]="c.color">
+                <span class="sc-slider-dot" [style.background]="c.color"></span>
+                {{ c.label }}
+              </div>
+              <input type="range" min="0" max="60" step="1"
+                     [value]="weights()[c.key] ?? 0"
+                     (input)="setWeight(c.key, $any($event.target).valueAsNumber)"
+                     (change)="applyWeights()"
+                     class="sc-range">
+              <div class="sc-slider-val">{{ (weights()[c.key] ?? 0) | number:'1.0-0' }}%</div>
+            </div>
+          }
+          <div class="sc-slider-total">
+            Total: <b>{{ weightTotal() | number:'1.0-0' }}</b>
+            <span class="sc-info-dim">(rescaled to 100 internally)</span>
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ════════ Filters ════════════════════════════════════════════════════ -->
+  @if (available()) {
+    <div class="sc-filters">
+      <div class="sc-filter-group">
+        <span class="sc-filter-label">Cap</span>
+        @for (t of ['all', 'large', 'mid', 'small']; track t) {
+          <button class="sc-pill" [class.active]="capTier() === t" (click)="setCapTier($any(t))">
+            {{ t === 'all' ? 'All' : (t | titlecase) }}
+          </button>
+        }
+      </div>
+
+      <div class="sc-filter-group">
+        <span class="sc-filter-label">Sub-sector</span>
+        <select class="sc-select" [ngModel]="subSector()" (ngModelChange)="setSubSector($event)">
+          <option value="">All ({{ subSectorOptions().length }})</option>
+          @for (ss of subSectorOptions(); track ss) {
+            <option [value]="ss">{{ ss }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="sc-filter-group sc-search-grp">
+        <input type="text" class="sc-search" placeholder="Search name or ticker…"
+               [ngModel]="search()" (ngModelChange)="onSearchChange($event)"
+               (keyup.enter)="applySearch()" (blur)="applySearch()">
+      </div>
+    </div>
+  }
+
+  <!-- ════════ Leaderboard table ══════════════════════════════════════════ -->
+  @if (available()) {
+    <div class="sc-card sc-table-card">
+      <div class="sc-table-wrap">
+        <table class="sc-table">
+          <thead>
+            <tr>
+              <th class="sc-sortable" (click)="setSort('rank')">
+                # @if (sortBy() === 'rank') { <span class="sc-arr">{{ sortDir() === 'asc' ? '▲' : '▼' }}</span> }
+              </th>
+              <th class="sc-sortable" (click)="setSort('ticker')">
+                Stock @if (sortBy() === 'ticker') { <span class="sc-arr">{{ sortDir() === 'asc' ? '▲' : '▼' }}</span> }
+              </th>
+              <th class="sc-sortable" (click)="setSort('sub_sector')">
+                Sub-Sector @if (sortBy() === 'sub_sector') { <span class="sc-arr">{{ sortDir() === 'asc' ? '▲' : '▼' }}</span> }
+              </th>
+              <th>Cap</th>
+              <th class="sc-sortable sc-composite-col" (click)="setSort('composite')">
+                Composite @if (sortBy() === 'composite') { <span class="sc-arr">{{ sortDir() === 'asc' ? '▲' : '▼' }}</span> }
+              </th>
+              @for (c of CATEGORIES; track c.key) {
+                <th class="sc-sortable sc-cat-col" (click)="setSort(c.key)"
+                    [title]="c.label" [style.color]="c.color">
+                  {{ c.short }}
+                  @if (sortBy() === c.key) { <span class="sc-arr">{{ sortDir() === 'asc' ? '▲' : '▼' }}</span> }
+                </th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of sortedRows(); track row.ticker) {
+              <tr class="sc-row" (click)="openStock(row.ticker)">
+                <td class="sc-rank">{{ row.rank }}</td>
+                <td class="sc-stock">
+                  <div class="sc-stock-name">{{ row.name }}</div>
+                  <div class="sc-stock-tk">{{ row.ticker }}</div>
+                </td>
+                <td class="sc-sub-cell">{{ row.sub_sector || '—' }}</td>
+                <td class="sc-cap-cell">
+                  <span class="sc-cap-pill" [class]="'cap-' + row.cap_tier">{{ row.cap_tier }}</span>
+                  <div class="sc-mcap">{{ fmtMcap(row.market_cap) }}</div>
+                </td>
+                <td class="sc-composite-cell">
+                  <div class="sc-comp-bar">
+                    <div class="sc-comp-fill" [class]="scoreClass(row.composite)"
+                         [style.width.%]="metricPctFill(row.composite)"></div>
+                    <span class="sc-comp-val">{{ fmtScore(row.composite) }}</span>
+                  </div>
+                </td>
+                @for (c of CATEGORIES; track c.key) {
+                  <td class="sc-cat-cell">
+                    <div class="sc-cat-bar">
+                      <div class="sc-cat-fill"
+                           [class]="scoreClass(catScore(row, c.key))"
+                           [style.background]="c.color"
+                           [style.width.%]="metricPctFill(catScore(row, c.key))"></div>
+                    </div>
+                    <span class="sc-cat-val" [class]="scoreClass(catScore(row, c.key))">
+                      {{ fmtScore(catScore(row, c.key)) }}
+                    </span>
+                  </td>
+                }
+              </tr>
+            }
+            @if (!sortedRows().length && !loading()) {
+              <tr><td colspan="11" class="sc-empty-row">No stocks match your filters.</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+  }
+
+  @if (loading() && !sortedRows().length) {
+    <div class="sc-loading">Loading…</div>
+  }
+</div>
+
+<!-- ════════ Preview modal ════════════════════════════════════════════════ -->
+@if (preview(); as p) {
+  <div class="sc-modal-overlay" (click)="cancelPreview()">
+    <div class="sc-modal" (click)="$event.stopPropagation()">
+      <header class="sc-modal-head">
+        <h2>Preview Upload</h2>
+        <button class="sc-modal-close" (click)="cancelPreview()">×</button>
+      </header>
+
+      @if (!p.ok) {
+        <div class="sc-modal-body">
+          <div class="sc-modal-error">⚠ {{ p.error }}</div>
+        </div>
+      } @else {
+        <!-- Hero bar: big visual summary + primary CTA. Sticks at top of body. -->
+        <div class="sc-prv-hero" [class.warn]="p.usable_rows === 0">
+          <div class="sc-prv-hero-stats">
+            <div class="sc-prv-stat">
+              <div class="sc-prv-stat-num">{{ p.usable_rows }}</div>
+              <div class="sc-prv-stat-lbl">Usable rows</div>
+            </div>
+            <div class="sc-prv-stat dim">
+              <div class="sc-prv-stat-num">{{ p.total_rows }}</div>
+              <div class="sc-prv-stat-lbl">Parsed</div>
+            </div>
+            <div class="sc-prv-stat dim">
+              <div class="sc-prv-stat-num">{{ (p.header_mapping | keyvalue).length }}<span class="of">/20</span></div>
+              <div class="sc-prv-stat-lbl">Columns matched</div>
+            </div>
+            <div class="sc-prv-stat dim">
+              <div class="sc-prv-stat-num">{{ (p.sub_sectors | keyvalue).length }}</div>
+              <div class="sc-prv-stat-lbl">Sub-sectors</div>
+            </div>
+          </div>
+          <button class="sc-primary-btn sc-prv-hero-cta"
+                  [disabled]="uploading() || p.usable_rows === 0"
+                  (click)="confirmUpload()">
+            @if (uploading()) { Saving… }
+            @else if (p.usable_rows === 0) { Nothing to save }
+            @else { ✓ Save {{ p.usable_rows }} rows }
+          </button>
+        </div>
+
+        <!-- Scrollable middle: everything except hero + footer. -->
+        <div class="sc-modal-body">
+          @if (p.warnings?.length) {
+            <ul class="sc-prv-warnings">
+              @for (w of p.warnings; track w) { <li>⚠ {{ w }}</li> }
+            </ul>
+          }
+
+          <h3 class="sc-prv-h3">Column mapping</h3>
+          <div class="sc-prv-mapping">
+            @for (kv of (p.header_mapping | keyvalue); track kv.key) {
+              <div class="sc-prv-map-row">
+                <span class="sc-prv-canonical">{{ kv.key }}</span>
+                <span class="sc-prv-arrow">←</span>
+                <span class="sc-prv-orig">{{ kv.value }}</span>
+              </div>
+            }
+            @if (p.missing_metrics?.length) {
+              <div class="sc-prv-missing">
+                <b>Missing:</b> {{ p.missing_metrics.join(', ') }}
+              </div>
+            }
+          </div>
+
+          @if (p.sub_sectors && (p.sub_sectors | keyvalue).length) {
+            <h3 class="sc-prv-h3">Sub-sectors detected</h3>
+            <div class="sc-prv-sectors">
+              @for (kv of (p.sub_sectors | keyvalue); track kv.key) {
+                <span class="sc-prv-sec-pill">{{ kv.key }} <b>{{ kv.value }}</b></span>
+              }
+            </div>
+          }
+
+          @if (p.sample_parsed?.length) {
+            <h3 class="sc-prv-h3">Sample (first {{ p.sample_parsed.length }} rows)</h3>
+            <div class="sc-prv-sample-wrap">
+              <table class="sc-prv-sample">
+                <thead>
+                  <tr>
+                    <th>Ticker</th><th>Name</th><th>Sub-Sector</th>
+                    <th>1Y Ret</th><th>PE</th><th>ROCE</th><th>RSI</th><th>Div Yld</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (r of p.sample_parsed; track $index) {
+                    <tr>
+                      <td><b>{{ r['Ticker'] }}</b></td>
+                      <td>{{ r['Name'] }}</td>
+                      <td>{{ r['Sub-Sector'] }}</td>
+                      <td>{{ fmtMetric(r['1Y Return']) }}</td>
+                      <td>{{ fmtMetric(r['PE Ratio']) }}</td>
+                      <td>{{ fmtMetric(r['ROCE']) }}</td>
+                      <td>{{ fmtMetric(r['RSI – 14D']) }}</td>
+                      <td>{{ fmtMetric(r['Dividend Yield']) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      }
+
+      <footer class="sc-modal-foot">
+        <button class="sc-ghost-btn" (click)="cancelPreview()">Cancel</button>
+        <button class="sc-primary-btn" [disabled]="!p.ok || uploading() || p.usable_rows === 0"
+                (click)="confirmUpload()">
+          @if (uploading()) { Saving… } @else { ✓ Save {{ p.usable_rows }} rows }
+        </button>
+      </footer>
+    </div>
+  </div>
+}
+
+<!-- ════════ Detail modal ════════════════════════════════════════════════ -->
+@if (selected(); as s) {
+  <div class="sc-modal-overlay" (click)="closeStock()">
+    <div class="sc-modal sc-modal-wide" (click)="$event.stopPropagation()">
+      <header class="sc-modal-head">
+        <div>
+          <h2>{{ s.name }} <span class="sc-tk">{{ s.ticker }}</span></h2>
+          <div class="sc-detail-meta">
+            <span>{{ s.sub_sector || '—' }}</span>
+            <span class="sc-cap-pill" [class]="'cap-' + s.cap_tier">{{ capTierLabel(s.cap_tier) }}</span>
+            <span>{{ fmtMcap(s.market_cap) }}</span>
+          </div>
+        </div>
+        <button class="sc-modal-close" (click)="closeStock()">×</button>
+      </header>
+
+      <div class="sc-detail-body">
+        <!-- Left: radar + composite -->
+        <div class="sc-detail-left">
+          <div class="sc-composite-display">
+            <div class="sc-composite-circle" [class]="scoreClass(s.composite)">
+              <div class="sc-composite-num">{{ fmtScore(s.composite) }}</div>
+              <div class="sc-composite-lbl">Composite</div>
+            </div>
+          </div>
+
+          <svg class="sc-radar" viewBox="0 0 260 260" width="260" height="260">
+            <!-- grid rings -->
+            @for (g of radarGrid; track g) {
+              <circle cx="130" cy="130" [attr.r]="g" fill="none"
+                      stroke="rgba(15,23,42,0.08)" stroke-width="1"
+                      [attr.stroke-dasharray]="g === 100 ? 'none' : '2,3'"/>
+            }
+            <!-- axes + labels -->
+            @for (a of radarAxes(); track a.key) {
+              <line x1="130" y1="130" [attr.x2]="a.x" [attr.y2]="a.y"
+                    stroke="rgba(15,23,42,0.10)" stroke-width="1"/>
+              <text [attr.x]="a.lx" [attr.y]="a.ly"
+                    text-anchor="middle" alignment-baseline="middle"
+                    [attr.fill]="a.color" font-size="11" font-weight="700">
+                {{ a.label }}
+              </text>
+            }
+            <!-- score polygon -->
+            <polygon [attr.points]="radarPath()"
+                     fill="rgba(77,154,255,0.20)"
+                     stroke="#4d9aff" stroke-width="2"/>
+            <!-- score dots -->
+            @for (d of radarDots(); track d.key) {
+              <circle [attr.cx]="d.x" [attr.cy]="d.y" r="3.5" [attr.fill]="d.color"/>
+            }
+          </svg>
+        </div>
+
+        <!-- Right: metrics broken into categories -->
+        <div class="sc-detail-right">
+          @for (g of METRIC_GROUPS; track g.cat) {
+            <div class="sc-detail-cat">
+              <div class="sc-detail-cat-head" [style.borderColor]="CATEGORIES[$index].color">
+                <span class="sc-detail-cat-name" [style.color]="CATEGORIES[$index].color">
+                  {{ CATEGORIES[$index].label }}
+                </span>
+                <span class="sc-detail-cat-score" [class]="scoreClass(s.categories?.[g.cat]?.score)">
+                  {{ fmtScore(s.categories?.[g.cat]?.score) }}
+                </span>
+                <span class="sc-detail-cat-meta">
+                  @if (s.categories?.[g.cat]?.coverage != null && s.categories[g.cat].coverage < 1 && s.categories[g.cat].score != null) {
+                    {{ s.categories[g.cat].tracked }}/{{ s.categories[g.cat].total }} tracked
+                    · raw <b>{{ fmtScore(s.categories[g.cat].raw_score) }}</b>
+                    · ×√{{ s.categories[g.cat].coverage | number:'1.0-2' }} discount
+                  } @else {
+                    {{ s.categories?.[g.cat]?.tracked || 0 }} / {{ s.categories?.[g.cat]?.total || 0 }} tracked
+                  }
+                </span>
+              </div>
+              <div class="sc-detail-metrics">
+                @for (m of g.metrics; track m) {
+                  <div class="sc-detail-metric">
+                    <div class="sc-detail-metric-name">{{ m }}</div>
+                    <div class="sc-detail-metric-val">{{ fmtMetric(s.metrics?.[m]?.value) }}</div>
+                    <div class="sc-detail-metric-bar">
+                      <div class="sc-detail-metric-fill"
+                           [class]="scoreClass(s.metrics?.[m]?.score)"
+                           [style.width.%]="metricPctFill(s.metrics?.[m]?.score)"></div>
+                    </div>
+                    <div class="sc-detail-metric-meta">
+                      @if (s.metrics?.[m]?.score != null) {
+                        <span [class]="scoreClass(s.metrics[m].score)">{{ fmtScore(s.metrics[m].score) }}</span>
+                        <span class="sc-info-dim">
+                          @if (s.metrics[m].scoring_mode === 'percentile') {
+                            peers {{ s.metrics[m].peer_count }}/{{ s.metrics[m].sector_n }}
+                            ({{ (s.metrics[m].fill_rate * 100) | number:'1.0-0' }}% filled)
+                            · med {{ fmtMetric(s.metrics[m].median) }}
+                          } @else {
+                            absolute · only {{ s.metrics[m].peer_count }}/{{ s.metrics[m].sector_n }} peers
+                          }
+                        </span>
+                      } @else {
+                        <span class="sc-info-dim">no data</span>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}

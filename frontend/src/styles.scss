@@ -1,0 +1,278 @@
+/* ─── Global Design System ───────────────────────────────────────── */
+:root {
+  --bg-primary:     #ffffff;
+  --bg-secondary:   #f2f4fb;
+  --bg-card:        #ffffff;
+  --bg-hover:       #eef1fa;
+  --border:         #dde1ee;
+  --text-primary:   #1a1c2e;
+  --text-secondary: #5a5f78;
+  --text-muted:     #9097b4;
+  --accent:         #387ed1;
+  --accent-hover:   #2d6db8;
+  --buy:            #16a085;
+  --sell:           #e53935;
+  --positive:       #16a085;
+  --negative:       #e53935;
+  --warning:        #d97706;
+  --sidebar-w:      220px;
+  --sidebar-collapsed: 56px;
+  --topbar-h:       48px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Utility ───────────────────────────────────────────────────── */
+.positive { color: var(--positive) !important; }
+.negative { color: var(--negative) !important; }
+
+/* ─── Badges ────────────────────────────────────────────────────── */
+.badge-buy      { display: inline-block; font-size: 10px; font-weight: 700; background: rgba(38,166,154,0.15); color: var(--buy);       border-radius: 3px; padding: 1px 6px; }
+.badge-sell     { display: inline-block; font-size: 10px; font-weight: 700; background: rgba(239,83,80,0.15);  color: var(--sell);      border-radius: 3px; padding: 1px 6px; }
+.badge-complete { display: inline-block; font-size: 10px; font-weight: 700; background: rgba(38,166,154,0.1);  color: var(--positive);  border-radius: 3px; padding: 1px 6px; }
+.badge-open     { display: inline-block; font-size: 10px; font-weight: 700; background: rgba(56,126,209,0.1);  color: var(--accent);    border-radius: 3px; padding: 1px 6px; }
+.badge-cancelled{ display: inline-block; font-size: 10px; font-weight: 700; background: rgba(90,94,114,0.2);   color: var(--text-muted);border-radius: 3px; padding: 1px 6px; }
+.badge-rejected { display: inline-block; font-size: 10px; font-weight: 700; background: rgba(239,83,80,0.1);   color: var(--sell);      border-radius: 3px; padding: 1px 6px; }
+
+/* ─── Card ──────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.card-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 14px;
+}
+
+/* ─── Data Table ────────────────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+
+  th {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    background: rgba(0,0,0,0.03);
+  }
+  td {
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+  tbody tr:hover td { background: var(--bg-hover); }
+  tbody tr:last-child td { border-bottom: none; }
+  tfoot td { border-top: 1px solid var(--border); padding-top: 10px; }
+}
+
+/* ─── Form Controls ─────────────────────────────────────────────── */
+.form-control {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+
+  &:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(56,126,209,0.12);
+  }
+  &::placeholder { color: var(--text-muted); }
+}
+select.form-control { cursor: pointer; }
+select.form-control option { background: var(--bg-card); color: var(--text-primary); }
+
+.form-label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ─── Buttons ───────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  outline: none;
+  font-family: inherit;
+  white-space: nowrap;
+
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+}
+.btn-buy     { background: var(--buy);    color: #fff; &:hover:not(:disabled) { filter: brightness(1.12); } }
+.btn-sell    { background: var(--sell);   color: #fff; &:hover:not(:disabled) { filter: brightness(1.12); } }
+.btn-primary { background: var(--accent); color: #fff; &:hover:not(:disabled) { background: var(--accent-hover); } }
+.btn-ghost   {
+  background: transparent; color: var(--text-secondary);
+  border: 1px solid var(--border);
+  &:hover:not(:disabled) { border-color: var(--text-secondary); color: var(--text-primary); background: var(--bg-hover); }
+}
+.btn-danger  { background: var(--sell); color: #fff; &:hover:not(:disabled) { filter: brightness(1.12); } }
+
+/* ─── Tabs ──────────────────────────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+  gap: 0;
+
+  .tab {
+    padding: 9px 18px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    user-select: none;
+    &:hover { color: var(--text-primary); }
+    &.active { color: var(--accent); border-bottom-color: var(--accent); }
+  }
+}
+
+/* ─── Alert ─────────────────────────────────────────────────────── */
+.alert {
+  border-radius: 6px;
+  padding: 9px 14px;
+  font-size: 12px;
+  font-weight: 500;
+
+  &.error   { background: rgba(239,83,80,0.1);   color: var(--sell);     border: 1px solid rgba(239,83,80,0.3);   }
+  &.success { background: rgba(38,166,154,0.1);  color: var(--positive); border: 1px solid rgba(38,166,154,0.3);  }
+  &.warning { background: rgba(245,158,11,0.1);  color: var(--warning);  border: 1px solid rgba(245,158,11,0.3);  }
+}
+
+/* ─── Empty State ───────────────────────────────────────────────── */
+.empty-state {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  line-height: 1.8;
+
+  .empty-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+    color: var(--text-muted);
+    display: block;
+  }
+  .empty-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #b0b8d0; }
+
+/* ─── Modal Overlay ─────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 35, 60, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* ─── Misc helpers ──────────────────────────────────────────────── */
+.text-right  { text-align: right !important; }
+.text-center { text-align: center !important; }
+.symbol-cell { font-weight: 700; color: var(--accent); }
+.time-cell   { font-size: 11px; font-family: 'JetBrains Mono', 'Fira Code', monospace; color: var(--text-muted); }
+
+/* ─── Info tooltip — works anywhere ──────────────────────────────── */
+.info-tip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-left: 5px;
+  border-radius: 50%; font-size: 9px; font-weight: 800;
+  background: rgba(255,255,255,0.06); color: var(--text-muted);
+  cursor: help; user-select: none; vertical-align: 1px;
+  position: relative; flex-shrink: 0;
+  font-family: -apple-system, sans-serif;
+  transition: all 0.15s;
+}
+.info-tip:hover {
+  background: var(--accent); color: #fff;
+}
+.info-tip:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: 280px; min-width: 200px;
+  padding: 9px 12px; border-radius: 6px;
+  background: #ffffff; color: var(--text-primary);
+  border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(30,40,80,0.15);
+  font-size: 11px; font-weight: 500; line-height: 1.5;
+  letter-spacing: 0; text-transform: none; text-align: left;
+  white-space: normal; z-index: 1000; pointer-events: none;
+}
+.info-tip:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: var(--border);
+  z-index: 1000;
+}

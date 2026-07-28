@@ -1,0 +1,265 @@
+<div class="lt-page" [class.embedded]="embedded">
+
+  <!-- ── character header ─────────────────────────────────────────────────── -->
+  <div class="lt-head">
+    <div class="lt-avatar">
+      @if (imgOk()) { <img [src]="avatarImg" alt="Bandhan" (error)="imgOk.set(false)"> }
+      @else { <span class="lt-emoji">{{ bot.emoji }}</span> }
+    </div>
+    <div class="lt-who">
+      <h1>{{ bot.name }}</h1>
+      <p>{{ bot.role }} · <span class="lt-tab">Bonds</span></p>
+    </div>
+    <div class="lt-badge">FY 2025-26</div>
+    @if (embedded) {
+      <button class="lt-icon" (click)="toggleSize.emit()" [title]="expanded ? 'Minimise' : 'Expand'">⤢</button>
+      <button class="lt-icon" (click)="closed.emit()" title="Close">✕</button>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="lt-loading">Reading your bonds…</div>
+  } @else if (error()) {
+    <div class="lt-error">{{ error() }}</div>
+  } @else {
+
+  <!-- ── chat window ──────────────────────────────────────────────────────── -->
+  <div class="lt-chat">
+    <div class="lt-scroll" #scroller>
+      @for (m of msgs(); track $index) {
+        @if (m.role === 'user') {
+          <div class="row user"><div class="bubble user">{{ m.text }}</div></div>
+        } @else {
+          <div class="row bot">
+            <div class="ava">@if (imgOk()) { <img [src]="avatarImg" alt="" (error)="imgOk.set(false)"> } @else { {{ bot.emoji }} }</div>
+            <div class="bot-col">
+              @if (m.text) { <div class="bubble bot" [innerHTML]="boldify(m.text)"></div> }
+
+              @switch (m.card) {
+
+                <!-- ── portfolio hero ───────────────────────────────────────── -->
+                @case ('portfolio') {
+                  <div class="rent-hero bonds">
+                    <div class="rh"><span>💼 Invested</span><b>{{ inr(m.data.invested) }}</b></div>
+                    <div class="rh"><span>🪙 Coupons / yr</span><b>{{ inr(m.data.total_interest) }}</b></div>
+                    <div class="rh"><span>🧾 Tax now</span><b class="neg">{{ inr(m.data.tax_now) }}</b></div>
+                    <div class="rh"><span>✅ Best case</span><b class="pos">{{ inr(m.data.tax_best) }}</b></div>
+                  </div>
+                }
+
+                <!-- ── per-owner interest-tax breakdown ─────────────────────── -->
+                @case ('owners') {
+                  <div class="card-wrap">
+                    @for (o of m.data; track o.owner) {
+                      <div class="bond-owner">
+                        <div class="bo-top">
+                          <span class="bo-name">{{ o.owner }}</span>
+                          <span class="bo-tag" [class.nri]="o.residency==='nri'">{{ o.residency==='nri' ? 'NRI' : 'Resident' }}</span>
+                          <span class="bo-bonds">{{ o.bonds }} bond{{ o.bonds===1 ? '' : 's' }}</span>
+                        </div>
+                        <div class="hp-flow">
+                          <div class="hp-row"><span class="hp-k">Taxable coupons / yr</span><span class="hp-v">{{ inr(o.taxable_interest) }}</span></div>
+                          @if (o.taxfree_interest > 0) {
+                            <div class="hp-row minus"><span class="hp-k">Tax-free coupons <em>(Sec 10(15))</em></span><span class="hp-v">{{ inr(o.taxfree_interest) }}</span></div>
+                          }
+                          <div class="hp-row"><span class="hp-k">10% TDS deducted <em>(Sec 193)</em></span><span class="hp-v">{{ inr(o.tds) }}</span></div>
+                          <div class="hp-row tax"><span class="hp-k">Tax on the coupons</span><span class="hp-v" [class.neg]="o.tax_now>0" [class.pos]="o.tax_now===0">{{ inr(o.tax_now) }}</span></div>
+                        </div>
+                        @if (o.tax_now > 0) {
+                          <div class="rent-mr">at a marginal rate of about <b>{{ (o.marginal_rate * 100) | number:'1.0-0' }}%</b>@if (o.best_shift_to) { · could be <b class="pos">{{ inr(o.tax_best) }}</b> in {{ o.best_shift_to }}'s name }</div>
+                        } @else {
+                          <div class="rent-mr"><b class="pos">₹0</b> — under the ₹12 L rebate. 🎉</div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- ── LIVE income optimiser ────────────────────────────────── -->
+                @case ('opt') {
+                  <div class="card-wrap">
+                    <div class="rent-opt">
+                      @if (taxableOwners().length > 1) {
+                        <div class="ro-block">
+                          <span class="rob-k">Whose bonds?</span>
+                          <div class="ro-chips">
+                            @for (o of taxableOwners(); track o.owner) {
+                              <button [class.on]="optOwner()===o.owner" (click)="pickOwner(o.owner)">{{ o.owner }}</button>
+                            }
+                          </div>
+                        </div>
+                      }
+                      <div class="ro-block">
+                        <span class="rob-k">💼 {{ optOwner() }}'s other yearly income <em>(salary, etc.)</em></span>
+                        <div class="rob-sub">Coupons are taxed on top of this — set it for an accurate figure.</div>
+                        <label class="ro-field"><em>₹</em><input type="text" inputmode="numeric" [value]="fmt(optOther())" placeholder="0" (input)="setOther($any($event.target).value)"></label>
+                      </div>
+                      <div class="ro-block">
+                        <span class="rob-k">⚖️ Tax regime</span>
+                        <div class="ro-chips">
+                          <button [class.on]="optRegime()==='new'" (click)="setRegime('new')">New (default)</button>
+                          <button [class.on]="optRegime()==='old'" (click)="setRegime('old')">Old</button>
+                        </div>
+                      </div>
+                      @if (splitTargets().length) {
+                        <div class="ro-block">
+                          <span class="rob-k">👨‍👩‍👦 Hold in a resident family member's name?</span>
+                          <div class="rob-sub">Their coupons are taxed in their slab — often ₹0 under the ₹12 L rebate. A spouse/minor is clubbed (Sec 64).</div>
+                          <div class="ro-chips">
+                            <button [class.on]="optSplitTo()===null" (click)="pickSplit(null)">Keep as-is</button>
+                            @for (t of splitTargets(); track t.name) {
+                              <button [class.on]="optSplitTo()===t.name" (click)="pickSplit(t.name)">{{ t.name }}</button>
+                            }
+                          </div>
+                          @if (optSplitTo()) {
+                            <div class="ro-split">
+                              <div class="ros-top"><span>Share moved to {{ optSplitTo() }}</span><b>{{ (optSplitShare()*100) | number:'1.0-0' }}%</b></div>
+                              <input type="range" min="0" max="100" step="5" [value]="optSplitShare()*100" (input)="setSplitShare($any($event.target).value)">
+                            </div>
+                          }
+                        </div>
+                      }
+                      <div class="ro-block">
+                        <span class="rob-k">🏛️ Move into tax-free PSU bonds</span>
+                        <div class="rob-sub">How much of the taxable coupon you'd shift into tax-free bonds (NHAI/REC/PFC) — that slice becomes fully exempt, no TDS.</div>
+                        <div class="ro-split">
+                          <div class="ros-top"><span>Coupon moved to tax-free</span><b>{{ inr(optTaxfree()) }}</b></div>
+                          <input type="range" min="0" [max]="optTaxable()" step="5000" [value]="optTaxfree()" (input)="setTaxfree($any($event.target).value)">
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- result -->
+                    <div class="rent-result" [class.busy]="optBusy()">
+                      <div class="rr-col was"><span>Tax now</span><b>{{ inr(optWas()) }}</b></div>
+                      <span class="rr-arrow">→</span>
+                      <div class="rr-col now"><span>With these levers</span><b>{{ inr(incomePlan()?.total_tax ?? optWas()) }}</b></div>
+                      @if ((optWas() - (incomePlan()?.total_tax ?? optWas())) > 0) {
+                        <span class="rr-save">save {{ inr(optWas() - (incomePlan()?.total_tax ?? 0)) }}/yr</span>
+                      }
+                    </div>
+                    @if (incomePlan(); as pl) {
+                      @if (pl.co_owner) {
+                        <div class="rent-split-note">
+                          <div><span>{{ pl.owner }}'s tax</span><b>{{ inr(pl.owner_tax) }}</b></div>
+                          <div><span>{{ pl.co_owner }}'s tax</span><b [class.pos]="pl.co_under_rebate">{{ inr(pl.co_tax) }}</b></div>
+                          <div><span>Combined</span><b>{{ inr(pl.total_tax) }}</b></div>
+                        </div>
+                      }
+                      @if (pl.tds_saved > 0) {
+                        <div class="tds-note">🧾 Moving to tax-free also stops <b>{{ inr(pl.tds_saved) }}/yr</b> of TDS — no refund wait.</div>
+                      }
+                    }
+                  </div>
+                }
+
+                <!-- ── levers explainer ─────────────────────────────────────── -->
+                @case ('opt-levers') {
+                  <div class="card-wrap levers">
+                    @for (l of incomeLevers(); track l.title) {
+                      <div class="lever"><span class="lv-ic">{{ l.icon }}</span>
+                        <div><span class="lv-t">{{ l.title }}</span><span class="lv-b">{{ l.body }}</span></div></div>
+                    }
+                  </div>
+                }
+
+                <!-- ── whose-name comparison ────────────────────────────────── -->
+                @case ('compare') {
+                  <div class="compare">
+                    <div class="cmp now">
+                      <span class="cmp-k">Coupons in a high earner's name</span>
+                      <span class="cmp-v neg">{{ inr(m.data.tax_now) }}</span>
+                      <span class="cmp-s">tax on {{ inr(m.data.taxable_interest) }}/yr</span>
+                    </div>
+                    <div class="cmp-arrow">→</div>
+                    <div class="cmp zero">
+                      <span class="cmp-k">In a low-income adult's name</span>
+                      <span class="cmp-v pos">{{ inr(m.data.tax_best) }}</span>
+                      <span class="cmp-s save">save up to {{ inr(m.data.saving_max) }}/yr</span>
+                      <span class="cmp-how">₹12 L rebate + Form 15G</span>
+                    </div>
+                  </div>
+                }
+
+                <!-- ── TDS explainer ────────────────────────────────────────── -->
+                @case ('tds') {
+                  <div class="rent-hero bonds">
+                    <div class="rh"><span>🪙 Taxable coupons / yr</span><b>{{ inr(m.data.taxable_interest) }}</b></div>
+                    <div class="rh"><span>🧾 10% TDS taken</span><b class="neg">{{ inr(m.data.tds) }}</b></div>
+                    <div class="rh"><span>🏛️ Tax-free coupons</span><b class="pos">{{ inr(m.data.taxfree_interest) }}</b></div>
+                  </div>
+                }
+
+                <!-- ── capital-gains education ──────────────────────────────── -->
+                @case ('cg') {
+                  <div class="card-wrap levers">
+                    <div class="lever"><span class="lv-ic">🏁</span>
+                      <div><span class="lv-t">Held to maturity → no capital gain</span>
+                        <span class="lv-b">Redeemed at par, you keep exactly what you invested — you were already taxed on the coupons along the way.</span></div></div>
+                    <div class="lever"><span class="lv-ic">📈</span>
+                      <div><span class="lv-t">Listed, sold after 12 months → 12.5%</span>
+                        <span class="lv-b">A listed bond held over a year is long-term: any price gain on an early sale is taxed at just 12.5% (no indexation, Sec 112).</span></div></div>
+                    <div class="lever"><span class="lv-ic">⏱️</span>
+                      <div><span class="lv-t">Unlisted bonds & MLDs → always slab</span>
+                        <span class="lv-b">Unlisted bonds/debentures bought on/after 23-Jul-2024 and Market-Linked Debentures are deemed short-term under Sec 50AA — taxed at your slab however long you held them.</span></div></div>
+                    <div class="lever"><span class="lv-ic">🔻</span>
+                      <div><span class="lv-t">Use a bond loss to shelter a gain</span>
+                        <span class="lv-b">A capital loss on a bond can be set off against a capital gain elsewhere (shares, property) — and carried forward 8 years.</span></div></div>
+                  </div>
+                }
+
+                <!-- ── editable person profiles (residency + income) ────────── -->
+                @case ('profiles') {
+                  <div class="card-wrap profiles">
+                    @for (p of profiles(); track p.name) {
+                      <div class="prof">
+                        <div class="pr-main">
+                          <span class="pr-ava">{{ p.name.charAt(0) }}</span>
+                          <div>
+                            <span class="pr-name">{{ p.name }} <em>· {{ p.relation }}</em></span>
+                            <span class="pr-meta">{{ p.residency==='nri' ? 'NRI' : 'Resident' }}{{ p.spouse ? ' · spouse: ' + p.spouse : '' }}</span>
+                          </div>
+                        </div>
+                        <div class="pr-right">
+                          <label class="pr-income" title="Their other yearly income — sets whether coupons fall under the ₹12 L rebate">
+                            <em>₹</em>
+                            <input type="text" inputmode="numeric" [value]="fmt(p.other_income || 0)" placeholder="other income"
+                                   (change)="setIncome(p.name, $any($event.target).value)">
+                          </label>
+                          <div class="pr-toggle">
+                            <button [class.on]="p.residency==='resident'" (click)="setResidency(p.name, 'resident')">Resident</button>
+                            <button [class.on]="p.residency==='nri'" (click)="setResidency(p.name, 'nri')">NRI</button>
+                          </div>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+              }
+            </div>
+          </div>
+        }
+      }
+
+      @if (typing()) {
+        <div class="row bot"><div class="ava">@if (imgOk()) { <img [src]="avatarImg" alt="" (error)="imgOk.set(false)"> } @else { {{ bot.emoji }} }</div>
+          <div class="bubble bot typing"><span></span><span></span><span></span></div></div>
+      }
+
+      @if (options().length && !typing()) {
+        <div class="lt-options">
+          @for (o of options(); track o.key) {
+            <button class="opt" (click)="choose(o)">{{ o.label }}</button>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="lt-disclaimer">
+      ⚖️ Estimates for planning, based on your recorded bonds &amp; FY 2025-26 rules.
+      Confirm with a chartered accountant before acting.
+    </div>
+  </div>
+
+  }
+</div>

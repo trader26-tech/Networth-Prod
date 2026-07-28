@@ -1,0 +1,523 @@
+<div class="sm-page">
+
+  <!-- ───────────────── Header + Upload ───────────────── -->
+  <header class="sm-header">
+    <div>
+      <h1 class="sm-title">💰 Smart Money</h1>
+      <p class="sm-sub">
+        Where the FIIs, DIIs, MFs and famous investors are putting their ₹.
+        Upload a CSV chunk (≤ 5,000 rows) from Tickertape's bulk-deals export
+        and the dashboard accumulates the history over time.
+      </p>
+    </div>
+    <label class="sm-upload-btn" [class.uploading]="uploading()">
+      <input type="file" accept=".csv" (change)="onUploadChange($event)" hidden>
+      @if (uploading()) { Uploading… } @else { ⬆ Upload CSV chunk }
+    </label>
+  </header>
+
+  @if (error()) {
+    <div class="sm-error">⚠ {{ error() }}</div>
+  }
+  @if (uploadInfo(); as ui) {
+    <div class="sm-upload-info">
+      ✓ Saved <b>{{ ui.saved_as }}</b> · {{ ui.unique_rows | number }} unique rows
+      ({{ ui.duplicates_dropped | number }} duplicates dropped across
+      {{ ui.files_processed }} file(s))
+    </div>
+  }
+
+  <!-- ───────────────── Preview-before-save dialog ───────────────── -->
+  @if (previewing()) {
+    <div class="sm-preview-banner">Parsing your file…</div>
+  }
+  @if (preview(); as p) {
+    <div class="sm-overlay" (click)="cancelPreview()">
+      <div class="sm-modal sm-preview-modal" (click)="$event.stopPropagation()">
+        <header class="sm-modal-head">
+          <h2>Confirm upload — does this look right?</h2>
+          <button class="sm-close" (click)="cancelPreview()" aria-label="cancel">×</button>
+        </header>
+
+        <p class="sm-preview-lead">
+          We parsed your file <b>{{ pendingFile()?.name }}</b>
+          ({{ p.total_rows | number }} row(s)). Check the column mapping + sample
+          below. If anything looks wrong, cancel — your data is <b>not</b> saved
+          until you click <b>Confirm & Save</b>.
+        </p>
+
+        <!-- Diagnostic counters -->
+        <div class="sm-preview-stats">
+          <div class="sm-preview-stat"><span>Rows in file</span><b>{{ p.total_rows | number }}</b></div>
+          <div class="sm-preview-stat" [class.tone-good]="p.usable_rows === p.total_rows"
+               [class.tone-bad]="p.usable_rows === 0">
+            <span>Rows we'll keep</span><b>{{ p.usable_rows | number }}</b>
+          </div>
+          <div class="sm-preview-stat"><span>Columns in file</span><b>{{ p.headers?.length || 0 }}</b></div>
+          <div class="sm-preview-stat"
+               [class.tone-bad]="p.missing_canonical?.essential?.length">
+            <span>Fields we couldn't find</span><b>{{ p.missing_canonical?.essential?.length || 0 }}</b>
+          </div>
+        </div>
+
+        <!-- Warnings -->
+        @if (p.warnings?.length) {
+          <div class="sm-preview-warnings">
+            @for (w of p.warnings; track w) {
+              <div class="sm-preview-warning">⚠ {{ w }}</div>
+            }
+          </div>
+        }
+
+        <!-- Editable column mapping -->
+        <h3 class="sm-preview-h">Column mapping <span class="sm-h-sub">— edit any row to override the auto-detection</span></h3>
+        <p class="sm-preview-sub">
+          Each field below corresponds to a column the dashboard needs.
+          We auto-detected matches from your file's column names, but if
+          something's wrong, just pick the right column from the dropdown.
+          Click <b>Re-preview with this mapping</b> below to see the parsed
+          rows update.
+        </p>
+        <div class="sm-mapping">
+          @for (field of MAP_FIELDS; track field.k) {
+            <div class="sm-map-row"
+                 [class.tone-bad]="field.essential && !editMapping()[field.k]"
+                 [class.tone-good]="editMapping()[field.k]">
+              <span class="sm-map-label">
+                {{ field.l }}
+                @if (field.essential) { <small class="sm-essential">essential</small> }
+              </span>
+              <span class="sm-map-arrow">←</span>
+              <select class="sm-map-select"
+                      [value]="editMapping()[field.k] || ''"
+                      (change)="setMapping(field.k, $any($event.target).value)">
+                <option value="">— Don't use —</option>
+                @for (h of p.headers; track h) {
+                  <option [value]="h">{{ h }}</option>
+                }
+              </select>
+            </div>
+          }
+        </div>
+        <div class="sm-mapping-actions">
+          <button class="sm-btn-repreview"
+                  [disabled]="previewing()"
+                  (click)="repreview()">
+            @if (previewing()) { Parsing… }
+            @else if (mappingDirty()) { 🔄 Re-preview with this mapping }
+            @else { 🔄 Re-preview }
+          </button>
+          @if (mappingDirty()) {
+            <span class="sm-mapping-hint">↑ You've changed the mapping — re-preview to see the new parsed rows.</span>
+          }
+        </div>
+
+        <!-- Unmatched columns in file -->
+        @if (p.unmatched_headers?.length) {
+          <div class="sm-preview-block">
+            <h3 class="sm-preview-h">Columns we'll ignore</h3>
+            <p class="sm-preview-sub">
+              These columns exist in your file but aren't used by the dashboard.
+              Safe to ignore — but if one of them is what you wanted us to use,
+              rename it to match (e.g. "Side" → "Txn type") and re-upload.
+            </p>
+            <div class="sm-pill-list">
+              @for (h of p.unmatched_headers; track h) {
+                <span class="sm-pill-static">{{ h }}</span>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Transaction-type breakdown -->
+        @if (p.txn_type_breakdown && (p.txn_type_breakdown | keyvalue).length) {
+          <div class="sm-preview-block">
+            <h3 class="sm-preview-h">Transaction types found</h3>
+            <p class="sm-preview-sub">
+              Anything that isn't "buy" or "sell" won't appear in the analytics.
+            </p>
+            <div class="sm-pill-list">
+              @for (kv of (p.txn_type_breakdown | keyvalue); track kv.key) {
+                <span class="sm-pill-static"
+                      [class.tone-good]="kv.key === 'buy'"
+                      [class.tone-bad]="kv.key === 'sell'">
+                  {{ kv.key }} ({{ kv.value }})
+                </span>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Sample parsed rows side-by-side with raw rows -->
+        @if (p.sample_parsed?.length) {
+          <h3 class="sm-preview-h">Sample of parsed rows</h3>
+          <p class="sm-preview-sub">
+            First {{ p.sample_parsed.length }} row(s) of your file, after our
+            parser ran. Compare to the raw values below to spot any mis-mapping.
+          </p>
+          <div class="sm-sample-wrap">
+            <table class="sm-sample">
+              <thead>
+                <tr>
+                  <th>Date</th><th>Stock</th><th>Party</th><th>Category</th>
+                  <th>Side</th><th class="num">Price</th><th class="num">Value</th><th class="num">Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of p.sample_parsed; track $index) {
+                  <tr>
+                    <td>{{ fmtPreview(row.date) }}</td>
+                    <td><b>{{ fmtPreview(row.stock) }}</b></td>
+                    <td>{{ fmtPreview(row.party) }}</td>
+                    <td><span class="sm-mute">{{ fmtPreview(row.category) }}</span></td>
+                    <td><span class="sm-side"
+                              [class.tone-good]="row.txn_type === 'buy'"
+                              [class.tone-bad]="row.txn_type === 'sell'">
+                          {{ fmtPreview(row.txn_type) }}</span></td>
+                    <td class="num">{{ fmtPreview(row.price) }}</td>
+                    <td class="num">{{ fmtPreview(row.value) }}</td>
+                    <td class="num">{{ fmtPreview(row.quantity) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <details class="sm-preview-block">
+            <summary>Show raw rows for comparison</summary>
+            <div class="sm-sample-wrap">
+              <table class="sm-sample">
+                <thead>
+                  <tr>@for (h of p.headers; track h) { <th>{{ h }}</th> }</tr>
+                </thead>
+                <tbody>
+                  @for (row of p.sample_raw; track $index) {
+                    <tr>@for (h of p.headers; track h) {
+                      <td>{{ fmtPreview(row[h]) }}</td>
+                    }</tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </details>
+        }
+
+        <footer class="sm-preview-actions">
+          <button class="sm-btn-cancel" (click)="cancelPreview()">Cancel</button>
+          <button class="sm-btn-confirm"
+                  [disabled]="uploading() || p.usable_rows === 0"
+                  (click)="confirmUpload()">
+            @if (uploading()) { Saving… }
+            @else if (p.usable_rows === 0) { No usable rows — fix the format first }
+            @else { ✓ Confirm & save {{ p.usable_rows | number }} row(s) }
+          </button>
+        </footer>
+      </div>
+    </div>
+  }
+
+  <!-- ───────────────── Empty state ───────────────── -->
+  @if (summary()?.available === false || (summary()?.total_trades === 0)) {
+    <div class="sm-empty">
+      <div class="sm-empty-icon">📊</div>
+      <h2>No trades loaded yet</h2>
+      <p>Download a bulk-deals / SAST CSV from Tickertape (or any source with
+        the columns: Stock, Date, Party, Category, Txn. type, Avg. trade price,
+        Value traded, Holdings change, Quantity) and upload it here.</p>
+      <p class="sm-empty-tip">Each upload is merged with the existing history
+        and deduped — so you can add 5,000-row chunks one at a time and the
+        dashboard grows over months.</p>
+    </div>
+  }
+
+  <!-- ───────────────── KPIs ───────────────── -->
+  @if (summary(); as s) { @if (s.total_trades > 0) {
+    <div class="sm-kpis">
+      <div class="sm-kpi">
+        <span class="sm-kpi-lbl">Total trades</span>
+        <span class="sm-kpi-val">{{ s.total_trades | number }}</span>
+      </div>
+      <div class="sm-kpi">
+        <span class="sm-kpi-lbl">Distinct parties</span>
+        <span class="sm-kpi-val">{{ s.distinct_parties | number }}</span>
+      </div>
+      <div class="sm-kpi">
+        <span class="sm-kpi-lbl">Distinct stocks</span>
+        <span class="sm-kpi-val">{{ s.distinct_stocks | number }}</span>
+      </div>
+      <div class="sm-kpi tone-good">
+        <span class="sm-kpi-lbl">Total bought</span>
+        <span class="sm-kpi-val">{{ fmtRs(s.total_buy_value) }}</span>
+      </div>
+      <div class="sm-kpi tone-bad">
+        <span class="sm-kpi-lbl">Total sold</span>
+        <span class="sm-kpi-val">{{ fmtRs(s.total_sell_value) }}</span>
+      </div>
+      <div class="sm-kpi" [class.tone-good]="s.net_flow > 0" [class.tone-bad]="s.net_flow < 0">
+        <span class="sm-kpi-lbl">Net flow</span>
+        <span class="sm-kpi-val">{{ s.net_flow > 0 ? '+' : '' }}{{ fmtRs(s.net_flow) }}</span>
+      </div>
+      <div class="sm-kpi">
+        <span class="sm-kpi-lbl">Date range</span>
+        <span class="sm-kpi-val sm-kpi-date">{{ s.from_date }} → {{ s.to_date }}</span>
+      </div>
+    </div>
+  } }
+
+  <!-- ───────────────── Filters ───────────────── -->
+  @if (summary()?.total_trades > 0) {
+    <div class="sm-filters">
+      <div class="sm-filter-group">
+        <span class="sm-filter-label">Window</span>
+        @for (d of PERIODS; track d) {
+          <button class="sm-pill" [class.active]="period() === d" (click)="setPeriod(d)">
+            {{ PERIOD_LABEL(d) }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- ───────────────── Hottest stocks ───────────────── -->
+    <section class="sm-card">
+      <div class="sm-card-head">
+        <h2>🔥 Hottest stocks</h2>
+        <div class="sm-tabs">
+          @for (s of SORT_OPTIONS; track s.key) {
+            <button class="sm-tab" [class.active]="sortBy() === s.key" (click)="setSortBy(s.key)">
+              {{ s.label }}
+              <span class="sm-tab-sub">{{ s.sub }}</span>
+            </button>
+          }
+        </div>
+      </div>
+
+      @if (hottest().length) {
+        <div class="sm-bars">
+          @for (row of hottest(); track row.stock; let i = $index) {
+            <div class="sm-bar-row" (click)="openStock(row.stock)">
+              <span class="sm-bar-rank">{{ i + 1 }}</span>
+              <span class="sm-bar-ticker">{{ row.stock }}</span>
+              <div class="sm-bar-track">
+                <div class="sm-bar-fill"
+                     [class.pos]="isPositive(row)"
+                     [class.neg]="!isPositive(row)"
+                     [style.width.%]="barPct(row)"></div>
+              </div>
+              <span class="sm-bar-meta">
+                @if (sortBy() === 'net_breadth') {
+                  <b>{{ row.net_breadth >= 0 ? '+' : '' }}{{ row.net_breadth }}</b>
+                  <span class="sm-bar-meta-sub">{{ row.unique_buyers }} buy / {{ row.unique_sellers }} sell</span>
+                } @else if (sortBy() === 'deal_count') {
+                  <b>{{ row.deal_count }} deals</b>
+                  <span class="sm-bar-meta-sub">{{ fmtRs(row.buy_value + row.sell_value) }}</span>
+                } @else if (sortBy() === 'buy_value') {
+                  <b>{{ fmtRs(row.buy_value) }}</b>
+                  <span class="sm-bar-meta-sub">{{ row.unique_buyers }} buyers</span>
+                } @else {
+                  <b [class.tone-good]="row.net_flow > 0" [class.tone-bad]="row.net_flow < 0">
+                    {{ row.net_flow > 0 ? '+' : '' }}{{ fmtRs(row.net_flow) }}
+                  </b>
+                  <span class="sm-bar-meta-sub">
+                    {{ fmtRs(row.buy_value) }} in · {{ fmtRs(row.sell_value) }} out
+                  </span>
+                }
+              </span>
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="sm-card-empty">No data in this window.</div>
+      }
+    </section>
+
+    <div class="sm-grid-2">
+      <!-- ───────────────── Category donut ───────────────── -->
+      <section class="sm-card">
+        <div class="sm-card-head">
+          <h2>🥧 Who's buying — by category</h2>
+        </div>
+        @if (donutSegments().length) {
+          <div class="sm-donut-wrap">
+            <svg viewBox="0 0 160 160" width="160" height="160" class="sm-donut">
+              @for (seg of donutSegments(); track seg.category) {
+                <path [attr.d]="seg.d" [attr.fill]="seg.color"
+                      stroke="#fff" stroke-width="1.5"
+                      [attr.title]="seg.category + ': ' + fmtRs(seg.buy)" />
+              }
+              <circle cx="80" cy="80" r="34" fill="#fff" />
+              <text x="80" y="78" text-anchor="middle" class="sm-donut-center-num">
+                {{ fmtRs(donutTotal()) }}
+              </text>
+              <text x="80" y="92" text-anchor="middle" class="sm-donut-center-lbl">total buys</text>
+            </svg>
+            <div class="sm-legend">
+              @for (seg of donutSegments(); track seg.category) {
+                <div class="sm-legend-row">
+                  <span class="sm-legend-dot" [style.background]="seg.color"></span>
+                  <span class="sm-legend-cat">{{ seg.category }}</span>
+                  <span class="sm-legend-pct">{{ seg.pct | number:'1.1-1' }}%</span>
+                  <span class="sm-legend-val">{{ fmtRs(seg.buy) }}</span>
+                </div>
+              }
+            </div>
+          </div>
+        } @else {
+          <div class="sm-card-empty">No category data in this window.</div>
+        }
+      </section>
+
+      <!-- ───────────────── Top parties ───────────────── -->
+      <section class="sm-card">
+        <div class="sm-card-head">
+          <h2>👤 Most active parties</h2>
+          <span class="sm-card-sub">ranked by total ₹ activity</span>
+        </div>
+        @if (parties().length) {
+          <div class="sm-parties">
+            @for (p of parties(); track p.party; let i = $index) {
+              <div class="sm-party-row">
+                <span class="sm-party-rank">{{ i + 1 }}</span>
+                <div class="sm-party-name">{{ p.party }}</div>
+                <div class="sm-party-stats">
+                  <span class="sm-party-stat tone-good">
+                    <span class="sm-stat-lbl">in</span> {{ fmtRs(p.buy_value) }}
+                  </span>
+                  <span class="sm-party-stat tone-bad">
+                    <span class="sm-stat-lbl">out</span> {{ fmtRs(p.sell_value) }}
+                  </span>
+                  <span class="sm-party-stat" [class.tone-good]="p.net_flow > 0" [class.tone-bad]="p.net_flow < 0">
+                    <span class="sm-stat-lbl">net</span>
+                    {{ p.net_flow > 0 ? '+' : '' }}{{ fmtRs(p.net_flow) }}
+                  </span>
+                  <span class="sm-party-stat-secondary">
+                    {{ p.buys }} buys · {{ p.sells }} sells · {{ p.distinct_stocks }} stocks
+                  </span>
+                </div>
+              </div>
+            }
+          </div>
+        } @else {
+          <div class="sm-card-empty">No party activity in this window.</div>
+        }
+      </section>
+    </div>
+  }
+
+  <!-- ───────────────── Stock drill-down ───────────────── -->
+  @if (selectedStock(); as s) {
+    <div class="sm-overlay" (click)="closeStock()">
+      <div class="sm-modal" (click)="$event.stopPropagation()">
+        <header class="sm-modal-head">
+          <h2>{{ s.stock }}</h2>
+          <button class="sm-close" (click)="closeStock()" aria-label="close">×</button>
+        </header>
+
+        <div class="sm-modal-kpis">
+          <div class="sm-kpi tone-good">
+            <span class="sm-kpi-lbl">Total bought</span>
+            <span class="sm-kpi-val">{{ fmtRs(s.buy_value) }}</span>
+          </div>
+          <div class="sm-kpi tone-bad">
+            <span class="sm-kpi-lbl">Total sold</span>
+            <span class="sm-kpi-val">{{ fmtRs(s.sell_value) }}</span>
+          </div>
+          <div class="sm-kpi" [class.tone-good]="s.net_flow > 0" [class.tone-bad]="s.net_flow < 0">
+            <span class="sm-kpi-lbl">Net flow</span>
+            <span class="sm-kpi-val">{{ s.net_flow > 0 ? '+' : '' }}{{ fmtRs(s.net_flow) }}</span>
+          </div>
+          <div class="sm-kpi">
+            <span class="sm-kpi-lbl">Buyers / Sellers</span>
+            <span class="sm-kpi-val">{{ s.unique_buyers }} / {{ s.unique_sellers }}</span>
+          </div>
+          <div class="sm-kpi">
+            <span class="sm-kpi-lbl">VWAP buy / sell</span>
+            <span class="sm-kpi-val">
+              @if (s.vwap_buy) { ₹{{ s.vwap_buy | number:'1.2-2' }} }
+              <span class="sm-mute">/</span>
+              @if (s.vwap_sell) { ₹{{ s.vwap_sell | number:'1.2-2' }} }
+            </span>
+          </div>
+          <div class="sm-kpi">
+            <span class="sm-kpi-lbl">Deals</span>
+            <span class="sm-kpi-val">{{ s.deal_count }}</span>
+          </div>
+        </div>
+
+        <!-- Daily flow chart -->
+        @if (drilldownPath()) {
+          <div class="sm-modal-chart">
+            <div class="sm-chart-title">Daily net ₹ flow</div>
+            <svg viewBox="0 0 480 110" width="100%" height="110">
+              @if (drilldownZeroLine(); as z) {
+                <line x1="0" [attr.y1]="z.y" [attr.x2]="z.w" [attr.y2]="z.y"
+                      stroke="rgba(15,23,42,0.20)" stroke-width="1" stroke-dasharray="3 4" />
+              }
+              <path [attr.d]="drilldownPath()" fill="none"
+                    [attr.stroke]="s.net_flow >= 0 ? '#15924b' : '#b73a4f'"
+                    stroke-width="1.8" stroke-linejoin="round" />
+            </svg>
+            <div class="sm-chart-x">
+              @if (s.daily_flow?.length) {
+                <span>{{ s.daily_flow[0].date }}</span>
+                <span>{{ s.daily_flow[s.daily_flow.length - 1].date }}</span>
+              }
+            </div>
+          </div>
+        }
+
+        <div class="sm-modal-cols">
+          <div class="sm-modal-col">
+            <h3 class="tone-good">Top buyers</h3>
+            @if (s.top_buyers?.length) {
+              <ul>
+                @for (b of s.top_buyers; track b.party) {
+                  <li><b>{{ b.party }}</b><span class="sm-modal-amt">{{ fmtRs(b.value) }}</span></li>
+                }
+              </ul>
+            } @else { <div class="sm-card-empty">No buys.</div> }
+          </div>
+          <div class="sm-modal-col">
+            <h3 class="tone-bad">Top sellers</h3>
+            @if (s.top_sellers?.length) {
+              <ul>
+                @for (b of s.top_sellers; track b.party) {
+                  <li><b>{{ b.party }}</b><span class="sm-modal-amt">{{ fmtRs(b.value) }}</span></li>
+                }
+              </ul>
+            } @else { <div class="sm-card-empty">No sells.</div> }
+          </div>
+        </div>
+
+        <!-- Full trade log -->
+        <details class="sm-modal-trades">
+          <summary>Show all {{ s.all_trades?.length || 0 }} trade(s)</summary>
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Party</th><th>Cat</th><th>Side</th>
+                  <th class="num">Qty</th><th class="num">Price</th><th class="num">Value</th></tr>
+            </thead>
+            <tbody>
+              @for (t of s.all_trades; track t) {
+                <tr>
+                  <td>{{ t.date }}</td>
+                  <td>{{ t.party }}</td>
+                  <td><span class="sm-mute">{{ t.category }}</span></td>
+                  <td>
+                    <span class="sm-side"
+                          [class.tone-good]="t.txn_type === 'buy'"
+                          [class.tone-bad]="t.txn_type === 'sell'">
+                      {{ t.txn_type }}
+                    </span>
+                  </td>
+                  <td class="num">{{ +t.quantity | number }}</td>
+                  <td class="num">₹{{ +t.price | number:'1.2-2' }}</td>
+                  <td class="num">{{ fmtRs(+t.value) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </details>
+      </div>
+    </div>
+  }
+</div>

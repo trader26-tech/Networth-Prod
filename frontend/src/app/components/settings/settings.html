@@ -1,0 +1,365 @@
+<div class="settings-page">
+  <div class="page-head">
+    <h2 class="page-title">API Settings</h2>
+    <button class="status-info-btn" (click)="toggleInfo()"
+            [class.active]="infoOpen()"
+            title="Show full connection details">ⓘ</button>
+  </div>
+
+  <!-- Combined one-line status: Kite + Supabase + ⓘ for details -->
+  @if (status() || supabaseStatus()) {
+    @let kc = status()?.connected;
+    @let ss = supabaseStatus();
+    @let sbOk = ss?.reachable;
+    @let sbCfg = ss?.configured;
+    <div class="status-line">
+      <span class="status-pill"
+            [class.ok]="kc"
+            [class.bad]="!kc">
+        <span class="dot"></span>
+        Kite API
+        <strong>{{ kc ? 'Connected' : 'Not connected' }}</strong>
+      </span>
+      <span class="status-pill"
+            [class.ok]="sbOk"
+            [class.bad]="sbCfg && !sbOk"
+            [class.neutral]="!sbCfg">
+        <span class="dot"></span>
+        Supabase
+        <strong>
+          {{ sbOk ? 'Connected' : (sbCfg ? 'Unreachable' : 'Not connected') }}
+        </strong>
+      </span>
+      @if (status()?.connected) {
+        <button class="btn btn-ghost status-disconnect" (click)="disconnect()">Disconnect</button>
+      }
+    </div>
+
+    @if (infoOpen()) {
+      <div class="status-details">
+        <div class="sd-row">
+          <div class="sd-key">Kite API</div>
+          <div class="sd-val">
+            @if (status()?.connected) {
+              Connected as <strong>{{ status().profile?.user_name }}</strong>
+              ({{ status().profile?.user_id }}) — real-time NSE/BSE data is active.
+              Orders are still paper (no real money).
+            } @else {
+              Using simulated market data. Connect Kite below to enable live prices.
+            }
+          </div>
+        </div>
+        <div class="sd-row">
+          <div class="sd-key">Supabase</div>
+          <div class="sd-val">
+            @if (sbOk) {
+              <strong>{{ ss.message }}</strong><br>
+              Project <code>{{ ss.url }}</code> · auth <code>{{ ss.key_kind }}</code> key ·
+              positions persist across container redeploys.
+            } @else if (sbCfg) {
+              Configured (<code>{{ ss.url }}</code>) but unreachable —
+              <span style="color:#ef4444">{{ ss.error }}</span>
+            } @else {
+              Not configured — using local JSON fallback. Add
+              <code>SUPABASE_URL</code> + <code>SUPABASE_KEY</code> env vars
+              and follow <code>SUPABASE.md</code> to enable cloud persistence.
+            }
+          </div>
+        </div>
+      </div>
+    }
+  }
+
+  <!-- ── Security (this device) ──────────────────────────────────────────── -->
+  <div class="card sec-card">
+    <div class="card-title sec-title">
+      <span class="sec-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+      Security · this device
+    </div>
+    <p class="sec-sub">
+      Signed in as <b>{{ secEmail() || auth.maskedEmail() || 'this device' }}</b>.
+      Codes are delivered via <b>{{ secDelivery() || '—' }}</b>. Settings here apply to <b>this device only</b>.
+    </p>
+
+    <!-- Auto-lock duration -->
+    <div class="sec-block">
+      <div class="sec-label">Auto-lock after inactivity</div>
+      <div class="lock-choices">
+        @for (m of auth.lockPresets(); track m) {
+          <button type="button" class="lock-choice" [class.active]="auth.lockMinutes() === m"
+                  (click)="saveLockMinutes(m)">{{ m }} min</button>
+        }
+      </div>
+      <p class="sec-hint">The app locks itself after this much idle time. You'll get a “Stay signed in” prompt just before.</p>
+    </div>
+
+    <!-- Change PIN -->
+    <div class="sec-block">
+      <div class="sec-label">Change PIN</div>
+      <div class="sec-pin-row">
+        <input type="password" inputmode="numeric" maxlength="8" placeholder="New PIN (4–8 digits)"
+               [ngModel]="secPin()" (ngModelChange)="secPin.set($event)" autocomplete="new-password">
+        <input type="password" inputmode="numeric" maxlength="8" placeholder="Confirm PIN"
+               [ngModel]="secPin2()" (ngModelChange)="secPin2.set($event)" autocomplete="new-password">
+        <button class="btn btn-primary" [disabled]="secBusy()" (click)="saveNewPin()">
+          {{ secBusy() ? 'Saving…' : 'Update PIN' }}
+        </button>
+      </div>
+    </div>
+
+    @if (secMsg()) { <div class="sec-ok">{{ secMsg() }}</div> }
+    @if (secError()) { <div class="sec-err">{{ secError() }}</div> }
+
+    <!-- Log out this device -->
+    <div class="sec-block sec-danger">
+      <div>
+        <div class="sec-label">Log out this device</div>
+        <p class="sec-hint" style="margin:2px 0 0">Revokes this device's trusted access. Other devices stay signed in.</p>
+      </div>
+      <button class="btn btn-ghost sec-logout" (click)="logoutDevice()">Log out</button>
+    </div>
+  </div>
+
+  <!-- Editable Supabase connection (URL + service key) -->
+  <div class="card sb-card">
+    <button class="howto-head" (click)="toggleSbEdit()" type="button">
+      <span class="card-title" style="margin:0">
+        Supabase database
+        @if (sbKeySet()) {
+          <span class="sb-badge ok">key set</span>
+        } @else {
+          <span class="sb-badge">not set</span>
+        }
+      </span>
+      <span class="howto-chevron" [class.open]="sbEditOpen()">⌄</span>
+    </button>
+
+    @if (sbEditOpen()) {
+      <div class="sb-body">
+        <p class="sb-help">
+          Switch projects or rotate keys anytime — these stay editable. Saving writes to
+          <code>.env</code> and hot-reloads the connection (no restart). Find both in your
+          Supabase project → <strong>Project Settings → API</strong>.
+        </p>
+
+        <label class="sb-field">
+          <span>Project URL</span>
+          <input type="text" [ngModel]="sbUrl()" (ngModelChange)="sbUrl.set($event)"
+                 placeholder="https://your-project-ref.supabase.co" autocomplete="off" spellcheck="false">
+        </label>
+
+        <label class="sb-field">
+          <span>service_role key
+            @if (sbKeySet()) { <em>— current: {{ sbKeyHint() }} · leave blank to keep</em> }
+          </span>
+          <input type="password" [ngModel]="sbKey()" (ngModelChange)="sbKey.set($event)"
+                 [placeholder]="sbKeySet() ? '•••••••• (unchanged)' : 'eyJhbG…paste service_role key'"
+                 autocomplete="off" spellcheck="false">
+        </label>
+
+        @if (sbError()) { <div class="sb-inline-err">{{ sbError() }}</div> }
+        @if (sbMsg())   { <div class="sb-inline-ok">{{ sbMsg() }}</div> }
+
+        <div class="sb-actions">
+          <button class="btn btn-ghost" (click)="loadSupabaseStatus(true)">Re-test</button>
+          <button class="btn btn-primary" (click)="saveSupabaseConfig()" [disabled]="sbSaving()">
+            {{ sbSaving() ? 'Saving…' : 'Save & connect' }}
+          </button>
+        </div>
+
+        <p class="sb-note">
+          🔒 The service_role key is stored server-side in <code>.env</code> and never committed.
+          On Railway, set <code>SUPABASE_URL</code> / <code>SUPABASE_SERVICE_KEY</code> in the
+          Variables tab instead — container files reset on redeploy.
+        </p>
+      </div>
+    }
+  </div>
+
+  <!-- Auto-exchange spinner (Kite OAuth redirect detected) -->
+  @if (autoExchanging()) {
+    <div class="alert auto-exchange">
+      <span class="ae-spinner"></span>
+      <div>
+        <strong>Kite login detected — exchanging token automatically…</strong>
+        <div style="font-size:11px;margin-top:3px;opacity:0.8">Do not close this tab.</div>
+      </div>
+    </div>
+  }
+
+  @if (successMsg()) {
+    <div class="alert success">{{ successMsg() }}</div>
+  }
+
+  <!-- How it works (white card, collapsible) -->
+  <div class="card howto-card">
+    <button class="howto-head" (click)="toggleHowto()" type="button">
+      <span class="card-title" style="margin:0">How this works</span>
+      <span class="howto-chevron" [class.open]="howtoOpen()">⌄</span>
+    </button>
+    @if (howtoOpen()) {
+      <div class="howto-body">
+        <div class="info-steps">
+          <div class="info-step">
+            <div class="step-num">1</div>
+            <div>Enter your Kite API key &amp; access token below</div>
+          </div>
+          <div class="info-step">
+            <div class="step-num">2</div>
+            <div>The app fetches <strong>real NSE/BSE market data</strong> for prices, charts, watchlist</div>
+          </div>
+          <div class="info-step">
+            <div class="step-num">3</div>
+            <div><strong>Orders are still paper only</strong> — zero real money is ever placed</div>
+          </div>
+        </div>
+        <div class="info-note">
+          Access tokens expire <strong>daily at midnight</strong> — you'll need to re-enter the token each trading day.
+          Get your API key at <a href="https://developers.kite.trade" target="_blank" rel="noopener">developers.kite.trade</a>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar">
+    <span class="tab" [class.active]="activeTab() === 'browser'" (click)="activeTab.set('browser')">
+      Browser Login Flow
+    </span>
+    <span class="tab" [class.active]="activeTab() === 'direct'" (click)="activeTab.set('direct')">
+      Direct Token
+    </span>
+  </div>
+
+  <!-- ── Tab: Direct ──────────────────────────────────────────────── -->
+  @if (activeTab() === 'direct') {
+    <div class="card">
+      <div class="card-title">Enter credentials directly</div>
+      <p class="tab-desc">
+        If you already have your API key and today's access token (from Kite developer console or your own script), enter them here.
+      </p>
+
+      <div class="form-grid">
+        <div class="field-group">
+          <label class="form-label">API Key</label>
+          <input class="form-control" placeholder="e.g. abcdef1234567890"
+                 [ngModel]="directApiKey()" (ngModelChange)="directApiKey.set($event)" />
+        </div>
+        <div class="field-group">
+          <label class="form-label">Access Token <span class="expires-hint">(expires daily)</span></label>
+          <input class="form-control" type="password" placeholder="Paste your access token"
+                 [ngModel]="directAccessToken()" (ngModelChange)="directAccessToken.set($event)" />
+        </div>
+      </div>
+
+      @if (directError()) { <div class="alert error" style="margin-top:12px">{{ directError() }}</div> }
+
+      <div class="form-footer">
+        <button class="btn btn-primary" [disabled]="directConnecting()" (click)="connectDirect()">
+          {{ directConnecting() ? 'Connecting...' : 'Connect & Activate Live Data' }}
+        </button>
+      </div>
+
+      <div class="howto">
+        <div class="howto-title">How to get your access token</div>
+        <ol class="howto-list">
+          <li>Go to <a href="https://kite.trade/connect/login?api_key=YOUR_KEY&v=3" target="_blank">kite.trade</a> and log in</li>
+          <li>After login, the redirect URL contains <code>request_token=XXXXX</code></li>
+          <li>Run in terminal: <code class="code-block">cd /Users/sanjeev/Documents/zerodha_pro && python config.py</code></li>
+          <li>Follow the prompts — it prints your access token</li>
+          <li>Paste both API key and token above</li>
+        </ol>
+      </div>
+    </div>
+  }
+
+  <!-- ── Tab: Browser Flow ────────────────────────────────────────── -->
+  @if (activeTab() === 'browser') {
+
+    <!-- Auto-exchange error (shown prominently even when no loginUrl is set) -->
+    @if (autoError()) {
+      <div class="alert error auto-error">
+        <div class="auto-error-icon">⚠</div>
+        <div>
+          <strong>Login failed</strong><br>
+          {{ autoError() }}
+        </div>
+        <button class="btn btn-ghost" style="margin-left:auto;flex-shrink:0" (click)="autoError.set('')">✕</button>
+      </div>
+    }
+
+    <!-- Quick login: keys already in .env → one click, no re-typing -->
+    @if (status()?.has_api_key && status()?.has_api_secret && !status()?.connected) {
+      <div class="card quick-login-card">
+        <div class="card-title">⚡ Quick login (saved keys)</div>
+        <p class="tab-desc">
+          Your API key &amp; secret are already saved (<code>{{ status()?.api_key_hint }}</code>).
+          One click logs you in — no re-typing. Kite needs this once per trading day; the token then
+          persists across restarts until it expires next morning.
+        </p>
+        <button class="btn btn-primary" [disabled]="quickLoggingIn()" (click)="quickLogin()">
+          {{ quickLoggingIn() ? 'Opening Kite…' : 'Log in to Kite with saved keys →' }}
+        </button>
+      </div>
+    }
+
+    @if (status()?.connected) {
+      <div class="alert success">✓ Connected to Kite as {{ status()?.profile?.user_name || status()?.profile?.user_id || 'your account' }} — live data is active.</div>
+    }
+
+    <div class="card">
+      <div class="card-title">Step 1 — Save your API credentials <span class="tab-desc" style="font-weight:400">(only needed the first time, or to change keys)</span></div>
+      <div class="form-grid">
+        <div class="field-group">
+          <label class="form-label">API Key</label>
+          <input class="form-control" placeholder="Your Kite API key"
+                 [ngModel]="apiKey()" (ngModelChange)="apiKey.set($event)" />
+        </div>
+        <div class="field-group">
+          <label class="form-label">API Secret</label>
+          <input class="form-control" type="password" placeholder="Your Kite API secret"
+                 [ngModel]="apiSecret()" (ngModelChange)="apiSecret.set($event)" />
+        </div>
+      </div>
+      @if (step1Error()) { <div class="alert error" style="margin-top:12px">{{ step1Error() }}</div> }
+      <div class="form-footer">
+        <button class="btn btn-primary" [disabled]="savingKeys()" (click)="saveKeys()">
+          {{ savingKeys() ? 'Saving...' : 'Save & Get Login URL' }}
+        </button>
+      </div>
+    </div>
+
+    @if (loginUrl()) {
+      <div class="card login-url-card">
+        <div class="card-title">Step 2 — Log in to Kite</div>
+        <p class="tab-desc">
+          Click below to open the Kite login page. After you log in, Kite will redirect back here
+          and the app will automatically detect the token and connect.
+        </p>
+        <button class="btn btn-primary login-url-btn" (click)="openLoginUrl()">
+          Open Kite Login →
+        </button>
+      </div>
+
+      <!-- Fallback: manual token paste if auto-detect fails -->
+      <div class="card">
+        <div class="card-title">Fallback — paste request_token manually</div>
+        <p class="tab-desc">
+          If the auto-redirect didn't work (e.g. redirect URL not yet updated in Kite console),
+          copy the <code>request_token</code> from the browser URL bar after login and paste it here.
+        </p>
+        <div class="field-group" style="margin-top:12px">
+          <label class="form-label">Request Token</label>
+          <input class="form-control" placeholder="Paste request_token here"
+                 [ngModel]="requestToken()" (ngModelChange)="requestToken.set($event)" />
+        </div>
+        @if (step2Error()) { <div class="alert error" style="margin-top:10px">{{ step2Error() }}</div> }
+        <div class="form-footer">
+          <button class="btn btn-primary" [disabled]="connecting()" (click)="connectToken()">
+            {{ connecting() ? 'Authenticating...' : 'Authenticate & Connect' }}
+          </button>
+        </div>
+      </div>
+    }
+  }
+</div>

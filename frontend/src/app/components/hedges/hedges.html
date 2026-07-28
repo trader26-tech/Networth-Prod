@@ -1,0 +1,414 @@
+<div class="hg-page">
+
+  <!-- ════════ Header ════════════════════════════════════════════════════ -->
+  <header class="hg-header">
+    <a class="hg-back" routerLink="/strategies">← Strategies</a>
+    <div class="hg-title-row">
+      <span class="hg-icon">🛡️</span>
+      <div class="hg-title-block">
+        <h1 class="hg-title">Hedges</h1>
+        <p class="hg-tagline">First-class management of long protective puts. Tag to any CC strategy.</p>
+      </div>
+      <div class="hg-actions">
+        <button class="hg-btn hg-btn-primary" (click)="scanCandidates()">
+          🔍 Scan Best Hedges
+        </button>
+        <button class="hg-btn hg-btn-secondary" (click)="manualMode.set(!manualMode())">
+          + Manual
+        </button>
+        <button class="hg-btn hg-btn-ghost" (click)="loadHedges()" [disabled]="loading()">
+          @if (loading()) { ↻ Loading… } @else { ↻ Refresh }
+        </button>
+      </div>
+    </div>
+    @if (totalAnnualDrag(); as d) {
+      <div class="hg-drag-summary">
+        <strong>Total annual drag:</strong> {{ fmtRs(d.annual_cost) }}/yr ≈ {{ d.pct_of_spot }}% of spot
+      </div>
+    }
+
+    <!-- Roll-schedule reference card — always visible -->
+    <div class="hg-roll-guide">
+      <div class="hrg-title">📅 Roll Schedule — buy 3-month, roll at 30 DTE</div>
+      <div class="hrg-rows">
+        <div class="hrg-row hrg-good">
+          <span class="hrg-pill">DTE &gt; 45</span>
+          <strong>HOLD</strong>
+          <span class="hrg-text">Theta is slow at this duration. No action — let the hedge ride.</span>
+        </div>
+        <div class="hrg-row hrg-warn">
+          <span class="hrg-pill">DTE 30-45</span>
+          <strong>PLAN</strong>
+          <span class="hrg-text">Roll trigger approaching. Start scanning fresh 75-100 DTE candidates so you have a target ready.</span>
+        </div>
+        <div class="hrg-row hrg-bad">
+          <span class="hrg-pill">DTE ≤ 30</span>
+          <strong>ROLL NOW</strong>
+          <span class="hrg-text">Below 30 DTE, gamma + theta both accelerate fast. Close current hedge and open a new 75-100 DTE put at 5-8% OTM.</span>
+        </div>
+      </div>
+      <div class="hrg-note">
+        <strong>Why 3-month?</strong> 60d hedges are too short — you'll be rolling every 30d (high friction).
+        4-6 months are too long — vega risk grows and capital ties up.
+        <strong>75-100 DTE</strong> hits the sweet spot: enough buffer for one roll cycle, not so much that vega becomes a liability.
+      </div>
+    </div>
+  </header>
+
+  @if (error()) { <div class="hg-error">⚠ {{ error() }}</div> }
+
+  <!-- ════════ Manual create form ════════════════════════════════════════ -->
+  @if (manualMode()) {
+    <section class="hg-card hg-form-card">
+      <h2>Create Hedge Manually</h2>
+      <div class="hg-form-row">
+        <label>Strike
+          <input type="number" step="50" [ngModel]="formStrike()"
+                 (ngModelChange)="formStrike.set($event)" placeholder="23250">
+        </label>
+        <label>Expiry (YYYY-MM-DD)
+          <input type="text" [ngModel]="formExpiry()"
+                 (ngModelChange)="formExpiry.set($event)" placeholder="2026-08-28">
+        </label>
+        <label>Lots
+          <input type="number" min="1" [ngModel]="formLots()"
+                 (ngModelChange)="formLots.set($event)">
+        </label>
+        <label>Lot size
+          <input type="number" [ngModel]="formLotSize()"
+                 (ngModelChange)="formLotSize.set($event)">
+        </label>
+        <label>Premium paid (₹)
+          <input type="number" step="0.05" [ngModel]="formPremium()"
+                 (ngModelChange)="formPremium.set($event)">
+        </label>
+        <label>Symbol (optional)
+          <input type="text" [ngModel]="formSymbol()"
+                 (ngModelChange)="formSymbol.set($event)" placeholder="NIFTY26AUG23250PE">
+        </label>
+      </div>
+      <div class="hg-form-actions">
+        <button class="hg-btn hg-btn-primary" (click)="createManual()">Save Hedge</button>
+        <button class="hg-btn hg-btn-ghost" (click)="manualMode.set(false)">Cancel</button>
+      </div>
+    </section>
+  }
+
+  <!-- ════════ Scanner results ═══════════════════════════════════════════ -->
+  @if (showScanner()) {
+    <section class="hg-card hg-scanner-card">
+      <div class="hg-scanner-head">
+        <h2>🔍 Best Hedge Candidates</h2>
+        <button class="hg-btn hg-btn-ghost hg-btn-sm" (click)="showScanner.set(false)">Close</button>
+      </div>
+
+      @if (scanLoading()) {
+        <div class="hg-loading">⏳ Scanning chains across all listed expiries…</div>
+      }
+
+      @if (!scanLoading() && scanFallback(); as msg) {
+        <div class="hg-fallback-banner">{{ msg }}</div>
+      }
+
+      @if (!scanLoading() && scanBest(); as best) {
+
+        <!-- Best -->
+        <div class="hg-best">
+          <div class="hg-best-head">
+            <span class="hg-best-medal">🏆</span>
+            <strong>Best Hedge · #1 of {{ scanResult().length }}</strong>
+            <button class="hg-btn hg-btn-primary hg-btn-sm" (click)="createFromCandidate(best)">
+              Buy this hedge →
+            </button>
+          </div>
+          <div class="hg-trade-line">
+            <strong>{{ best.strike | number:'1.0-0' }} PE {{ best.expiry }}</strong>
+            <span>@ ₹{{ best.premium | number:'1.2-2' }}</span>
+            <span class="hg-meta">{{ best.dte }}d · {{ best.otm_pct | number:'1.1-1' }}% OTM · ₹{{ best.cost_per_protected | number:'1.3-3' }}/protected ₹</span>
+            @if (best.hit_prob_pct != null) {
+              <span class="hg-hit-pill"
+                    [class.hp-good]="best.hit_prob_pct >= 18"
+                    [class.hp-warn]="best.hit_prob_pct >= 10 && best.hit_prob_pct < 18"
+                    [class.hp-bad]="best.hit_prob_pct < 10"
+                    [title]="'Probability the hedge finishes in-the-money at expiry. Higher = fires more often.'">
+                Fires {{ best.hit_prob_pct | number:'1.0-0' }}%
+              </span>
+            }
+          </div>
+          <p class="hg-summary">{{ best.summary }}</p>
+
+          @if (best.math; as m) {
+            <details class="hg-math">
+              <summary>📐 Math behind this hedge</summary>
+              <div class="hg-math-body">
+                <div class="hg-stats">
+                  <div class="hg-stat">
+                    <span class="hg-stat-lbl">Hit probability</span>
+                    <span class="hg-stat-val">{{ m.hit_prob_pct | number:'1.0-0' }}%</span>
+                    @if (m.cycles_per_hit) {
+                      <span class="hg-stat-sub">~1 in {{ m.cycles_per_hit | number:'1.0-0' }} cycles</span>
+                    }
+                  </div>
+                  <div class="hg-stat">
+                    <span class="hg-stat-lbl">Breakeven drop</span>
+                    <span class="hg-stat-val">{{ m.breakeven_drop_pct | number:'1.2-2' }}%</span>
+                  </div>
+                  <div class="hg-stat">
+                    <span class="hg-stat-lbl">Annual drag</span>
+                    <span class="hg-stat-val">{{ m.annual_drag_pct | number:'1.2-2' }}%</span>
+                  </div>
+                  <div class="hg-stat">
+                    <span class="hg-stat-lbl">Crash efficiency</span>
+                    <span class="hg-stat-val">{{ m.efficiency | number:'1.2-2' }}×</span>
+                  </div>
+                  <div class="hg-stat">
+                    <span class="hg-stat-lbl">1σ move ({{ best.dte }}d)</span>
+                    <span class="hg-stat-val">±{{ m.sigma_1d_pct | number:'1.2-2' }}%</span>
+                  </div>
+                </div>
+
+                <table class="hg-scenarios">
+                  <thead>
+                    <tr><th>Drop</th><th>Sₜ</th><th>Gross</th><th>Net</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    @for (s of m.scenarios; track s.drop_pct) {
+                      <tr [class.profitable]="s.net_payoff > 0">
+                        <td>{{ s.drop_pct }}%</td>
+                        <td>{{ s.nifty | number:'1.0-0' }}</td>
+                        <td>₹{{ s.gross_payoff | number:'1.0-2' }}</td>
+                        <td><strong>₹{{ s.net_payoff | number:'1.0-2' }}</strong></td>
+                        <td>{{ s.net_payoff > 0 ? '✓' : (s.in_the_money ? '~' : '—') }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          }
+        </div>
+
+        <!-- Alternatives -->
+        @if (scanResult().length > 1) {
+          <details class="hg-alts">
+            <summary>{{ scanResult().length - 1 }} more candidates</summary>
+            <div class="hg-alt-list">
+              @for (c of scanResult().slice(1, 6); track c.strike + '_' + c.expiry) {
+                <div class="hg-alt-row">
+                  <span class="hg-alt-rank">#{{ c.rank }}</span>
+                  <strong>{{ c.strike | number:'1.0-0' }} PE</strong>
+                  <span>{{ c.expiry }}</span>
+                  <span>{{ c.dte }}d</span>
+                  <span>₹{{ c.premium | number:'1.2-2' }}</span>
+                  <span>{{ c.otm_pct | number:'1.1-1' }}% OTM</span>
+                  <span>₹{{ c.cost_per_protected | number:'1.3-3' }}/₹</span>
+                  @if (c.hit_prob_pct != null) {
+                    <span class="hg-hit-pill"
+                          [class.hp-good]="c.hit_prob_pct >= 18"
+                          [class.hp-warn]="c.hit_prob_pct >= 10 && c.hit_prob_pct < 18"
+                          [class.hp-bad]="c.hit_prob_pct < 10">
+                      {{ c.hit_prob_pct | number:'1.0-0' }}% fires
+                    </span>
+                  }
+                  <button class="hg-btn hg-btn-secondary hg-btn-sm" (click)="createFromCandidate(c)">Buy</button>
+                </div>
+              }
+            </div>
+          </details>
+        }
+      } @else if (!scanLoading()) {
+        <div class="hg-empty">
+          <strong>No hedge candidates found.</strong>
+          @if (scanDiag(); as d) { <p>{{ d }}</p> }
+          @if (scanAttempted().length > 0) {
+            <details class="hg-diag-details">
+              <summary>Show what was attempted ({{ scanAttempted().length }} expiries)</summary>
+              <ul class="hg-diag-list">
+                @for (a of scanAttempted(); track a.expiry) {
+                  <li>
+                    <strong>{{ a.expiry }}</strong>
+                    @if (a.dte != null) { · {{ a.dte }} DTE }
+                    · {{ a.strikes }} strikes
+                    @if (a.skipped_reason) { <span class="hg-diag-reason">— {{ a.skipped_reason }}</span> }
+                  </li>
+                }
+              </ul>
+            </details>
+          }
+        </div>
+      }
+    </section>
+  }
+
+  <!-- ════════ Filter chips ══════════════════════════════════════════════ -->
+  <div class="hg-filter-chips">
+    <button class="hg-chip" [class.active]="filterStatus() === 'open'"
+            (click)="filterStatus.set('open')">
+      Open ({{ countOpen() }})
+    </button>
+    <button class="hg-chip" [class.active]="filterStatus() === 'closed'"
+            (click)="filterStatus.set('closed')">
+      Closed ({{ countClosed() }})
+    </button>
+    <button class="hg-chip" [class.active]="filterStatus() === 'all'"
+            (click)="filterStatus.set('all')">
+      All ({{ countTotal() }})
+    </button>
+  </div>
+
+  <!-- ════════ Hedges list ═══════════════════════════════════════════════ -->
+  @if (filteredHedges().length === 0 && !loading()) {
+    <div class="hg-empty-state">
+      <h3>No hedges yet</h3>
+      <p>Click <strong>Scan Best Hedges</strong> above to find a recommended OTM put,
+         or <strong>Manual</strong> to record a hedge you've already bought elsewhere.</p>
+    </div>
+  }
+
+  @for (h of filteredHedges(); track h.id) {
+    <article class="hg-card hg-hedge-card" [class.is-closed]="h.status !== 'open'">
+      <header class="hg-hedge-head">
+        <span class="hg-status-pill" [class.open]="h.status === 'open'"
+                                     [class.closed]="h.status !== 'open'">
+          {{ h.status === 'open' ? '🟢 OPEN' : (h.status === 'rolled' ? '↻ ROLLED' : '✓ CLOSED') }}
+        </span>
+        <h3 class="hg-hedge-strike">{{ h.strike | number:'1.0-0' }} PE</h3>
+        <span class="hg-hedge-expiry">{{ h.expiry }}</span>
+        @if (h.status === 'open') {
+          <span class="hg-hedge-dte" [class.warn]="h.should_roll">DTE {{ h.dte }}</span>
+          @if (h.roll_status; as rs) {
+            <span class="hg-roll-pill"
+                  [class.hrp-hold]="rs === 'hold'"
+                  [class.hrp-soon]="rs === 'soon'"
+                  [class.hrp-now]="rs === 'now'"
+                  [title]="h.roll_message || ''">
+              @if (rs === 'hold') { 🟢 HOLD }
+              @else if (rs === 'soon') { 🟡 PLAN }
+              @else if (rs === 'now') { 🔴 ROLL NOW }
+            </span>
+          }
+        }
+        <span class="hg-hedge-actions">
+          @if (h.status === 'open') {
+            @if (h.should_roll) {
+              <button class="hg-btn hg-btn-warn hg-btn-sm" (click)="openRollModal(h)">Roll →</button>
+            }
+            <button class="hg-btn hg-btn-ghost hg-btn-sm" (click)="openCloseModal(h)">Close</button>
+          } @else {
+            <button class="hg-btn hg-btn-danger-outline hg-btn-sm" (click)="deleteHedge(h)">Delete</button>
+          }
+        </span>
+      </header>
+
+      <div class="hg-hedge-body">
+        <div class="hg-fields">
+          <div class="hg-field">
+            <span class="hg-fld-lbl">Lots</span>
+            <span class="hg-fld-val">{{ h.lots }} × {{ h.lot_size }}</span>
+          </div>
+          <div class="hg-field">
+            <span class="hg-fld-lbl">Premium paid</span>
+            <span class="hg-fld-val">₹{{ h.premium_paid | number:'1.2-2' }}</span>
+          </div>
+          <div class="hg-field">
+            <span class="hg-fld-lbl">Total cost</span>
+            <span class="hg-fld-val">{{ fmtRs(h.premium_paid * h.lots * h.lot_size) }}</span>
+          </div>
+          @if (h.status === 'open' && h.current_price != null) {
+            <div class="hg-field">
+              <span class="hg-fld-lbl">Current price</span>
+              <span class="hg-fld-val">₹{{ h.current_price | number:'1.2-2' }}</span>
+            </div>
+            <div class="hg-field">
+              <span class="hg-fld-lbl">Unrealized P&L</span>
+              <span class="hg-fld-val" [class]="pnlClass(h.unrealized_pnl)">
+                {{ fmtRs(h.unrealized_pnl) }}
+              </span>
+            </div>
+          }
+          @if (h.status !== 'open') {
+            <div class="hg-field">
+              <span class="hg-fld-lbl">Closed at</span>
+              <span class="hg-fld-val">₹{{ h.close_price | number:'1.2-2' }}</span>
+            </div>
+            <div class="hg-field">
+              <span class="hg-fld-lbl">Realized P&L</span>
+              <span class="hg-fld-val" [class]="pnlClass(h.realized_pnl)">
+                {{ fmtRs(h.realized_pnl) }}
+              </span>
+            </div>
+          }
+        </div>
+
+        @if (h.tagged_strategies && h.tagged_strategies.length) {
+          <div class="hg-tagged">
+            <span class="hg-tag-lbl">Tagged to:</span>
+            @for (sid of h.tagged_strategies; track sid) {
+              <span class="hg-tag-chip">{{ sid }}</span>
+            }
+          </div>
+        } @else {
+          <div class="hg-tagged hg-untagged">
+            Not tagged to any CC strategy yet — go to Covered Calls to attach this hedge.
+          </div>
+        }
+
+        @if (h.notes) {
+          <p class="hg-notes">📝 {{ h.notes }}</p>
+        }
+      </div>
+    </article>
+  }
+
+  <!-- ════════ Close modal ═══════════════════════════════════════════════ -->
+  @if (closeHedgeId()) {
+    <div class="hg-modal-bg" (click)="closeCloseModal()">
+      <div class="hg-modal" (click)="$event.stopPropagation()">
+        <h3>Close Hedge</h3>
+        <label>Close price (₹)
+          <input type="number" step="0.05" [ngModel]="closeAtPrice()"
+                 (ngModelChange)="closeAtPrice.set($event)">
+        </label>
+        <div class="hg-modal-actions">
+          <button class="hg-btn hg-btn-primary" (click)="confirmClose()">Confirm Close</button>
+          <button class="hg-btn hg-btn-ghost" (click)="closeCloseModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ════════ Roll modal ════════════════════════════════════════════════ -->
+  @if (rollHedgeId()) {
+    <div class="hg-modal-bg" (click)="closeRollModal()">
+      <div class="hg-modal" (click)="$event.stopPropagation()">
+        <h3>Roll Hedge</h3>
+        <p class="hg-modal-help">
+          Closes the current hedge AND opens a new one. Tags transfer automatically.
+        </p>
+        <div class="hg-form-row">
+          <label>Close price (current)
+            <input type="number" step="0.05" [ngModel]="rollClosePrice()"
+                   (ngModelChange)="rollClosePrice.set($event)">
+          </label>
+          <label>New strike
+            <input type="number" step="50" [ngModel]="rollNewStrike()"
+                   (ngModelChange)="rollNewStrike.set($event)">
+          </label>
+          <label>New expiry (YYYY-MM-DD)
+            <input type="text" [ngModel]="rollNewExpiry()"
+                   (ngModelChange)="rollNewExpiry.set($event)">
+          </label>
+          <label>New premium
+            <input type="number" step="0.05" [ngModel]="rollNewPremium()"
+                   (ngModelChange)="rollNewPremium.set($event)">
+          </label>
+        </div>
+        <div class="hg-modal-actions">
+          <button class="hg-btn hg-btn-primary" (click)="confirmRoll()">Roll Now</button>
+          <button class="hg-btn hg-btn-ghost" (click)="closeRollModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  }
+
+</div>

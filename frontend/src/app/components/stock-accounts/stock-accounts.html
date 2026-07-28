@@ -1,0 +1,166 @@
+<div class="land-head">
+  <div>
+    <h1>Stocks</h1>
+    <p class="sub">Each family member's broker accounts at a glance. Enter what went in and what it's worth now — we compute every account's <b>CAGR</b> and your <b>combined</b> money-weighted return.</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" (click)="openAdd()">＋ Add account</button>
+  </div>
+</div>
+
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head"><span class="ni">⚙︎</span>
+      <div><strong>One-time setup — create the Supabase table</strong>
+        <p>Paste the SQL from <b>SUPABASE.md → "Brokerage accounts table"</b> into <b>Supabase → SQL Editor → Run</b>, then hit retry.</p></div>
+    </div>
+    <div class="notice-actions"><button class="btn primary" (click)="load()">I've run it — retry</button></div>
+  </div>
+}
+
+@if (error()) { <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div> }
+
+@if (loading()) { <div class="state">Loading…</div> }
+
+<!-- Empty -->
+@if (!loading() && !needsMigration() && !hasData()) {
+  <div class="upload-empty">
+    <div class="ue-card">
+      <div class="ue-badge">📈</div>
+      <h2>Track every account's real CAGR</h2>
+      <p>Add each member's broker account with the amount invested, when, and what it's worth today. We'll do the CAGR maths — per account and combined.</p>
+      <button class="btn primary big-btn" (click)="openAdd()">＋ Add your first account</button>
+    </div>
+  </div>
+}
+
+@if (!loading() && hasData() && summary(); as s) {
+  <!-- Hero: value up top, everything else as bottom tags -->
+  <div class="hero acc-hero">
+    <div class="hero-main">
+      <span class="hero-label">Combined value · {{ s.member_count }} member{{ s.member_count === 1 ? '' : 's' }} · {{ s.count }} account{{ s.count === 1 ? '' : 's' }}</span>
+      <span class="hero-value">{{ inr(s.total_current) }}</span>
+      <span class="hero-exact">{{ inrFull(s.total_current) }}</span>
+      <span class="hero-gain has-tip" data-tip="Total worth today minus total invested across all accounts." [class.pos]="s.total_gain >= 0" [class.neg]="s.total_gain < 0">
+        {{ s.total_gain >= 0 ? '▲' : '▼' }} {{ inr(s.total_gain) }} <span class="muted">({{ pct(s.total_gain_pct) }} overall)</span>
+      </span>
+    </div>
+
+    <div class="hero-tags">
+      <div class="tag cagr has-tip" data-tip="Combined money-weighted return (XIRR) across every account — blends different amounts and time spans correctly." [class.pos]="(s.combined_cagr ?? 0) >= 0" [class.neg]="(s.combined_cagr ?? 0) < 0">
+        <span class="t-k">Combined CAGR</span>
+        <span class="t-v">{{ pct(s.combined_cagr) }} <small>/yr</small></span>
+      </div>
+      <div class="tag has-tip" data-tip="Total amount put in across all accounts."><span class="t-k">Invested</span><span class="t-v">{{ inr(s.total_invested) }}</span></div>
+      <div class="tag has-tip" data-tip="Total worth today / at exit."><span class="t-k">Current</span><span class="t-v">{{ inr(s.total_current) }}</span></div>
+      <div class="tag has-tip" data-tip="Current minus invested."><span class="t-k">Total gain</span>
+        <span class="t-v" [class.pos]="s.total_gain >= 0" [class.neg]="s.total_gain < 0">{{ inr(s.total_gain) }}</span></div>
+      <div class="tag has-tip" data-tip="Overall growth multiple (current ÷ invested)."><span class="t-k">Multiple</span>
+        <span class="t-v">{{ s.total_invested > 0 ? (s.total_current / s.total_invested | number:'1.2-2') + '×' : '—' }}</span></div>
+      @if (s.earliest_start) {
+        <div class="tag has-tip" [attr.data-tip]="fmtDate(s.earliest_start) + ' → ' + fmtDate(s.latest_end)"><span class="t-k">Period</span>
+          <span class="t-v">{{ spanText(s.earliest_start, s.latest_end) }}</span></div>
+      }
+    </div>
+  </div>
+
+  <!-- Per-member breakdown -->
+  @if (s.members.length > 1) {
+    <div class="members">
+      @for (m of s.members; track m.member) {
+        <div class="member-card">
+          <div class="mc-head"><span class="mc-name">{{ m.member }}</span><span class="mc-cnt">{{ m.accounts }} acct{{ m.accounts === 1 ? '' : 's' }}</span></div>
+          <div class="mc-cagr" [class.pos]="(m.cagr ?? 0) >= 0" [class.neg]="(m.cagr ?? 0) < 0">{{ pct(m.cagr) }} <small>CAGR</small></div>
+          <div class="mc-row"><span>{{ inr(m.start_amount) }}</span><span class="arr">→</span><span>{{ inr(m.end_amount) }}</span></div>
+          <div class="mc-gain" [class.pos]="m.gain >= 0" [class.neg]="m.gain < 0">{{ inr(m.gain) }} ({{ pct(m.gain_pct) }})</div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Accounts table -->
+  <div class="table-wrap">
+    <table class="land-table">
+      <colgroup><col class="c-mem"><col class="c-brk"><col class="c-per"><col class="c-inv"><col class="c-cur"><col class="c-gn"><col class="c-cg"><col class="c-act"></colgroup>
+      <thead>
+        <tr>
+          <th>Member</th><th>Broker</th><th>Period</th>
+          <th class="num">Invested</th><th class="num">Current</th>
+          <th class="num">Gain</th><th class="num">CAGR</th><th class="num"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (a of s.accounts; track a.id) {
+          <tr>
+            <td class="name">{{ a.member }}</td>
+            <td>{{ a.broker || '—' }}</td>
+            <td class="period">{{ fmtDate(a.start_date) }} → {{ fmtDate(a.end_date) }} <small>· {{ a.years ? (a.years | number:'1.1-1') + 'y' : '—' }}</small></td>
+            <td class="num">{{ inr(a.start_amount) }}</td>
+            <td class="num val">{{ inr(a.end_amount) }}</td>
+            <td class="num" [class.pos]="a.gain > 0" [class.neg]="a.gain < 0">{{ inr(a.gain) }} <small>({{ pct(a.gain_pct) }})</small></td>
+            <td class="num cagr" [class.pos]="(a.cagr ?? 0) > 0" [class.neg]="(a.cagr ?? 0) < 0">{{ pct(a.cagr) }}</td>
+            <td class="num act">
+              <button class="ic" (click)="openEdit(a)" title="Edit">✎</button>
+              <button class="ic del" (click)="remove(a)" title="Delete">🗑</button>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class="foot-note">CAGR per account = (current ÷ invested)^(1÷years) − 1. Combined CAGR is the money-weighted return (XIRR) across all accounts — it correctly blends different amounts and time spans.</p>
+}
+
+<!-- Add / edit form -->
+@if (showForm()) {
+  <div class="modal-back" (click)="closeForm()">
+    <div class="modal acc-modal" (click)="$event.stopPropagation()">
+      <div class="modal-head"><h3>{{ editingId() ? 'Edit account' : 'Add account' }}</h3><button class="x" (click)="closeForm()">✕</button></div>
+
+      <div class="form-grid">
+        <label class="f wide"><span>Family member</span>
+          <input type="text" [ngModel]="draft().member" (ngModelChange)="setField('member', $event)" placeholder="e.g. Maha" list="member-list">
+        </label>
+        <label class="f wide"><span>Broker / account <small>(optional)</small></span>
+          <input type="text" [ngModel]="draft().broker" (ngModelChange)="setField('broker', $event)" placeholder="e.g. Zerodha">
+        </label>
+
+        <label class="f"><span>Start date</span>
+          <input type="date" [ngModel]="draft().start_date" (ngModelChange)="setField('start_date', $event)">
+        </label>
+        <label class="f"><span>Amount invested</span>
+          <div class="rupee"><i>₹</i><input type="number" min="0" [ngModel]="draft().start_amount" (ngModelChange)="setField('start_amount', $event)" placeholder="0"></div>
+        </label>
+
+        <label class="f"><span>End date <small>(today / exit)</small></span>
+          <input type="date" [ngModel]="draft().end_date" (ngModelChange)="setField('end_date', $event)">
+        </label>
+        <label class="f"><span>Value now</span>
+          <div class="rupee"><i>₹</i><input type="number" min="0" [ngModel]="draft().end_amount" (ngModelChange)="setField('end_amount', $event)" placeholder="0"></div>
+        </label>
+        <label class="f"><span>Sellable on <small>(buy planner)</small></span>
+          <input type="date" [ngModel]="draft().sellable_on" (ngModelChange)="setField('sellable_on', $event)">
+        </label>
+
+        <label class="f wide"><span>Note <small>(optional)</small></span>
+          <input type="text" [ngModel]="draft().note" (ngModelChange)="setField('note', $event)" placeholder="anything to remember">
+        </label>
+      </div>
+
+      @if (previewCagr() !== null) {
+        <div class="cagr-preview" [class.pos]="(previewCagr() ?? 0) >= 0" [class.neg]="(previewCagr() ?? 0) < 0">
+          This account's CAGR: <b>{{ pct(previewCagr()) }}</b> per year
+        </div>
+      }
+
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="closeForm()">Cancel</button>
+        <button class="btn primary" (click)="save()" [disabled]="!canSave()">{{ editingId() ? 'Save changes' : 'Add account' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<datalist id="member-list">
+  @for (m of summary()?.members || []; track m.member) { <option [value]="m.member"></option> }
+</datalist>

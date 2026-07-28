@@ -1,0 +1,408 @@
+<div class="lt-page" [class.embedded]="embedded">
+
+  <!-- ── character header ─────────────────────────────────────────────────── -->
+  <div class="lt-head">
+    <div class="lt-avatar">
+      @if (imgOk()) { <img [src]="avatarImg" alt="Ashish" (error)="imgOk.set(false)"> }
+      @else { <span class="lt-emoji">{{ bot.emoji }}</span> }
+    </div>
+    <div class="lt-who">
+      <h1>{{ bot.name }}</h1>
+      <p>{{ bot.role }} · <span class="lt-tab">Apartments</span></p>
+    </div>
+    <div class="lt-badge">FY 2025-26</div>
+    @if (embedded) {
+      <button class="lt-icon" (click)="toggleSize.emit()" [title]="expanded ? 'Minimise' : 'Expand'">
+        @if (expanded) {
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9L4 4M9 9V5M9 9H5M15 15l5 5M15 15v4M15 15h4"/></svg>
+        } @else {
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7"/></svg>
+        }
+      </button>
+      <button class="lt-icon" (click)="closed.emit()" title="Close">✕</button>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="lt-loading">Reading your flats…</div>
+  } @else if (error()) {
+    <div class="lt-error">{{ error() }}</div>
+  } @else {
+
+  <!-- ── chat window ──────────────────────────────────────────────────────── -->
+  <div class="lt-chat">
+    <div class="lt-scroll" #scroller>
+      @for (m of msgs(); track $index) {
+        @if (m.role === 'user') {
+          <div class="row user"><div class="bubble user">{{ m.text }}</div></div>
+        } @else {
+          <div class="row bot">
+            <div class="ava">@if (imgOk()) { <img [src]="avatarImg" alt="" (error)="imgOk.set(false)"> } @else { {{ bot.emoji }} }</div>
+            <div class="bot-col">
+              @if (m.text) { <div class="bubble bot" [innerHTML]="boldify(m.text)"></div> }
+
+              @switch (m.card) {
+
+                <!-- ── per-flat sell-now breakdown ──────────────────────────── -->
+                @case ('flats') {
+                  <div class="card-wrap">
+                    @for (f of m.data; track f.base.asset) {
+                      <div class="parcel">
+                        <div class="p-top">
+                          <span class="p-name">{{ f.base.asset }}</span>
+                          <span class="p-term lt">Long-term</span>
+                        </div>
+                        <div class="p-grid">
+                          <div><span>Owner</span><b>{{ f.base.owner }}</b></div>
+                          <div><span>Gain</span><b>{{ inr(f.base.gain) }}</b></div>
+                          <div><span>Tax now</span><b class="neg">{{ inr(f.base.tax) }}</b></div>
+                          <div><span>Best case</span><b class="pos">{{ inr((f.best || f.base).tax) }}</b></div>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- ── RENT: portfolio summary ──────────────────────────────── -->
+                @case ('rent-summary') {
+                  <div class="rent-hero">
+                    <div class="rh"><span>🏠 Monthly rent</span><b>{{ inr(m.data.monthly_rent) }}</b></div>
+                    <div class="rh"><span>📅 Annual rent</span><b>{{ inr(m.data.annual_rent) }}</b></div>
+                    <div class="rh"><span>🧾 Taxable after 30%</span><b>{{ inr(m.data.annual_rent * 0.7) }}</b></div>
+                  </div>
+                }
+
+                <!-- ── RENT: one owner's house-property waterfall ───────────── -->
+                @case ('rent-owner') {
+                  <div class="rent-owner">
+                    <div class="ro-top">
+                      <span class="ro-name">{{ m.data.owner }}</span>
+                      <span class="ro-tag" [class.nri]="m.data.residency==='nri'">{{ m.data.residency==='nri' ? 'NRI' : 'Resident' }}</span>
+                      <span class="ro-rent">{{ inr(m.data.monthly_rent) }}/mo</span>
+                    </div>
+                    <div class="hp-flow">
+                      <div class="hp-row"><span class="hp-k">Annual rent <em>(GAV)</em></span><span class="hp-v">{{ inr(m.data.hp.gav) }}</span></div>
+                      <div class="hp-row minus"><span class="hp-k">− 30% standard deduction <em>(Sec 24a)</em></span><span class="hp-v">− {{ inr(m.data.hp.std_deduction) }}</span></div>
+                      <div class="hp-row sub"><span class="hp-k">= Taxable rent income</span><span class="hp-v">{{ inr(m.data.hp.income) }}</span></div>
+                      <div class="hp-row tax"><span class="hp-k">Tax if this is the only income</span><span class="hp-v">{{ inr(m.data.baseline_tax) }}</span></div>
+                    </div>
+                    @if (m.data.baseline_tax > 0) {
+                      <div class="rent-mr">at a marginal rate of about <b>{{ (m.data.marginal_rate * 100) | number:'1.0-0' }}%</b></div>
+                    } @else {
+                      <div class="rent-mr"><b>₹0</b> on its own — under the ₹12 L rebate. On top of a salary it's taxed at that slab.</div>
+                    }
+                  </div>
+                }
+
+                <!-- ── RENT: live optimiser ─────────────────────────────────── -->
+                @case ('rent-opt') {
+                  <div class="card-wrap">
+                    <div class="rent-opt">
+                      @if (rentOwners().length > 1) {
+                        <div class="ro-block">
+                          <span class="rob-k">Which flat-owner?</span>
+                          <div class="ro-chips">
+                            @for (o of rentOwners(); track o) {
+                              <button [class.on]="rentOwner()===o" (click)="pickRentOwner(o)">{{ o }}</button>
+                            }
+                          </div>
+                        </div>
+                      }
+                      <div class="ro-block">
+                        <span class="rob-k">🏦 Home-loan interest paid this year <em>(Sec 24b)</em></span>
+                        <div class="rob-sub">Fully deductible on a let-out flat — this is the biggest lever.</div>
+                        <label class="ro-field"><em>₹</em><input type="text" inputmode="numeric" [value]="fmt(roLoan())" placeholder="0" (input)="setLoan($any($event.target).value)"></label>
+                      </div>
+                      <div class="ro-block">
+                        <span class="rob-k">🧾 Municipal / property tax paid</span>
+                        <label class="ro-field"><em>₹</em><input type="text" inputmode="numeric" [value]="fmt(roMunicipal())" placeholder="0" (input)="setMunicipal($any($event.target).value)"></label>
+                      </div>
+                      <div class="ro-block">
+                        <span class="rob-k">💼 Your other yearly income <em>(salary, etc.)</em></span>
+                        <div class="rob-sub">Rent is taxed on top of this — set it for an accurate figure.</div>
+                        <label class="ro-field"><em>₹</em><input type="text" inputmode="numeric" [value]="fmt(roOther())" placeholder="0" (input)="setOther($any($event.target).value)"></label>
+                      </div>
+                      <div class="ro-block">
+                        <span class="rob-k">⚖️ Tax regime</span>
+                        <div class="ro-chips">
+                          <button [class.on]="roRegime()==='new'" (click)="setRegime('new')">New (default)</button>
+                          <button [class.on]="roRegime()==='old'" (click)="setRegime('old')">Old</button>
+                        </div>
+                      </div>
+                      @if (splitTargets().length) {
+                        <div class="ro-block">
+                          <span class="rob-k">👨‍👩‍👦 Co-own with a resident family member?</span>
+                          <div class="rob-sub">Their share of rent is taxed in their slab. A spouse/minor doesn't count — clubbed (Sec 64).</div>
+                          <div class="ro-chips">
+                            <button [class.on]="roSplitTo()===null" (click)="pickSplit(null)">No split</button>
+                            @for (t of splitTargets(); track t.name) {
+                              <button [class.on]="roSplitTo()===t.name" (click)="pickSplit(t.name)">{{ t.name }}</button>
+                            }
+                          </div>
+                          @if (roSplitTo()) {
+                            <div class="ro-split">
+                              <div class="ros-top"><span>{{ roSplitTo() }}'s share</span><b>{{ (roSplitShare()*100) | number:'1.0-0' }}%</b></div>
+                              <input type="range" min="0" max="100" step="5" [value]="roSplitShare()*100" (input)="setSplitShare($any($event.target).value)">
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+
+                    <!-- result -->
+                    <div class="rent-result" [class.busy]="rentBusy()">
+                      <div class="rr-col was"><span>Tax now</span><b>{{ inr(rentWas()) }}</b></div>
+                      <span class="rr-arrow">→</span>
+                      <div class="rr-col now"><span>With these levers</span><b>{{ inr(rentPlan()?.total_tax ?? rentWas()) }}</b></div>
+                      @if ((rentWas() - (rentPlan()?.total_tax ?? rentWas())) > 0) {
+                        <span class="rr-save">save {{ inr(rentWas() - (rentPlan()?.total_tax ?? 0)) }}/yr</span>
+                      }
+                    </div>
+                    @if (rentPlan()?.co_owner) {
+                      <div class="rent-split-note">
+                        <div><span>{{ rentPlan()!.owner }}'s tax</span><b>{{ inr(rentPlan()!.owner_tax) }}</b></div>
+                        <div><span>{{ rentPlan()!.co_owner }}'s tax</span><b>{{ inr(rentPlan()!.co_tax) }}</b></div>
+                        <div><span>Combined</span><b>{{ inr(rentPlan()!.total_tax) }}</b></div>
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- ── RENT: levers explainer ───────────────────────────────── -->
+                @case ('rent-levers') {
+                  <div class="card-wrap levers">
+                    @for (l of rentLevers(); track l.title) {
+                      <div class="lever"><span class="lv-ic">{{ l.icon }}</span>
+                        <div><span class="lv-t">{{ l.title }}</span><span class="lv-b">{{ l.body }}</span></div></div>
+                    }
+                  </div>
+                }
+
+                <!-- ── SALE: current vs restructured ────────────────────────── -->
+                @case ('compare') {
+                  <div class="compare">
+                    <div class="cmp now">
+                      <span class="cmp-k">Sell now · as-is</span>
+                      <span class="cmp-v neg">{{ inr(m.data.tax_now) }}</span>
+                      <span class="cmp-s">tax on {{ inr(m.data.total_gain) }} gain</span>
+                    </div>
+                    <div class="cmp-arrow">→</div>
+                    <div class="cmp cash">
+                      <span class="cmp-k">Keep the cash</span>
+                      <span class="cmp-v">{{ inr(m.data.tax_best_cash) }}</span>
+                      <span class="cmp-s save">save {{ inr(m.data.saving_cash) }}</span>
+                      <span class="cmp-how">54EC bonds + gift to son</span>
+                    </div>
+                    <div class="cmp zero">
+                      <span class="cmp-k">Reinvest the gain</span>
+                      <span class="cmp-v pos">{{ inr(m.data.tax_best) }}</span>
+                      <span class="cmp-s save">save up to {{ inr(m.data.saving_max) }}</span>
+                      <span class="cmp-how">Sec 54 → another flat</span>
+                    </div>
+                  </div>
+                }
+
+                <!-- ── per-flat reshuffle: exactly whose name to register each flat in ── -->
+                @case ('reshuffle') {
+                  <div class="card-wrap reshuffle">
+                    @for (r of reshuffleRows(); track r.name) {
+                      <div class="rs" [class.gift]="!r.toOwner" [class.cashgift]="r.altWho && !r.altToOwner">
+                        <div class="rs-head">
+                          <span class="rs-name">{{ r.name }}</span>
+                          @if (r.saved > 0) {
+                            <span class="rs-save">save {{ inr(r.saved) }}</span>
+                          } @else {
+                            <span class="rs-save flat">already ₹0</span>
+                          }
+                        </div>
+                        <div class="rs-flow">
+                          <div class="rs-node from">
+                            <span class="rs-lbl">Now</span>
+                            <b>{{ r.owner }}</b>
+                            <em>{{ resLabel(r.residency) }}</em>
+                            <span class="rs-t neg">{{ inr(r.taxNow) }} tax</span>
+                          </div>
+                          <span class="rs-arr">→</span>
+                          <div class="rs-node to">
+                            <span class="rs-lbl">{{ r.toOwner ? 'Keep with' : 'Register in' }}</span>
+                            <b>{{ r.who }}</b>
+                            <em>{{ r.toTag }}</em>
+                            <span class="rs-t pos">{{ inr(r.tax) }} tax</span>
+                          </div>
+                        </div>
+                        <div class="rs-why"><b>Why?</b> {{ r.why }}</div>
+                        @if (r.altWho) {
+                          <div class="rs-alt">💵 <b>Prefer cash?</b> {{ r.altToOwner ? 'Keep with ' + r.altWho : 'Register in ' + r.altWho }} → {{ inr(r.altTax) }} tax@if (r.altSaved > 0) { <span class="rs-alt-save">still saves {{ inr(r.altSaved) }}</span> }</div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- ── SALE: levers ─────────────────────────────────────────── -->
+                @case ('levers') {
+                  <div class="card-wrap levers">
+                    @for (l of levers(); track l.title) {
+                      <div class="lever"><span class="lv-ic">{{ l.icon }}</span>
+                        <div><span class="lv-t">{{ l.title }}</span><span class="lv-b">{{ l.body }}</span></div></div>
+                    }
+                  </div>
+                }
+
+                <!-- ── family transfer do/don't ─────────────────────────────── -->
+                @case ('transfer') {
+                  <div class="card-wrap transfer">
+                    @for (p of m.data.profiles; track p.name) {
+                      @if (p.relation !== 'father' && p.relation !== 'self') {
+                        <div class="tfer" [class.ok]="p.relation==='son' || p.relation==='daughter'"
+                             [class.no]="p.relation==='spouse' || p.relation==='mother'">
+                          <span class="tf-ic">{{ (p.relation==='son'||p.relation==='daughter') ? '✅' : '🚫' }}</span>
+                          <div class="tf-main">
+                            <span class="tf-name">{{ p.name }} <em>· {{ p.relation }}</em></span>
+                            <span class="tf-note">
+                              @if (p.relation==='son' || p.relation==='daughter') {
+                                Adult resident child — gift is tax-free & not clubbed. Best target.
+                              } @else {
+                                Spouse — a gift here is clubbed back to you (Sec 64). Saves nothing.
+                              }
+                            </span>
+                          </div>
+                          <span class="tf-tag">{{ p.residency==='nri' ? 'NRI' : 'Resident' }}</span>
+                        </div>
+                      }
+                    }
+                  </div>
+                }
+
+                <!-- ── editable person profiles ─────────────────────────────── -->
+                @case ('profiles') {
+                  <div class="card-wrap profiles">
+                    @for (p of profiles(); track p.name) {
+                      <div class="prof">
+                        <div class="pr-main">
+                          <span class="pr-ava">{{ p.name.charAt(0) }}</span>
+                          <div>
+                            <span class="pr-name">{{ p.name }} <em>· {{ p.relation }}</em></span>
+                            <span class="pr-meta">{{ p.house_count || 0 }} flat/house(s){{ p.spouse ? ' · spouse: ' + p.spouse : '' }}</span>
+                          </div>
+                        </div>
+                        <div class="pr-toggle">
+                          <button [class.on]="p.residency==='resident'" (click)="setResidency(p.name, 'resident')">Resident</button>
+                          <button [class.on]="p.residency==='nri'" (click)="setResidency(p.name, 'nri')">NRI</button>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- ── SALE: pick flats + live hero ─────────────────────────── -->
+                @case ('select') {
+                  <div class="card-wrap">
+                    <div class="live-hero">
+                      <div class="lh"><span>💰 Cash raised</span><b>{{ inr(liveCash()) }}</b></div>
+                      <div class="lh"><span>📈 Capital gain</span><b>{{ inr(liveGain()) }}</b></div>
+                      <div class="lh"><span>🧾 Tax now</span><b class="neg">{{ inr(liveTax()) }}</b></div>
+                    </div>
+                    <div class="pick-list">
+                      @for (r of planRows(); track r.name) {
+                        <div class="pick" [class.on]="isSel(r.name)">
+                          <button class="pick-tog" (click)="toggleParcel(r.name)">
+                            <span class="pk-box" [class.on]="isSel(r.name)"></span>
+                            <span class="pk-name">{{ r.name }}</span>
+                            <span class="pk-gain">gain {{ inr(r.gain) }}</span>
+                          </button>
+                          @if (isSel(r.name)) {
+                            <label class="pk-reg">
+                              <span class="pk-reg-k">Sells at</span>
+                              <span class="pk-reg-field"><em>₹</em><input type="text" inputmode="numeric" [value]="regDisplay(r.name)" (input)="setRegText(r.name, $any($event.target).value)"></span>
+                            </label>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+                }
+
+                <!-- ── SALE: the live optimiser — transfer + tax + 2 sliders ── -->
+                @case ('plan') {
+                  <div class="card-wrap">
+                   @if (selCount() > 0) {
+                    @if (plan(); as pl) {
+                      @if (transferTo().length) {
+                        <div class="wiz-transfer">
+                          <span class="wt-k">👤 Register in this name for the least tax</span>
+                          <b class="wt-name">{{ transferTo().join(' or ') }}</b>
+                          <span class="wt-why">A tax-free gift to your resident son gives the 20%-indexation option and drops TDS to 1%.</span>
+                        </div>
+                      } @else {
+                        <div class="wiz-transfer none"><span class="wt-k">No transfer needed</span><span class="wt-why">Selling in the owner's own name is already fine here.</span></div>
+                      }
+
+                      <!-- savings-first headline -->
+                      <div class="wiz-taxbig" [class.busy]="wizBusy()">
+                        <span class="wtx-k">You save</span>
+                        <b class="wtx-v">{{ inr(pl.totals.saved) }}</b>
+                        <span class="wtx-sub">tax drops to <b>{{ inr(pl.totals.tax_opt) }}</b>, from {{ inr(pl.totals.tax_naive) }} if you sold as-is</span>
+                      </div>
+                    } @else {
+                      <div class="wiz-loading"><span class="wl-spin"></span>Crunching the tax-smartest plan…</div>
+                    }
+
+                    <div class="wiz-sliders">
+                      <div class="wsl">
+                        <div class="wsl-top"><span>🏠 Gain into a new flat <em>· tax-free (Sec 54)</em></span><b>{{ inr(houseAmt()) }}</b></div>
+                        <input type="range" min="0" [max]="liveGain() - bondsAmt()" step="100000" [value]="houseAmt()" (input)="setHouse($any($event.target).value)">
+                      </div>
+                      <div class="wsl minor">
+                        <div class="wsl-top"><span>🏦 Gain into 54EC bonds <em>· locks 5 yrs</em></span><b>{{ inr(bondsAmt()) }}</b></div>
+                        <input type="range" min="0" [max]="maxBonds()" step="100000" [value]="bondsAmt()" (input)="setBonds($any($event.target).value)">
+                      </div>
+                    </div>
+
+                    @if (cashInHand() > 0) {
+                      <div class="wiz-net"><span>Cash in your hand after tax</span><b>{{ inr(cashInHand()) }}</b></div>
+                    }
+
+                    @if (plan(); as pl) {
+                      <div class="wr-steps-h">How to do it</div>
+                      @for (p of pl.parcels; track p.asset) {
+                        <div class="plan-row">
+                          <div class="pr-head"><span class="pr-name">{{ p.asset }}</span></div>
+                          <ol class="pr-steps">@for (s of p.steps; track s) { <li>{{ s }}</li> }</ol>
+                        </div>
+                      }
+                      <div class="plan-note">Sec 54 needs only the GAIN reinvested into one residential house (buy −1/+2 yrs, build 3 yrs; hold 3 yrs). Estimates on FY 2025-26 rules — confirm with a CA.</div>
+                    }
+                   } @else {
+                    <div class="plan-hint">👆 Tick a flat above — your lowest-tax plan (Sec 54 + 54EC) appears here.</div>
+                   }
+                  </div>
+                }
+              }
+            </div>
+          </div>
+        }
+      }
+
+      @if (typing()) {
+        <div class="row bot"><div class="ava">@if (imgOk()) { <img [src]="avatarImg" alt="" (error)="imgOk.set(false)"> } @else { {{ bot.emoji }} }</div>
+          <div class="bubble bot typing"><span></span><span></span><span></span></div></div>
+      }
+
+      @if (options().length && !typing()) {
+        <div class="lt-options">
+          @for (o of options(); track o.key) {
+            <button class="opt" (click)="choose(o)">{{ o.label }}</button>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="lt-disclaimer">
+      ⚖️ Estimates for planning, based on your recorded flat values &amp; FY 2025-26 rules.
+      Confirm with a chartered accountant before acting.
+    </div>
+  </div>
+
+  }
+</div>

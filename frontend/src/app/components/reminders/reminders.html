@@ -1,0 +1,308 @@
+<div class="land-head">
+  <div>
+    <h1>Reminders</h1>
+    <p class="sub">Every rupee moving <b>in</b> and <b>out</b>, on one calendar. Tick what you've received or paid — it stays in sync with your bonds, stocks &amp; dashboard.</p>
+  </div>
+  <div class="rh-actions">
+    @if (digestMsg()) { <span class="digest-msg">{{ digestMsg() }}</span> }
+    <button class="btn primary" (click)="addOpen() ? closeAdd() : openAdd()" [class.on]="addOpen()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add reminder
+    </button>
+    <button class="btn ghost" (click)="prefsOpen.set(!prefsOpen())" [class.on]="prefsOpen()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+      Show / hide @if (hiddenTotal() > 0) { <span class="muted-pill">{{ hiddenTotal() }} hidden</span> }
+    </button>
+    <button class="btn" (click)="sendDigest()" [disabled]="sendingDigest()" title="Email everything due in the next 7 days now">
+      {{ sendingDigest() ? 'Sending…' : 'Email me now' }}
+    </button>
+  </div>
+</div>
+
+<!-- add your own reminder — a one-off task or payment on a chosen day -->
+@if (addOpen()) {
+  <div class="add-panel">
+    <div class="ap-h"><b>Add a reminder</b>
+      <span class="ap-sub">A one-off task or payment on a day you pick — tag it so you know what it's for (Bonds, Stocks, F&amp;O…). It shows up on the calendar &amp; in the digest, and you can delete it any time.</span></div>
+    <div class="ap-grid">
+      <label class="ap-wide">What
+        <input type="text" placeholder="e.g. Fill bond details, submit F&O tax…" [ngModel]="naLabel()" (ngModelChange)="naLabel.set($event)" (keydown.enter)="submitAdd()"></label>
+      <label>Day
+        <input type="date" [ngModel]="naDate()" (ngModelChange)="naDate.set($event)"></label>
+      <label>For
+        <select [ngModel]="naCategory()" (ngModelChange)="naCategory.set($event)">
+          @for (c of addCategories; track c) { <option [value]="c">{{ c }}</option> }
+        </select></label>
+      <label>Type
+        <select [ngModel]="naDir()" (ngModelChange)="naDir.set($event)">
+          <option value="action">To-do</option>
+          <option value="in">Money in</option>
+          <option value="out">Money out</option>
+        </select></label>
+      @if (naDir() !== 'action') {
+        <label>Amount (₹)
+          <input type="number" min="0" placeholder="0" [ngModel]="naAmount()" (ngModelChange)="naAmount.set($event)"></label>
+      }
+      <label class="ap-wide">Note <small>optional</small>
+        <input type="text" placeholder="a detail to remember" [ngModel]="naNote()" (ngModelChange)="naNote.set($event)" (keydown.enter)="submitAdd()"></label>
+    </div>
+    <div class="ap-actions">
+      <button class="btn ghost" (click)="closeAdd()">Cancel</button>
+      <button class="btn primary" [disabled]="!naLabel().trim() || !naDate() || addBusy()" (click)="submitAdd()">{{ addBusy() ? 'Adding…' : 'Add reminder' }}</button>
+    </div>
+  </div>
+}
+
+<!-- what to show / hide — categories + individual items (live) -->
+@if (prefsOpen()) {
+  <div class="prefs">
+    <div class="prefs-h">
+      <div><b>Show on reminders</b>
+        <span class="prefs-sub">Turn a category off to hide it from the calendar, lists &amp; email — instantly. Hide one-off items with the <b>Hide</b> button on any row.</span></div>
+      @if (savingPrefs()) { <span class="prefs-saving">Saving…</span> }
+    </div>
+    <div class="prefs-chips">
+      @for (c of allCategories(); track c) {
+        <button class="chip" [class.on]="catOn(c)" (click)="toggleCat(c)">
+          <span class="chip-tick">{{ catOn(c) ? '✓' : '' }}</span>{{ c }}
+        </button>
+      }
+      @if (mutedCatCount() > 0) { <button class="chip-all" (click)="showAllCats()">Show all categories</button> }
+    </div>
+    @if (hiddenItems().length) {
+      <div class="hidden-mgr">
+        <div class="hm-h"><b>Hidden items <span class="hm-count">{{ hiddenItems().length }}</span></b>
+          <button class="link-btn" (click)="unmuteAll()">Unhide all</button></div>
+        <div class="hidden-list">
+          @for (hi of hiddenItems(); track hi.id) {
+            <span class="hidden-chip">{{ hi.label }} <small>{{ hi.sub }}</small>
+              <button (click)="unmute(hi.id)" title="Unhide">✕</button></span>
+          }
+        </div>
+      </div>
+    }
+  </div>
+}
+
+@if (error()) { <div class="banner err">{{ error() }} <button class="x" (click)="load()">retry</button></div> }
+@if (loading()) { <div class="state">Loading your reminders…</div> }
+
+@if (!loading() && feed(); as f) {
+  <!-- ══════════════ SINGLE HERO ══════════════ -->
+  @if (hero(); as h) {
+    <section class="hero">
+      <div class="hero-main">
+        <span class="hm-label">{{ monthLabel() }} · net flow</span>
+        <span class="hm-net" [class.pos]="h.monthNet >= 0" [class.neg]="h.monthNet < 0">{{ h.monthNet >= 0 ? '+' : '−' }}{{ inr(abs(h.monthNet)) }}</span>
+        <div class="hm-io">
+          <span class="io in"><i>Coming in</i><b>+{{ inr(monthIn()) }}</b></span>
+          <span class="io out"><i>Going out</i><b>−{{ inr(monthOut()) }}</b></span>
+          @if (monthPendingIn() > 0 || monthPendingOut() > 0) {
+            <span class="io pend"><i>Still pending</i><b class="c-in">+{{ inr(monthPendingIn()) }}</b> <b class="c-out">−{{ inr(monthPendingOut()) }}</b></span>
+          }
+        </div>
+      </div>
+      <div class="hero-side">
+        <div class="hstat" [class.alert]="h.overdueCount > 0">
+          <span class="hs-k">Overdue</span>
+          <span class="hs-v">{{ h.overdueCount }}</span>
+          <span class="hs-sub">
+            @if (h.overdueCount > 0) { @if (h.overdueIn > 0) { <b class="c-in">+{{ inr(h.overdueIn) }}</b> } @if (h.overdueOut > 0) { <b class="c-out">−{{ inr(h.overdueOut) }}</b> } }
+            @else { all caught up }
+          </span>
+        </div>
+        <div class="hstat">
+          <span class="hs-k">Next 30 days · in</span>
+          <span class="hs-v c-in">+{{ inr(h.next30In) }}</span>
+          <span class="hs-sub">{{ h.upcomingCount }} coming</span>
+        </div>
+        <div class="hstat">
+          <span class="hs-k">Next 30 days · out</span>
+          <span class="hs-v c-out">−{{ inr(h.next30Out) }}</span>
+          <span class="hs-sub">bills &amp; EMIs</span>
+        </div>
+      </div>
+    </section>
+  }
+
+  <!-- view toggle + filters -->
+  <div class="toolbar">
+    <div class="seg">
+      <button [class.on]="view() === 'calendar'" (click)="view.set('calendar')">This month</button>
+      <button [class.on]="view() === 'timeline'" (click)="view.set('timeline')">All · timeline</button>
+    </div>
+    <div class="tb-filters">
+      <div class="seg sm">
+        <button [class.on]="dir() === 'all'" (click)="dir.set('all')">All</button>
+        <button [class.on]="dir() === 'in'" (click)="dir.set('in')">In</button>
+        <button [class.on]="dir() === 'out'" (click)="dir.set('out')">Out</button>
+      </div>
+      @if (owners().length > 1) {
+        <select class="rem-select" [ngModel]="owner()" (ngModelChange)="owner.set($event)">
+          <option value="">Everyone</option>
+          @for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }
+        </select>
+      }
+      <label class="rem-check"><input type="checkbox" [checked]="showDone()" (change)="showDone.set(!showDone())"><span>Show done</span></label>
+    </div>
+  </div>
+
+  <!-- ══════════════ CALENDAR VIEW ══════════════ -->
+  @if (view() === 'calendar') {
+    <section class="cal">
+      <div class="cal-nav">
+        <button class="nav-arw" (click)="prevMonth()" aria-label="Previous month">‹</button>
+        <div class="cal-title">{{ monthLabel() }}
+          @if (!isCurrentMonth()) { <button class="today-btn" (click)="goToday()">Today</button> }
+        </div>
+        <button class="nav-arw" (click)="nextMonth()" aria-label="Next month">›</button>
+      </div>
+      <div class="cal-grid">
+        @for (w of WEEKDAYS; track w) { <div class="dow">{{ w }}</div> }
+        @for (c of cells(); track $index) {
+          <div class="cell" [class.pad]="c.padding" [class.today]="c.isToday" [class.has]="c.count > 0"
+               [class.sel]="selectedDay() === c.iso" [class.done]="c.count > 0 && c.pending === 0" [ngClass]="c.tone"
+               (click)="selectDay(c)">
+            @if (!c.padding) {
+              <span class="c-day">{{ c.day }}</span>
+              @if (c.count > 0) {
+                <span class="c-amts">
+                  @if (c.inTotal > 0) { <span class="c-in">+{{ inr(c.inTotal) }}</span> }
+                  @if (c.outTotal > 0) { <span class="c-out">−{{ inr(c.outTotal) }}</span> }
+                </span>
+                @if (c.pending === 0) { <span class="c-check">✓</span> } @else { <span class="c-dot">{{ c.count }}</span> }
+              }
+            }
+          </div>
+        }
+      </div>
+      <div class="cal-legend"><span><i class="lg c-in"></i>Coming in</span><span><i class="lg c-out"></i>Going out</span><span>Darker = bigger day · <b>click a day</b> to open it</span></div>
+    </section>
+
+    <!-- by-member, below the calendar -->
+    @if (members().length) {
+      <div class="by-member">
+        <div class="sc-h">By member · {{ monthLabel() }}</div>
+        <div class="mem-list">
+          @for (m of members(); track m.owner) {
+            <div class="mem">
+              <div class="mem-top"><span class="mem-name">{{ m.owner }}</span>
+                <span class="mem-net" [class.pos]="m.net >= 0" [class.neg]="m.net < 0">{{ m.net >= 0 ? '+' : '−' }}{{ inr(abs(m.net)) }}</span></div>
+              <div class="mem-bars">
+                <div class="mem-line"><span class="ml-k">In</span><span class="ml-v c-in">+{{ inr(m.inTotal) }}</span></div>
+                <div class="mem-line"><span class="ml-k">Out</span><span class="ml-v c-out">−{{ inr(m.outTotal) }}</span></div>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- full month payments list, date-separated -->
+    <div class="list-head"><h3>All payments in {{ monthLabel() }}</h3></div>
+    @if (!hasMonthItems()) { <div class="rem-empty">Nothing {{ showDone() ? '' : 'pending ' }}here for {{ monthLabel() }}.</div> }
+    <div class="timeline">
+      @for (g of monthGroups(); track g.date) {
+        <ng-container *ngTemplateOutlet="dayGroup; context: { $implicit: g }"></ng-container>
+      }
+    </div>
+  }
+
+  <!-- ══════════════ TIMELINE VIEW ══════════════ -->
+  @if (view() === 'timeline') {
+    <div class="list-head"><h3>Everything — past &amp; future</h3></div>
+    @if (!timelineGroups().length) { <div class="rem-empty">No reminders match these filters.</div> }
+    <div class="timeline">
+      @for (g of timelineGroups(); track g.date) {
+        <ng-container *ngTemplateOutlet="dayGroup; context: { $implicit: g }"></ng-container>
+      }
+    </div>
+  }
+
+  <p class="foot-note">Reminders are computed live from your bonds, FDs, loans, income &amp; expenses. Ticking a payout received/paid updates the source too (e.g. the Bonds calendar). A daily digest of what's due is emailed automatically — use <b>Show / hide</b> to choose what appears here and in the email.</p>
+}
+
+<!-- ══════════════ DAY DIALOG (opens on a calendar click) ══════════════ -->
+@if (selectedDay()) {
+  <div class="rem-modal-back" (click)="$event.target === $event.currentTarget && clearDay()">
+    <div class="rem-modal">
+      <div class="rm-head">
+        <div class="rm-when"><span class="rm-dow">{{ selectedWeekday() }}</span><span class="rm-date">{{ selectedLabel() }}</span></div>
+        <div class="rm-tot">
+          @if (dayIn() > 0) { <span class="c-in">+{{ inr(dayIn()) }}</span> }
+          @if (dayOut() > 0) { <span class="c-out">−{{ inr(dayOut()) }}</span> }
+        </div>
+        <button class="rm-x" (click)="clearDay()" aria-label="Close">✕</button>
+      </div>
+      <div class="rm-body">
+        @if (dayItems().length) {
+          @for (it of dayItems(); track it.key) {
+            <ng-container *ngTemplateOutlet="row; context: { $implicit: it }"></ng-container>
+          }
+        } @else { <div class="rem-empty">Nothing left on this day.</div> }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ── shared day-group + row templates ─────────────────────────────────────── -->
+<ng-template #dayGroup let-g>
+  <div class="day" [class.overdue]="g.overdue" [class.today]="g.isToday">
+    <div class="day-head">
+      <div class="dh-date">
+        <span class="dh-dow">{{ g.weekday }}</span>
+        <span class="dh-d">{{ g.label }}</span>
+        <span class="dh-rel" [class.od]="g.overdue" [class.now]="g.isToday">{{ g.rel }}</span>
+      </div>
+      <div class="dh-tot">
+        @if (g.inTotal > 0) { <span class="c-in">+{{ inr(g.inTotal) }}</span> }
+        @if (g.outTotal > 0) { <span class="c-out">−{{ inr(g.outTotal) }}</span> }
+      </div>
+    </div>
+    <div class="day-items">
+      @for (it of g.items; track it.key) {
+        <ng-container *ngTemplateOutlet="row; context: { $implicit: it }"></ng-container>
+      }
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #row let-it>
+  <div class="rem-row" [class.done]="it.status === 'done'" [class.skipped]="it.status === 'skipped'" [class.rem-action]="isAction(it)">
+    <span class="rr-tag" [class.t-in]="it.direction === 'in'" [class.t-out]="it.direction === 'out'" [class.t-act]="isAction(it)" [class.t-custom]="it.custom">{{ kindTag(it) }}</span>
+    <div class="rr-info">
+      <b class="rr-label">{{ it.label }}</b>
+      <span class="rr-sub">{{ it.kind }} · {{ it.sub }}
+        @if (it.custom) { <span class="rr-mine">· yours</span> }
+        @if (it.moved) { <span class="rr-moved" [title]="'Moved from ' + fmtDate(it.orig_date)">· moved</span> }
+      </span>
+    </div>
+    @if (editKey() === it.key) {
+      <div class="rr-edit" (click)="$event.stopPropagation()">
+        <input type="date" [ngModel]="editDate()" (ngModelChange)="editDate.set($event)">
+        <button class="mini save" (click)="saveEdit(it)">Save</button>
+        <button class="mini" (click)="cancelEdit()">✕</button>
+      </div>
+    } @else {
+      @if (!isAction(it)) {
+        <span class="rr-amt" [class.c-in]="it.direction === 'in'" [class.c-out]="it.direction === 'out'">
+          {{ it.direction === 'in' ? '+' : '−' }}{{ inr(it.amount) }}
+        </span>
+      }
+      <div class="rr-actions">
+        <button class="rr-btn done" [class.on]="it.status === 'done'" [disabled]="busyKey() === it.key"
+                (click)="markDone(it)">{{ it.status === 'done' ? '✓ ' + actionWord(it) : actionWord(it) }}</button>
+        @if (!isAction(it)) {
+          <button class="rr-btn skip" [class.on]="it.status === 'skipped'" [disabled]="busyKey() === it.key"
+                  (click)="skip(it)" title="Skip / won't happen">Skip</button>
+        }
+        <button class="rr-btn date" (click)="openEdit(it)" title="Move the date">Date</button>
+        @if (it.custom) {
+          <button class="rr-btn del" [disabled]="busyKey() === it.key" (click)="deleteCustom(it)" [title]="'Delete ' + it.label">Delete</button>
+        } @else {
+          <button class="rr-btn hide" (click)="toggleMute(it)" [title]="'Hide ' + it.label + ' from reminders & email'">Hide</button>
+        }
+      </div>
+    }
+  </div>
+</ng-template>

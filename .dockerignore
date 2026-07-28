@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Angular
+frontend/node_modules/
+frontend/.angular/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config
+.env
+*.log
+
+# Runtime data (will be regenerated)
+api/cc_positions.json
+api/__pycache__/
+api/routes/__pycache__/

@@ -1,0 +1,394 @@
+<div class="strategy-lab">
+
+  <!-- Controls bar -->
+  <div class="controls-bar card">
+    <div class="ctrl-left">
+      <select class="form-control" [value]="selectedUnderlying()" (change)="onUnderlyingChange($any($event.target).value)">
+        @for (u of underlyings(); track u.symbol) {
+          <option [value]="u.symbol">{{ u.symbol }}</option>
+        }
+      </select>
+      <select class="form-control" [value]="selectedExpiry()" (change)="onExpiryChange($any($event.target).value)">
+        @for (e of expiries(); track e) {
+          <option [value]="e">{{ e }}</option>
+        }
+      </select>
+      @if (chainData()) {
+        <span class="spot-info">
+          Spot <b>₹{{ chainData().spot | number:'1.2-2' }}</b>
+          &nbsp;·&nbsp; DTE <b>{{ chainData().dte }}</b>
+          &nbsp;·&nbsp; ATM <b>{{ chainData().atm_strike }}</b>
+          &nbsp;·&nbsp; Lot <b>{{ chainData().lot_size }}</b>
+        </span>
+      }
+    </div>
+    <div class="ctrl-right">
+      @if (legs().length > 0) {
+        <button class="btn btn-ghost" (click)="clearLegs()">Clear</button>
+      }
+    </div>
+  </div>
+
+  <!-- Template bar -->
+  <div class="template-bar">
+    <span class="tbar-label">Templates:</span>
+    @for (t of templates; track t.name) {
+      <button class="btn-tpl" (click)="t.fn()">{{ t.name }}</button>
+    }
+  </div>
+
+  <!-- Main split -->
+  <div class="split-layout">
+
+    <!-- LEFT: Option Chain -->
+    <div class="chain-panel card">
+      <div class="chain-header">
+        <span class="chain-title">Option Chain</span>
+        @if (chainData() && totalCeOi() > 0) {
+          <div class="chain-meta">
+            <span class="cm-item">
+              PCR
+              <b [class.positive]="(pcr() ?? 0) >= 1.2" [class.negative]="(pcr() ?? 0) <= 0.7">
+                {{ pcr() ?? '—' }}
+              </b>
+              <span class="cm-signal">
+                @if ((pcr() ?? 0) >= 1.2) { Bullish }
+                @else if ((pcr() ?? 0) <= 0.7) { Bearish }
+                @else { Neutral }
+              </span>
+            </span>
+            <span class="cm-sep">|</span>
+            <span class="cm-item">CE OI <b class="accent">{{ totalCeOi() | number:'1.0-0' }}</b></span>
+            <span class="cm-sep">|</span>
+            <span class="cm-item">PE OI <b class="negative">{{ totalPeOi() | number:'1.0-0' }}</b></span>
+          </div>
+        }
+      </div>
+
+      @if (chainLoading()) {
+        <div class="chain-loading">Loading…</div>
+      } @else if (chainData()) {
+        <div class="chain-scroll">
+          <table class="chain-tbl">
+            <thead>
+              <tr>
+                <th colspan="2" class="ce-head act-head">CALLS</th>
+                <th class="ce-head r">OI</th>
+                <th class="ce-head r">Vol</th>
+                <th class="ce-head r">IV%</th>
+                <th class="ce-head r">Δ Delta</th>
+                <th class="ce-head r">Θ Theta</th>
+                <th class="ce-head r">LTP</th>
+                <th class="str-head">STRIKE</th>
+                <th class="pe-head">LTP</th>
+                <th class="pe-head">Θ Theta</th>
+                <th class="pe-head">Δ Delta</th>
+                <th class="pe-head">IV%</th>
+                <th class="pe-head">Vol</th>
+                <th class="pe-head">OI</th>
+                <th colspan="2" class="pe-head act-head">PUTS</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of chainData().chain; track row.strike) {
+                <tr [class.atm-row]="row.atm"
+                    [class.ce-itm]="row.strike < chainData().spot"
+                    [class.pe-itm]="row.strike > chainData().spot">
+                  <td class="act-cell"><button class="mb buy" (click)="addLeg(row.strike,'CE','BUY')">B</button></td>
+                  <td class="act-cell"><button class="mb sell" (click)="addLeg(row.strike,'CE','SELL')">S</button></td>
+
+                  <td class="ce-col oi-cell">
+                    <div class="oi-wrap r">
+                      <div class="oi-bar ce-bar" [style.width.%]="row.ce.oi / maxOi() * 100"></div>
+                      <span class="oi-val">{{ row.ce.oi > 0 ? (row.ce.oi | number:'1.0-0') : '—' }}</span>
+                    </div>
+                  </td>
+                  <td class="ce-col r vol-col">{{ row.ce.volume > 0 ? (row.ce.volume | number:'1.0-0') : '—' }}</td>
+                  <td class="ce-col r iv-col">{{ row.ce.iv != null ? (row.ce.iv + '%') : '—' }}</td>
+                  <td class="ce-col r delta-col" [class.positive]="row.ce.delta > 0.5">{{ row.ce.delta != null ? (row.ce.delta | number:'1.3-3') : '—' }}</td>
+                  <td class="ce-col r theta-col">{{ row.ce.theta != null ? (row.ce.theta | number:'1.2-2') : '—' }}</td>
+                  <td class="ce-col r ltp-col">{{ row.ce.price | number:'1.2-2' }}</td>
+
+                  <td class="str-col">
+                    @if (row.atm) { <span class="atm-pill">ATM</span> }
+                    {{ row.strike }}
+                  </td>
+
+                  <td class="pe-col ltp-col">{{ row.pe.price | number:'1.2-2' }}</td>
+                  <td class="pe-col theta-col">{{ row.pe.theta != null ? (row.pe.theta | number:'1.2-2') : '—' }}</td>
+                  <td class="pe-col delta-col" [class.negative]="row.pe.delta < -0.5">{{ row.pe.delta != null ? (row.pe.delta | number:'1.3-3') : '—' }}</td>
+                  <td class="pe-col iv-col">{{ row.pe.iv != null ? (row.pe.iv + '%') : '—' }}</td>
+                  <td class="pe-col vol-col">{{ row.pe.volume > 0 ? (row.pe.volume | number:'1.0-0') : '—' }}</td>
+                  <td class="pe-col oi-cell">
+                    <div class="oi-wrap">
+                      <div class="oi-bar pe-bar" [style.width.%]="row.pe.oi / maxOi() * 100"></div>
+                      <span class="oi-val">{{ row.pe.oi > 0 ? (row.pe.oi | number:'1.0-0') : '—' }}</span>
+                    </div>
+                  </td>
+                  <td class="act-cell"><button class="mb buy" (click)="addLeg(row.strike,'PE','BUY')">B</button></td>
+                  <td class="act-cell"><button class="mb sell" (click)="addLeg(row.strike,'PE','SELL')">S</button></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <div class="empty-state">Select underlying to load chain.</div>
+      }
+    </div>
+
+    <!-- RIGHT: Builder -->
+    <div class="builder-panel">
+
+      <!-- Tab bar -->
+      <div class="tab-bar">
+        <button class="tab-btn" [class.active]="activeTab()==='legs'" (click)="setTab('legs')">
+          Legs @if(legs().length > 0){<span class="tab-ct">{{ legs().length }}</span>}
+        </button>
+        <button class="tab-btn" [class.active]="activeTab()==='analysis'" (click)="setTab('analysis')"
+                [disabled]="!analysis()">Analysis</button>
+        <button class="tab-btn" [class.active]="activeTab()==='charts'" (click)="setTab('charts')"
+                [disabled]="!analysis()">Charts</button>
+      </div>
+
+      <!-- LEGS TAB -->
+      @if (activeTab() === 'legs') {
+        @if (legs().length === 0) {
+          <div class="card empty-state">
+            Click <b>B</b> / <b>S</b> on the chain, or pick a template above.
+          </div>
+        } @else {
+          <div class="card legs-card">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>B/S</th><th>Symbol</th><th>Type</th><th>Strike</th>
+                  <th class="r">Premium</th><th class="r">Lots</th>
+                  <th class="r">Lot Value</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (leg of legs(); track leg.id) {
+                  <tr>
+                    <td><span class="txn-b" [class.buy]="leg.transaction_type==='BUY'" [class.sell]="leg.transaction_type==='SELL'">{{ leg.transaction_type }}</span></td>
+                    <td class="sym-td">{{ leg.symbol }}</td>
+                    <td><span class="type-b" [class.ce]="leg.type==='CE'" [class.pe]="leg.type==='PE'">{{ leg.type }}</span></td>
+                    <td>{{ leg.strike }}</td>
+                    <td class="r">₹{{ leg.premium | number:'1.2-2' }}</td>
+                    <td class="r">
+                      <input class="qty-inp" type="number" min="1" [value]="leg.qty"
+                             (change)="setLegQty(leg.id, $any($event.target).value)" />
+                    </td>
+                    <td class="r" [class.positive]="leg.transaction_type==='SELL'" [class.negative]="leg.transaction_type==='BUY'">
+                      {{ leg.transaction_type==='SELL' ? '+' : '-' }}₹{{ (leg.premium * leg.qty * leg.lot_size) | number:'1.0-0' }}
+                    </td>
+                    <td><button class="rm-btn" (click)="removeLeg(leg.id)">✕</button></td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Net premium + execute -->
+          <div class="card execute-bar">
+            <div class="net-row">
+              <span class="net-label">Net {{ netCredit() >= 0 ? 'Credit' : 'Debit' }}</span>
+              <span class="net-val" [class.positive]="netCredit() >= 0" [class.negative]="netCredit() < 0">
+                {{ netCredit() >= 0 ? '+' : '' }}₹{{ netCredit() | number:'1.0-0' }}
+              </span>
+            </div>
+            @if (analysis()) {
+              <div class="quick-metrics">
+                <span>PoP: <b>{{ fmtPop(analysis()!.pop) }}</b></span>
+                <span>EV: <b [class.positive]="analysis()!.expectedValue>=0" [class.negative]="analysis()!.expectedValue<0">
+                  {{ analysis()!.expectedValue >= 0 ? '+' : '' }}₹{{ analysis()!.expectedValue | number:'1.0-0' }}
+                </b></span>
+                <span>R:R <b>{{ fmtRr(analysis()!.riskReward) }}</b></span>
+                <span>Θ/day: <b [class.positive]="analysis()!.greeks.theta*-1>=0">₹{{ (analysis()!.greeks.theta * -1) | number:'1.0-0' }}</b></span>
+              </div>
+            }
+            <button class="btn btn-primary execute-btn" (click)="openModal()">
+              Execute Strategy →
+            </button>
+          </div>
+        }
+      }
+
+      <!-- ANALYSIS TAB -->
+      @if (activeTab() === 'analysis' && analysis()) {
+        <div class="card analysis-card">
+          <div class="metrics-grid">
+            <div class="metric">
+              <div class="m-label">Probability of Profit</div>
+              <div class="m-val big" [class.positive]="analysis()!.pop >= 0.5" [class.negative]="analysis()!.pop < 0.4">
+                {{ fmtPop(analysis()!.pop) }}
+              </div>
+              <div class="m-sub">Based on IV {{ (iv() * 100).toFixed(1) }}% + log-normal dist.</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Expected Value</div>
+              <div class="m-val big" [class.positive]="analysis()!.expectedValue >= 0" [class.negative]="analysis()!.expectedValue < 0">
+                {{ analysis()!.expectedValue >= 0 ? '+' : '' }}₹{{ analysis()!.expectedValue | number:'1.0-0' }}
+              </div>
+              <div class="m-sub">Probability-weighted P&L at expiry</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Max Profit</div>
+              <div class="m-val positive">
+                {{ analysis()!.maxProfit > 900000 ? 'Unlimited' : '₹' + (analysis()!.maxProfit | number:'1.0-0') }}
+              </div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Max Loss</div>
+              <div class="m-val negative">
+                {{ analysis()!.maxLoss < -900000 ? 'Unlimited' : '₹' + (abs(analysis()!.maxLoss) | number:'1.0-0') }}
+              </div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Risk : Reward</div>
+              <div class="m-val">{{ fmtRr(analysis()!.riskReward) }}</div>
+            </div>
+            <div class="metric">
+              <div class="m-label">Breakevens</div>
+              <div class="m-val">
+                @if (analysis()!.breakevens.length === 0) { <span class="muted">None</span> }
+                @for (be of analysis()!.breakevens; track be) {
+                  <span class="be-pill">{{ be | number:'1.0-0' }}</span>
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="greeks-row">
+            <div class="greek-item">
+              <div class="g-label">Net Δ Delta</div>
+              <div class="g-val" [class.positive]="analysis()!.greeks.delta > 0.05" [class.negative]="analysis()!.greeks.delta < -0.05">
+                {{ analysis()!.greeks.delta | number:'1.3-3' }}
+              </div>
+            </div>
+            <div class="greek-item">
+              <div class="g-label">Θ Theta/day</div>
+              <div class="g-val" [class.positive]="analysis()!.greeks.theta < 0">
+                ₹{{ (analysis()!.greeks.theta * -1) | number:'1.0-0' }}
+              </div>
+            </div>
+            <div class="greek-item">
+              <div class="g-label">ν Vega (1% IV)</div>
+              <div class="g-val" [class.positive]="analysis()!.greeks.vega > 0" [class.negative]="analysis()!.greeks.vega < 0">
+                ₹{{ (analysis()!.greeks.vega * legs().length) | number:'1.0-0' }}
+              </div>
+            </div>
+            <div class="greek-item">
+              <div class="g-label">Γ Gamma</div>
+              <div class="g-val">{{ analysis()!.greeks.gamma | number:'1.4-4' }}</div>
+            </div>
+          </div>
+
+          <!-- Optimal exit box -->
+          <div class="exit-box">
+            <div class="exit-title">
+              📊 Optimal Square-Off
+              @if (analysis()!.exit.exitDte) {
+                <span class="exit-dte-badge">{{ analysis()!.exit.exitDte }} DTE</span>
+              }
+            </div>
+            <div class="exit-body">{{ analysis()!.exit.rationale }}</div>
+            <div class="exit-target">
+              Target: <b class="positive">+₹{{ analysis()!.exit.targetAbs | number:'1.0-0' }}</b>
+              ({{ analysis()!.exit.targetPct }}% of max gain)
+            </div>
+          </div>
+        </div>
+
+        <div class="card execute-bar">
+          <button class="btn btn-primary execute-btn" (click)="openModal()">Execute Strategy →</button>
+        </div>
+      }
+
+      <!-- CHARTS TAB -->
+      @if (activeTab() === 'charts') {
+        <div class="charts-wrap">
+          <div class="card chart-card">
+            <div class="chart-label">Payoff at Expiry
+              <span class="chart-sub">X-axis: Underlying spot price. Blue = P&L. Dashed = breakeven.</span>
+            </div>
+            <div #payoffChart class="chart-container"></div>
+          </div>
+          <div class="card chart-card">
+            <div class="chart-label">Theta Decay (Time Value)
+              <span class="chart-sub">X-axis: Days elapsed since entry. Yellow = strategy P&L if held to that day.</span>
+            </div>
+            <div #thetaChart class="chart-container"></div>
+          </div>
+        </div>
+
+        <div class="card execute-bar">
+          <button class="btn btn-primary execute-btn" (click)="openModal()">Execute Strategy →</button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+
+<!-- Execute modal -->
+@if (showModal()) {
+  <div class="modal-overlay" (click)="closeModal()">
+    <div class="modal exec-modal" (click)="$event.stopPropagation()">
+      <div class="modal-title">Confirm Strategy Execution</div>
+
+      <!-- Legs summary -->
+      <div class="modal-legs">
+        @for (leg of legs(); track leg.id) {
+          <div class="modal-leg-row">
+            <span class="txn-b" [class.buy]="leg.transaction_type==='BUY'" [class.sell]="leg.transaction_type==='SELL'">{{ leg.transaction_type }}</span>
+            <span class="type-b" [class.ce]="leg.type==='CE'" [class.pe]="leg.type==='PE'">{{ leg.type }}</span>
+            <span class="mleg-sym">{{ leg.symbol }}</span>
+            <span class="muted">×{{ leg.qty }} lot</span>
+            <span>@ ₹{{ leg.premium | number:'1.2-2' }}</span>
+          </div>
+        }
+        <div class="modal-net" [class.positive]="netCredit() >= 0" [class.negative]="netCredit() < 0">
+          Net {{ netCredit() >= 0 ? 'Credit' : 'Debit' }}: {{ netCredit() >= 0 ? '+' : '' }}₹{{ netCredit() | number:'1.0-0' }}
+        </div>
+      </div>
+
+      <!-- SL / Target -->
+      <div class="modal-sl-row">
+        <div class="modal-field">
+          <label class="form-label">Auto Stop-Loss (₹ loss amount)</label>
+          <input class="form-control" type="number" placeholder="e.g. 5000"
+                 [value]="slInput()" (input)="slInput.set($any($event.target).value)" />
+          <div class="field-hint">Backend auto-exits when P&L ≤ −₹{{ slInput() || '?' }}</div>
+        </div>
+        <div class="modal-field">
+          <label class="form-label">Auto Target (₹ profit amount)</label>
+          <input class="form-control" type="number" placeholder="e.g. 7500"
+                 [value]="targetInput()" (input)="targetInput.set($any($event.target).value)" />
+          <div class="field-hint">Backend auto-exits when P&L ≥ +₹{{ targetInput() || '?' }}</div>
+        </div>
+      </div>
+
+      <!-- Paper / Real toggle -->
+      <div class="mode-toggle-row">
+        <button class="mode-btn" [class.active]="!useReal()" (click)="setUseReal(false)">📄 Paper Trade</button>
+        <button class="mode-btn real" [class.active]="useReal()" (click)="setUseReal(true)">⚡ Real Money</button>
+      </div>
+      @if (useReal()) {
+        <div class="real-warning">
+          ⚠ REAL MODE: Orders will be placed on NSE NFO with actual money. Positions will appear in your Zerodha account.
+        </div>
+      }
+
+      @if (placeError()) {
+        <div class="alert alert-danger">{{ placeError() }}</div>
+      }
+
+      <div class="modal-actions">
+        <button class="btn btn-ghost" [disabled]="placing()" (click)="closeModal()">Cancel</button>
+        <button class="btn btn-primary" [disabled]="placing() || legs().length === 0" (click)="confirmExecute()">
+          {{ placing() ? 'Placing orders…' : 'Confirm & Execute (' + legs().length + ' legs)' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Networth — Road to 45% D30</title>
+<style>
+  :root{
+    --paper:#eef1f5; --surface:#fff; --ink:#111725; --ink-soft:#4b586b; --ink-faint:#8592a3;
+    --line:#e0e6ee; --line-soft:#eaeff5; --accent:#0e8f66; --accent-soft:#d8ede4;
+    --blue:#2f6db0; --warn:#bf6a38;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --paper:#0b0f16; --surface:#131a25; --ink:#e9eff7; --ink-soft:#9dabbd; --ink-faint:#6b7a8d;
+    --line:#212c3a; --line-soft:#1a2330; --accent:#2bd39a; --accent-soft:#123027; --blue:#5a9be0; --warn:#d98a54;}}
+  :root[data-theme="light"]{
+    --paper:#eef1f5; --surface:#fff; --ink:#111725; --ink-soft:#4b586b; --ink-faint:#8592a3;
+    --line:#e0e6ee; --line-soft:#eaeff5; --accent:#0e8f66; --accent-soft:#d8ede4; --blue:#2f6db0; --warn:#bf6a38;}
+  :root[data-theme="dark"]{
+    --paper:#0b0f16; --surface:#131a25; --ink:#e9eff7; --ink-soft:#9dabbd; --ink-faint:#6b7a8d;
+    --line:#212c3a; --line-soft:#1a2330; --accent:#2bd39a; --accent-soft:#123027; --blue:#5a9be0; --warn:#d98a54;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums;}
+  .wrap{max-width:900px;margin:0 auto;padding:48px 24px 90px;}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 12px;}
+  h1{font-size:clamp(28px,5vw,42px);letter-spacing:-.03em;line-height:1.05;margin:0 0 12px;text-wrap:balance;}
+  h1 em{font-style:normal;color:var(--accent);}
+  .lede{color:var(--ink-soft);max-width:62ch;margin:0 0 36px;font-size:16px;}
+  h2{font-size:21px;letter-spacing:-.02em;margin:52px 0 14px;}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px 24px;
+    box-shadow:0 1px 2px rgba(17,23,37,.04),0 8px 26px rgba(17,23,37,.05);}
+
+  .feat{border-top:1px solid var(--line-soft);padding:20px 0;}
+  .feat:first-child{border-top:none;padding-top:4px;}
+  .feat h3{margin:0 0 2px;font-size:16.5px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .num{font-family:var(--mono);font-size:11px;color:var(--accent);font-weight:700;}
+  .tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:999px;}
+  .tag.t{background:color-mix(in srgb,var(--blue) 14%,var(--surface));color:var(--blue);}
+  .tag.s{background:var(--accent-soft);color:var(--accent);}
+  .tag.d{background:color-mix(in srgb,var(--accent) 7%,var(--surface));color:var(--ink-soft);border:1px solid var(--line);}
+  .goal{font-size:12.5px;color:var(--ink-faint);margin:0 0 8px;}
+  .goal b{color:var(--accent);}
+  .feat ol{margin:6px 0 0;padding-left:20px;font-size:14px;color:var(--ink-soft);}
+  .feat ol li{margin:5px 0;}
+  .feat ol b{color:var(--ink);}
+
+  table{width:100%;border-collapse:collapse;font-size:14.5px;}
+  thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);
+    text-align:right;padding:0 0 10px;font-weight:600;}
+  thead th:first-child{text-align:left;}
+  tbody td{padding:11px 0;border-top:1px solid var(--line-soft);text-align:right;font-weight:700;}
+  tbody td:first-child{text-align:left;font-weight:600;color:var(--ink-soft);}
+  td.hi{color:var(--accent);}
+  .note{font-size:13px;color:var(--ink-soft);margin-top:14px;}
+  .callout{border-left:3px solid var(--accent);background:color-mix(in srgb,var(--surface) 60%,var(--paper));
+    border-radius:0 10px 10px 0;padding:14px 18px;font-size:14px;color:var(--ink-soft);margin-top:18px;}
+  .callout b{color:var(--ink);}
+  footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);font-family:var(--mono);
+    font-size:11.5px;color:var(--ink-faint);line-height:1.7;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Networth · Build Plan v1 · 2026-07-21</p>
+  <h1>The road to <em>45% D30</em> — nine features, in order.</h1>
+  <p class="lede">Everything below is scoped for the current stack (Angular PWA + FastAPI on Railway + Supabase + Kite). Build strictly in this order — items 1–2 are the spine; nothing later works without them. Target segment: active traders &amp; complex-finance households.</p>
+
+  <div class="card">
+
+    <div class="feat">
+      <h3><span class="num">01</span> Live-Data Spine (auto-sync everything) <span class="tag s">structural · 14%</span></h3>
+      <p class="goal">Goal: the app is <b>never stale</b> — opening it always shows fresh numbers with zero manual steps.</p>
+      <ol>
+        <li>Kill the manual Kite-token load: backend job refreshes each account's session at market open; if re-login is truly needed, send a one-tap re-login link (bell already tracks this).</li>
+        <li>Nightly cron: refresh prices, dividends, F&amp;O positions, bond coupons → write a <b>daily net-worth snapshot per person</b> to Supabase (this table powers everything below).</li>
+        <li>Service-worker cache of the last snapshot so the PWA opens instantly with data, then live-updates.</li>
+        <li>Show a subtle "as of 9:42 am" freshness stamp on the dashboard — trust marker.</li>
+      </ol>
+    </div>
+
+    <div class="feat">
+      <h3><span class="num">02</span> Daily Net-Worth Pulse on WhatsApp <span class="tag t">trigger · 25%</span></h3>
+      <p class="goal">Goal: the reason to open arrives <b>before</b> they decide to open. Biggest single lever.</p>
+      <ol>
+        <li>Meta WhatsApp <b>Cloud API direct</b> (no BSP — ~₹40/mo at 10 users). Register template as <b>utility</b> category: "Net worth {{amt}} today ({{delta}}). Stocks {{s}}, F&amp;O {{f}}, gold {{g}}. Tap: {{link}}".</li>
+        <li>Backend cron 8:30 am IST reads yesterday-vs-today snapshots (from #01) → sends per user, deep-links into the dashboard.</li>
+        <li>Web-push as free secondary channel for intraday events (dividend landed, F&amp;O leg crossed break-even); iOS coach screen for Add-to-Home-Screen.</li>
+        <li>Rule: if data is stale, <b>don't send</b> — a wrong Pulse is worse than none.</li>
+      </ol>
+    </div>
+
+    <div class="feat">
+      <h3><span class="num">03</span> "Today" Feed home screen <span class="tag d">delight · 8%</span></h3>
+      <p class="goal">Goal: the dashboard is <b>never the same twice</b> — every open pays off.</p>
+      <ol>
+        <li>New top-of-dashboard card stack, ranked by "charge": dividend landed &gt; milestone near &gt; F&amp;O event &gt; on-this-day-last-year &gt; tax deadline &gt; streak.</li>
+        <li>Each card = one fact + one number + one tap-through. Max 3 cards; rotate daily.</li>
+        <li>"While you were away" variant when last visit &gt; 3 days: summarise everything that happened since.</li>
+        <li>Celebrate arrivals (confetti on dividend/coupon credit) — money landing is the emotional peak.</li>
+      </ol>
+    </div>
+
+    <div class="feat">
+      <h3><span class="num">04</span> Money-on-the-Table deadline engine <span class="tag s">structural · 9%</span></h3>
+      <p class="goal">Goal: dated, rupee-quantified savings with countdowns — loss aversion + a clock.</p>
+      <ol>
+        <li>Chanakya's levers become persistent dashboard chips: "Harvest ₹1.25L LTCG → save ₹15,625 · <b>68 days left</b>", advance-tax installments, 54EC windows, F&amp;O expiry actions.</li>
+        <li>Each chip: amount saved, deadline, one "show me how" tap into the relevant tax bot.</li>
+        <li>Weekly WhatsApp digest of open chips ("₹41,200 still on the table").</li>
+        <li>Mark-done state; celebrate captured savings ("you kept ₹15,625 this year").</li>
+      </ol>
+    </div>
+
+    <div class="feat">
+      <h3><span class="num">05</span> Financial Health Score (0–100) <span class="tag d">delight · 4%</span></h3>
+      <p class="goal">Goal: one personal number they chase — credit-score psychology.</p>
+      <ol>
+        <li>Score = weighted: diversification 25, tax-efficiency 25 (from open chips), emergency-fund months 20, concentration 15, income-stability 15. Computed nightly per family + per person.</li>
+        <li>Dashboard ring with daily delta ("71 · +2 this week"); each sub-factor is a tappable fix that names the exact asset.</li>
+        <li>Score change feeds the Today feed and the Pulse ("Health 71→73 after your bond buy").</li>
+      </ol>
+    </div>
+
+    <div class="feat">
+      <h3><span class="num">06</span> Goal &amp; FIRE countdown <span class="tag d">delight · 3%</span></h3>
+      <p class="goal">Goal: every gain reframed as progress toward <b>their</b> date.</p>
+      <ol>
+        <li>Goals table (name, target ₹, target date). FIRE = expenses-based auto-goal (25× annual spend from the expenses tab).</li>
+        <li>Daily recompute of projected finish date from real CAGR; surface <b>ETA movement</b> ("pulled 3 weeks closer") — the delta is the hook, not the bar.</li>
+        <li>Milestone confetti at 25/50/75/100% and round numbers (₹1 Cr).</li>
+      </ol>
+    </div>
+
+    <div class="feat">
+      <h3><span class="num">07</span> Setup Journey (honest progression) <span class="tag d">delight · 5%</span></h3>
+      <p class="goal">Goal: progression that deepens investment — <b>never gates their own data</b>.</p>
+      <ol>
+        <li>Dashboard progress ring: Connect Kite → unlocks live P&amp;L · Add a goal → unlocks FIRE · Log a month of expenses → unlocks tax optimizer · Set pledged capital → unlocks CAGR. Each unlock is real capability, not artificial scarcity.</li>
+        <li>Streak counter on data-freshness actions (visited, logged, confirmed) — streaks never punish, only reward.</li>
+        <li>Levels/badges as a status layer only (Level 6 Investor); zero utility locked behind them.</li>
+      </ol>
+    </div>
+
+    <div class="feat">
+      <h3><span class="num">08</span> Family &amp; advisor seats <span class="tag s">structural · 12%</span></h3>
+      <p class="goal">Goal: other people depend on the data → nobody can leave.</p>
+      <ol>
+        <li>Per-person login with role scoping (you already model Ranjeev/Sanjeev/Maha) — each member sees their slice + the family view.</li>
+        <li>Read-only <b>CA/advisor seat</b> with the tax pack (capital gains, TDS, chips from #04) exportable — the CA starts asking clients to keep it updated.</li>
+        <li>Monthly family recap on WhatsApp ("family net worth +₹3.1L in June; Maha grew fastest").</li>
+      </ol>
+    </div>
+
+    <div class="feat">
+      <h3><span class="num">09</span> Act-in-app surface <span class="tag s">structural · 20%</span></h3>
+      <p class="goal">Goal: track → <b>transact</b>. The advice becomes a button. Hardest, highest ceiling — last on purpose.</p>
+      <ol>
+        <li>Phase 1 (no broker execution): every recommendation becomes a <b>prepared order ticket</b> — exact instrument, qty, price — one tap opens Kite with the order pre-staged via Kite Connect basket/publisher links.</li>
+        <li>Phase 2: post-action reconciliation — the app detects the executed trade in the next sync and closes the loop ("harvest done, ₹15,625 kept").</li>
+        <li>Phase 3 (later, regulated): direct order placement via Kite Connect order API for the accounts you already hold keys for.</li>
+      </ol>
+    </div>
+
+  </div>
+
+  <h2>Expected retention progression (cohort D30 over time)</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>Cohort</th><th>D1</th><th>D7</th><th>D30</th><th>What's compounding</th></tr></thead>
+      <tbody>
+        <tr><td>Today (baseline)</td><td>30%</td><td>15%</td><td>9%</td><td style="font-weight:500;color:var(--ink-faint)">utility only</td></tr>
+        <tr><td>Month 2 — spine + Pulse + Today feed live (#01–03)</td><td>48%</td><td>36%</td><td class="hi">~28%</td><td style="font-weight:500;color:var(--ink-faint)">trigger + fresh data</td></tr>
+        <tr><td>Month 6 — chips, score, goals, journey live (#04–07)</td><td>54%</td><td>44%</td><td class="hi">~38%</td><td style="font-weight:500;color:var(--ink-faint)">habit loop closed</td></tr>
+        <tr><td>Month 12 — family seats + act-in-app (#08–09) + data lock-in</td><td>58%</td><td>49%</td><td class="hi">~45%</td><td style="font-weight:500;color:var(--ink-faint)">necessity + switching cost</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Read this as <b>cohort maturity</b>: a user joining in month 12 lands on the full product, and older cohorts keep improving because accumulated history (tax lots, records, family dependence) raises the floor every month. Long-horizon (D90+) retention of mature cohorts should settle ~5pp above their D30.</p>
+  </div>
+
+  <div class="callout"><b>Two rules that protect all of it:</b> ① Never send a Pulse on stale data — silence beats a wrong number. ② Never lock a user's own money-view behind progression — gate depth, not data. Break either and the curve reverts to the 9% baseline faster than it climbed.</div>
+
+  <footer>Networth · Road to 45% D30 · estimates benchmarked to public fintech retention data, gap-to-ceiling combination model · segment: active traders &amp; complex-finance households · validate each phase with cohort A/B before building the next.</footer>
+</div>
+</body>
+</html>

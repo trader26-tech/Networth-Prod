@@ -1,0 +1,29 @@
+# Railway / Nixpacks build config
+# Builds the Angular frontend, installs Python deps, and starts uvicorn.
+# Single service deployment: FastAPI serves both /api and the SPA at /.
+
+[phases.setup]
+nixPkgs = ["python311", "nodejs_20", "gcc"]
+
+[phases.install]
+cmds = [
+  "python -m venv /opt/venv",
+  ". /opt/venv/bin/activate && pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt",
+  "cd frontend && npm ci --no-audit --no-fund",
+]
+
+[phases.build]
+cmds = [
+  "cd frontend && npx ng build --configuration=production",
+]
+
+[start]
+# Use the start shim which reads PORT from os.environ directly. Railway exec's
+# the start command without going through a shell, so any `${PORT:-8000}` style
+# expansion in this string would be passed literally to uvicorn. The Python
+# shim sidesteps that entirely.
+cmd = "/opt/venv/bin/python start.py"
+
+[variables]
+PYTHON_VERSION = "3.11"
+NODE_VERSION = "20"

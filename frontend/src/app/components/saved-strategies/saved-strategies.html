@@ -1,0 +1,114 @@
+<div class="ss-page">
+
+  <!-- Header -->
+  <header class="ss-header">
+    <div class="ss-eyebrow">📁 Saved Strategies</div>
+    <h1 class="ss-title">Your Invested Positions</h1>
+    <p class="ss-sub">
+      All stocks and strategies you've deployed real capital into. Track live P&amp;L,
+      premium collected, and current cycle status across every saved position.
+    </p>
+  </header>
+
+  <!-- KPI summary -->
+  @if (positions().length > 0) {
+    <div class="ss-kpis">
+      <div class="ss-kpi">
+        <span class="ss-kpi-label">Capital deployed</span>
+        <span class="ss-kpi-val">{{ fmtRs(totalDeployed()) }}</span>
+      </div>
+      <div class="ss-kpi">
+        <span class="ss-kpi-label">Live P&L</span>
+        <span class="ss-kpi-val"
+              [class.pos]="totalLivePnl() >= 0"
+              [class.neg]="totalLivePnl() < 0">
+          {{ fmtRs(totalLivePnl()) }}
+        </span>
+      </div>
+      <div class="ss-kpi">
+        <span class="ss-kpi-label">Premium collected (lifetime)</span>
+        <span class="ss-kpi-val pos">{{ fmtRs(totalPremium()) }}</span>
+      </div>
+      <div class="ss-kpi">
+        <span class="ss-kpi-label">Active positions</span>
+        <span class="ss-kpi-val">{{ positions().length }}</span>
+      </div>
+    </div>
+  }
+
+  <!-- States -->
+  @if (loading()) {
+    <div class="ss-state">⏳ Loading saved strategies…</div>
+  } @else if (error()) {
+    <div class="ss-state ss-error">⚠ {{ error() }}</div>
+  } @else if (positions().length === 0) {
+    <div class="ss-empty">
+      <div class="ss-empty-icon">📂</div>
+      <h2>No saved strategies yet</h2>
+      <p>
+        When you deploy a Covered Call (or any future strategy), it appears here
+        with full lifecycle tracking — P&amp;L, premium collected, exit triggers.
+      </p>
+      <a class="ss-cta" routerLink="/covered-call">Open Covered Call →</a>
+    </div>
+  } @else {
+    <div class="ss-list">
+      @for (p of positions(); track p.id) {
+        <article class="ss-card">
+          <header class="ss-card-head">
+            <div class="ss-card-title">
+              <span class="ss-card-icon">📈</span>
+              <span>{{ p.name || 'Covered Call · NiftyBees' }}</span>
+            </div>
+            <span class="ss-card-status" [class]="'ss-status-' + p.status">{{ p.status }}</span>
+          </header>
+
+          <div class="ss-card-grid">
+            <div>
+              <span class="ss-fld-lbl">Shares</span>
+              <span class="ss-fld-val">{{ p.shares | number:'1.0-0' }} NB</span>
+            </div>
+            <div>
+              <span class="ss-fld-lbl">Cost basis</span>
+              <span class="ss-fld-val">{{ fmtRs(p.niftybees_cost) }}</span>
+            </div>
+            <div>
+              <span class="ss-fld-lbl">Premium collected</span>
+              <span class="ss-fld-val pos">{{ fmtRs(p.total_premium_collected) }}</span>
+            </div>
+            <div>
+              <span class="ss-fld-lbl">Live P&L</span>
+              <span class="ss-fld-val"
+                    [class.pos]="(p?.live?.total_pnl ?? 0) >= 0"
+                    [class.neg]="(p?.live?.total_pnl ?? 0) < 0">
+                {{ fmtRs(p?.live?.total_pnl) }}
+              </span>
+            </div>
+            @if (p.active_call) {
+              <div>
+                <span class="ss-fld-lbl">Active call</span>
+                <span class="ss-fld-val">{{ p.active_call.strike | number:'1.0-0' }} CE · {{ p.active_call.expiry }}</span>
+              </div>
+              <div>
+                <span class="ss-fld-lbl">Cycles done</span>
+                <span class="ss-fld-val">{{ (p.call_history || []).length }}</span>
+              </div>
+            }
+          </div>
+
+          <div class="ss-card-foot">
+            <a class="ss-card-cta" routerLink="/covered-call">Open in Covered Call →</a>
+          </div>
+        </article>
+      }
+    </div>
+  }
+
+  <!-- Future-scope footer -->
+  <div class="ss-future">
+    <strong>Coming next:</strong> Protected Wheel, Short Strangle, and any new
+    strategy you deploy will land here automatically. Each will get its own
+    lifecycle panel with cycle history, lifetime P&amp;L, and exit-trigger trail.
+  </div>
+
+</div>

@@ -1,0 +1,410 @@
+<div class="land-head">
+  <div>
+    <h1>Gold &amp; Silver</h1>
+    <p class="sub">Every piece valued live from today's metal price (weight × purity × spot). CAGR shows for pieces with a bill (date + price); the rest still count at live value.</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" (click)="openAdd()">＋ Add piece</button>
+  </div>
+</div>
+
+<!-- Needs-migration notice -->
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head">
+      <span class="ni">⚙︎</span>
+      <div>
+        <strong>One-time setup — create the Supabase tables</strong>
+        <p>Supabase is connected, but the <code>gold_items</code> / <code>gold_documents</code> tables don't exist yet. Paste the SQL from <b>SUPABASE.md → "Gold / Silver tables"</b> into <b>Supabase → SQL Editor → Run</b>, then hit retry.</p>
+      </div>
+    </div>
+    <div class="notice-actions">
+      <button class="btn primary" (click)="reload()">I've run it — retry</button>
+    </div>
+  </div>
+}
+
+@if (error()) {
+  <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div>
+}
+
+@if (loading()) {
+  <div class="state">Loading your jewellery…</div>
+}
+
+<!-- Hero: live rates + total value + trend -->
+@if (!loading() && !needsMigration() && hasData() && heroSummary(); as s) {
+  <div class="hero gold-hero">
+    <div class="hero-left">
+      <div class="hero-main">
+        <span class="hero-label">Total value · live</span>
+        <span class="hero-value">{{ inr(s.total_value) }}</span>
+        <span class="hero-exact">{{ inrFull(s.total_value) }}</span>
+        <div class="hero-sub-row">
+          @if (s.documented_gain !== null) {
+            <span class="hero-gain has-tip" data-tip="Live value minus purchase price, across pieces with a bill. Jewellery often shows little/negative gain because making charges aren't recovered." [class.pos]="s.documented_gain >= 0" [class.neg]="s.documented_gain < 0">
+              {{ s.documented_gain >= 0 ? '▲' : '▼' }} {{ inr(s.documented_gain) }} <span class="muted">({{ pct(s.documented_gain_pct) }})</span>
+            </span>
+          }
+          @if (prices(); as pr) {
+            <span class="live-tag" [class.stale]="pr.stale || !pr.ok">{{ pr.stale || !pr.ok ? 'stale' : '● live' }} · {{ ago(pr.updated_at) }}
+              <button class="pb-refresh" (click)="loadPrices(true)" [disabled]="refreshingPrice()" title="Refresh price">↻</button>
+            </span>
+          }
+          <div class="rate-wrap">
+            <button class="rate-btn" [class.on]="rateOpen() || usingLocalRate()" (click)="rateOpen.set(!rateOpen())" title="Set your local (Chennai) gold rate">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+              {{ usingLocalRate() ? 'Your rate' : 'Local rate' }}
+            </button>
+            @if (rateOpen()) {
+              <div class="rate-backdrop" (click)="rateOpen.set(false)"></div>
+              <div class="rate-pop">
+                <div class="rp-note">Showing <b>international spot</b>. Enter today's <b>local (Chennai)</b> rate to value at what you'd actually realise — leave blank to keep spot.</div>
+                <label class="rp-f"><span>Gold 22K (₹/g)</span><input type="number" [ngModel]="rate22kOverride()" (ngModelChange)="setRate22k($event)" [placeholder]="'spot ' + inrFull(spot22k())"></label>
+                <label class="rp-f"><span>Silver (₹/g)</span><input type="number" [ngModel]="silverOverride()" (ngModelChange)="setSilverRate($event)" [placeholder]="'spot ' + inrFull(spotSilver())"></label>
+                @if (usingLocalRate()) { <button class="rp-reset" (click)="resetRates()">↺ Reset to live spot</button> }
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <div class="metal-cards">
+        <div class="metal-card gold">
+          <span class="mc-k">Gold</span>
+          <span class="mc-v">{{ inr(s.gold_value) }}</span>
+          <span class="mc-sub">{{ s.gold_weight ? (s.gold_weight | number:'1.0-1') + ' g' : '—' }} · {{ inrFull(gold24k()) }}<small>/g 24K</small></span>
+        </div>
+        <div class="metal-card silver">
+          <span class="mc-k">Silver</span>
+          <span class="mc-v">{{ inr(s.silver_value) }}</span>
+          <span class="mc-sub">{{ s.silver_weight ? (s.silver_weight | number:'1.0-1') + ' g' : '—' }} · {{ inrFull(silverRate()) }}<small>/g</small></span>
+        </div>
+        @if (s.other_value > 0) {
+          <div class="metal-card other"><span class="mc-k">Other</span><span class="mc-v">{{ inr(s.other_value) }}</span></div>
+        }
+        <div class="metal-card stat">
+          <span class="mc-k has-tip tip-right" data-tip="Money-weighted CAGR across pieces with a bill (date + price).">Your CAGR</span>
+          <span class="mc-v sm" [class.pos]="(s.blended_cagr ?? 0) >= 0" [class.neg]="(s.blended_cagr ?? 0) < 0">{{ pct(s.blended_cagr) }}</span>
+          <span class="mc-sub">{{ s.count }} piece{{ s.count === 1 ? '' : 's' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive metal-price chart -->
+    @if (hasSeries()) {
+      <div class="gchart">
+        <div class="gc-top">
+          <div class="gc-legend">
+            @for (sr of series(); track sr.metal) {
+              <span class="lgd" [class.gold]="sr.metal === 'gold'" [class.silver]="sr.metal === 'silver'">
+                <i></i>{{ sr.metal === 'gold' ? 'Gold' : 'Silver' }}
+                <b>{{ inrFull(sr.rate) }}<small>/g</small></b>
+                @if (sr.growth !== null) { <em [class.pos]="sr.growth >= 0" [class.neg]="sr.growth < 0">{{ pct(sr.growth) }} · {{ chartYears() }}Y</em> }
+              </span>
+            }
+          </div>
+          <div class="gc-filter-wrap">
+            <button class="gc-filter-btn" [class.on]="filterOpen()" (click)="filterOpen.set(!filterOpen())" title="Chart options">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+              </svg>
+              Filter
+            </button>
+            @if (filterOpen()) {
+              <div class="gc-backdrop" (click)="filterOpen.set(false)"></div>
+              <div class="gc-pop">
+                <div class="pop-group">
+                  <span class="pop-l">Metal</span>
+                  <div class="seg sm">
+                    <button [class.on]="chartMetal() === 'gold'" (click)="chartMetal.set('gold')">Gold</button>
+                    <button [class.on]="chartMetal() === 'silver'" (click)="chartMetal.set('silver')">Silver</button>
+                    <button [class.on]="chartMetal() === 'both'" (click)="chartMetal.set('both')">Both</button>
+                  </div>
+                </div>
+                @if (chartMetal() !== 'both') {
+                  <div class="pop-group">
+                    <span class="pop-l">Show</span>
+                    <div class="seg sm">
+                      <button [class.on]="chartMode() === 'growth'" (click)="chartMode.set('growth')">Growth %</button>
+                      <button [class.on]="chartMode() === 'value'" (click)="chartMode.set('value')">Price ₹</button>
+                    </div>
+                  </div>
+                }
+                <div class="pop-group">
+                  <span class="pop-l">Range</span>
+                  <div class="seg sm">
+                    <button [class.on]="chartYears() === 1" (click)="chartYears.set(1)">1Y</button>
+                    <button [class.on]="chartYears() === 3" (click)="chartYears.set(3)">3Y</button>
+                    <button [class.on]="chartYears() === 5" (click)="chartYears.set(5)">5Y</button>
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="gc-plot" #plot (mousemove)="onChartMove($event, plot)" (mouseleave)="onChartLeave()">
+          <svg class="gc-svg" [attr.viewBox]="'0 0 ' + cW + ' ' + cH" preserveAspectRatio="none">
+            @for (sr of series(); track sr.metal) {
+              @if (sr.area) { <path class="gc-area" [class.gold]="sr.metal === 'gold'" [class.silver]="sr.metal === 'silver'" [attr.d]="sr.area"/> }
+              <path class="gc-line" [class.gold]="sr.metal === 'gold'" [class.silver]="sr.metal === 'silver'" fill="none" [attr.d]="sr.line"/>
+            }
+            @if (hoverX() !== null) {
+              <line class="gc-cursor" [attr.x1]="hoverX()" [attr.x2]="hoverX()" y1="0" [attr.y2]="cH"/>
+              @for (sr of series(); track sr.metal) {
+                @if (markerY(sr.values) !== null) {
+                  <circle class="gc-dot" [class.gold]="sr.metal === 'gold'" [class.silver]="sr.metal === 'silver'" [attr.cx]="hoverX()" [attr.cy]="markerY(sr.values)" r="3"/>
+                }
+              }
+            }
+          </svg>
+          @if (hoverInfo(); as hi) {
+            <div class="gc-tip" [style.left.%]="hoverLeftPct()">
+              <div class="gt-date">{{ hi.label }}</div>
+              @for (r of hi.rows; track r.metal) {
+                <div class="gt-row"><span class="gt-k" [class.gold]="r.metal === 'gold'" [class.silver]="r.metal === 'silver'">{{ r.metal === 'gold' ? 'Gold' : 'Silver' }}</span><span class="gt-v">{{ inrFull(r.price) }}<small>/g</small></span></div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </div>
+}
+
+<!-- Empty -->
+@if (!loading() && !needsMigration() && !hasData()) {
+  <div class="empty">
+    <div class="empty-card">
+      <div class="big">🪙</div>
+      <h2>No pieces yet</h2>
+      <p>Add a chain, bangle, ring or coin — pick the metal, enter the net weight and purity, and we'll value it at today's live rate. Add the bill (date + price) on pieces where you have it to get a CAGR.</p>
+      <button class="btn primary" (click)="openAdd()">＋ Add your first piece</button>
+    </div>
+  </div>
+}
+
+<!-- Table -->
+@if (!loading() && hasData()) {
+  <div class="filters">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" placeholder="Search name, owner or notes…" [ngModel]="search()" (ngModelChange)="search.set($event)">
+      @if (search()) { <button class="clr" (click)="search.set('')" title="Clear">✕</button> }
+    </div>
+    <label class="fsel">
+      <span>Metal</span>
+      <select [ngModel]="metalFilter()" (ngModelChange)="metalFilter.set($event)">
+        <option value="">All metals</option>
+        <option value="gold">Gold</option>
+        <option value="silver">Silver</option>
+        <option value="other">Other</option>
+      </select>
+    </label>
+    <label class="fsel">
+      <span>Sort</span>
+      <select [ngModel]="sort()" (ngModelChange)="sort.set($event)">
+        <option value="value">Value (high → low)</option>
+        <option value="weight">Weight (high → low)</option>
+        <option value="cagr">CAGR (high → low)</option>
+        <option value="newest">Newest first</option>
+        <option value="name">Name (A → Z)</option>
+      </select>
+    </label>
+    <span class="count">{{ filtered().length }} of {{ items().length }}</span>
+    @if (hasFilters()) { <button class="clear-all" (click)="clearFilters()">Clear filters</button> }
+    <button class="select-toggle" [class.active]="selectMode()" (click)="toggleSelectMode()">{{ selectMode() ? '✕ Done' : '☑ Select' }}</button>
+  </div>
+
+  @if (selectMode() && selStats().count > 0) {
+    <div class="sel-bar">
+      <div class="sel-head"><span class="sel-count">{{ selStats().count }} selected</span><button class="sel-clear" (click)="clearSelection()">Clear</button></div>
+      <div class="sel-stats">
+        <div class="ss"><span class="k">Live value</span><span class="v">{{ inr(selStats().total_value) }}</span></div>
+        <div class="ss"><span class="k">Invested (doc)</span><span class="v">{{ inr(selStats().invested) }}</span></div>
+        <div class="ss"><span class="k">Gain</span><span class="v" [class.pos]="(selStats().gain ?? 0) >= 0" [class.neg]="(selStats().gain ?? 0) < 0">{{ inr(selStats().gain) }} <small>{{ pct(selStats().gain_pct) }}</small></span></div>
+        <div class="ss hi"><span class="k">Blended CAGR</span><span class="v" [class.pos]="(selStats().cagr ?? 0) >= 0" [class.neg]="(selStats().cagr ?? 0) < 0">{{ pct(selStats().cagr) }}</span></div>
+      </div>
+    </div>
+  }
+
+  <div class="table-wrap">
+    <table class="land-table">
+      <colgroup>
+        <col class="c-name"><col class="c-owner"><col class="c-type"><col class="c-weight"><col class="c-purity">
+        <col class="c-value"><col class="c-bought"><col class="c-gain"><col class="c-cagr"><col class="c-act">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="name-th">
+            @if (selectMode()) { <label class="chk" (click)="$event.stopPropagation()" title="Select all"><input type="checkbox" [checked]="allFilteredSelected()" (change)="toggleSelectAll()"></label> }
+            <span class="has-tip" data-tip="Your label for the piece.">Name</span>
+          </th>
+          <th class="has-tip" data-tip="Who it belongs to.">Owner</th>
+          <th class="has-tip" data-tip="Gold, silver, or other (mixed/stones).">Type</th>
+          <th class="num has-tip" data-tip="Net metal weight in grams.">Weight</th>
+          <th class="num has-tip" data-tip="Pure-metal %, e.g. 91.6 for 22K.">Purity</th>
+          <th class="num has-tip" data-tip="Live value = weight × purity × today's rate (or your manual value).">Value (live)</th>
+          <th class="num has-tip" data-tip="What you paid, if you have the bill. Hover for the date.">Bought</th>
+          <th class="num has-tip tip-right" data-tip="Live value minus purchase price.">Gain</th>
+          <th class="num has-tip tip-right" data-tip="CAGR since purchase — only for pieces with a bill (date + price).">CAGR</th>
+          <th class="act"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (it of filtered(); track it.id) {
+          <tr class="row" [class.open]="expandedId() === it.id" [class.selected]="isSelected(it.id)" (click)="toggle(it)">
+            <td class="name">
+              @if (selectMode()) { <label class="chk" (click)="$event.stopPropagation()"><input type="checkbox" [checked]="isSelected(it.id)" (change)="toggleSelect(it.id)"></label> }
+              <span class="g-name">{{ it.name }}</span>
+              @if (it.location) {
+                <span class="g-loc" [title]="it.location">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  {{ it.location }}
+                </span>
+              }
+            </td>
+            <td data-label="Owner">{{ it.owner || '—' }}</td>
+            <td data-label="Type"><span class="metal-chip" [class]="it.metal_type">{{ metalLabel(it.metal_type) }}</span></td>
+            <td class="num" data-label="Weight">{{ it.weight_g ? (it.weight_g | number:'1.0-1') + ' g' : '—' }}</td>
+            <td class="num" data-label="Purity">{{ it.purity_pct ? (it.purity_pct + '%') : '—' }}</td>
+            <td class="num value has-tip tip-right" data-label="Value (live)" [attr.data-tip]="valueTip(it)">{{ inr(currentValue(it)) }}</td>
+            <td class="num has-tip tip-right" data-label="Bought" [attr.data-tip]="boughtTip(it)">{{ inr(it.purchase_price) }}</td>
+            <td class="num gain has-tip tip-right" data-label="Gain" [class.pos]="(gainOf(it) ?? 0) > 0" [class.neg]="(gainOf(it) ?? 0) < 0"
+                [attr.data-tip]="gainPctOf(it) !== null ? pct(gainPctOf(it)) + ' vs cost' : 'No purchase price recorded'">{{ inr(gainOf(it)) }}</td>
+            <td class="num cagr" data-label="CAGR">
+              <span [class]="cagrClass(cagrOf(it))" class="has-tip tip-right" [attr.data-tip]="cagrOf(it) !== null ? 'CAGR = (live value ÷ paid)^(1÷years) − 1' : 'Needs a purchase date + price to compute'">{{ pct(cagrOf(it)) }}</span>
+            </td>
+            <td class="act" data-label="">
+              <button class="trash" (click)="$event.stopPropagation(); remove(it)" title="Delete piece" aria-label="Delete piece">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                </svg>
+              </button>
+            </td>
+          </tr>
+
+          @if (expandedId() === it.id && editDraft(); as d) {
+            <tr class="edit-row">
+              <td [attr.colspan]="10">
+                <div class="edit-panel">
+                  <div class="edit-grid">
+                    <label class="fld"><span>Name</span><input [ngModel]="d.name" (ngModelChange)="d.name = $event"></label>
+                    <label class="fld"><span>Owner</span><input [ngModel]="d.owner" (ngModelChange)="d.owner = $event"></label>
+                    <label class="fld"><span>Metal</span>
+                      <select [ngModel]="d.metal_type" (ngModelChange)="onMetalChange(d, $event)">
+                        <option value="gold">Gold</option><option value="silver">Silver</option><option value="other">Other (mixed / stones)</option>
+                      </select>
+                    </label>
+                    @if (d.metal_type !== 'other') {
+                      <label class="fld"><span>Net weight (g)</span><input type="number" [ngModel]="d.weight_g" (ngModelChange)="d.weight_g = $event" placeholder="e.g. 12.5"></label>
+                      <label class="fld"><span>Purity</span>
+                        <select [ngModel]="d.purity_pct" (ngModelChange)="d.purity_pct = $event">
+                          @for (o of (d.metal_type === 'gold' ? goldPurities : silverPurities); track o.val) { <option [ngValue]="o.val">{{ o.label }}</option> }
+                        </select>
+                      </label>
+                    }
+                    <label class="fld"><span>Manual value (₹) <em>· override / for "Other"</em></span><input type="number" [ngModel]="d.manual_value" (ngModelChange)="d.manual_value = $event" placeholder="leave blank to use live rate"></label>
+                    <label class="fld"><span>Purchase date</span><input type="date" [ngModel]="d.purchase_date" (ngModelChange)="d.purchase_date = $event"></label>
+                    <label class="fld"><span>Purchase price (₹)</span><input type="number" [ngModel]="d.purchase_price" (ngModelChange)="d.purchase_price = $event"></label>
+                    <label class="fld"><span>Sellable on <em>· when you can sell it (buy planner)</em></span><input type="date" [ngModel]="d.sellable_on" (ngModelChange)="d.sellable_on = $event"></label>
+                    <label class="fld span2"><span>Location <em>· where the piece is kept</em></span><input [ngModel]="d.location" (ngModelChange)="d.location = $event" placeholder="e.g. Bank locker · HDFC Anna Nagar  /  Home safe"></label>
+                    <label class="fld span2"><span>Notes</span><textarea rows="2" [ngModel]="d.notes" (ngModelChange)="d.notes = $event" placeholder="Jeweller, stones, occasion, anything"></textarea></label>
+                  </div>
+
+                  <div class="docs">
+                    <div class="docs-head"><span>Documents</span>
+                      <label class="upload-btn">＋ Upload<input type="file" multiple hidden (change)="onPickFiles(it, $event)"></label>
+                    </div>
+                    <div class="dropzone" (dragover)="$event.preventDefault()" (drop)="onDrop(it, $event)">
+                      @if (uploadingFor() === it.id) { <span class="up">Uploading…</span> }
+                      @else if (it.documents.length === 0) { <span class="hint">Drop the bill / hallmark cert / photo here — or use Upload (max 20 MB each).</span> }
+                      @else {
+                        <div class="doc-list">
+                          @for (doc of it.documents; track doc.id) {
+                            <div class="doc">
+                              @if (renamingDoc() === doc.id) {
+                                <input class="doc-rename" [ngModel]="renameText()" (ngModelChange)="renameText.set($event)"
+                                       (keyup.enter)="saveRename(it, doc)" (keyup.escape)="cancelRename()"
+                                       (click)="$event.stopPropagation()" autofocus>
+                                <button class="doc-ok" (click)="saveRename(it, doc)" title="Save name">✓</button>
+                                <button class="doc-x" (click)="cancelRename()" title="Cancel">✕</button>
+                              } @else {
+                                <a class="doc-main" [href]="docUrl(doc)" target="_blank" rel="noopener"><span class="g">{{ fileGlyph(doc.mime_type) }}</span><span class="dn">{{ doc.filename }}</span><span class="ds">{{ fmtBytes(doc.size) }}</span></a>
+                                <button class="doc-edit" (click)="startRename(doc)" title="Rename">✎</button>
+                                <button class="doc-x" (click)="removeDoc(it, doc)" title="Remove">✕</button>
+                              }
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+
+                  <div class="parcel-actions">
+                    <button class="btn danger" (click)="remove(it)">Delete piece</button>
+                    <div class="spacer"></div>
+                    <button class="btn ghost" (click)="toggle(it)">Cancel</button>
+                    <button class="btn primary" (click)="saveEdit(it)" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save changes' }}</button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+    @if (filtered().length === 0) { <div class="no-match">No pieces match your search. <button class="link" (click)="clearFilters()">Clear filters</button></div> }
+  </div>
+}
+
+<!-- Add modal -->
+@if (showAdd()) {
+  <div class="modal-back" (click)="closeAdd()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-head"><h3>Add a piece</h3><button class="x" (click)="closeAdd()">✕</button></div>
+      <div class="edit-grid">
+        <label class="fld"><span>Name *</span><input [ngModel]="addDraft().name" (ngModelChange)="addDraft().name = $event" placeholder="e.g. Mum's bangle"></label>
+        <label class="fld"><span>Owner</span><input [ngModel]="addDraft().owner" (ngModelChange)="addDraft().owner = $event"></label>
+        <label class="fld"><span>Metal</span>
+          <select [ngModel]="addDraft().metal_type" (ngModelChange)="onMetalChange(addDraft(), $event)">
+            <option value="gold">Gold</option><option value="silver">Silver</option><option value="other">Other (mixed / stones)</option>
+          </select>
+        </label>
+        @if (addDraft().metal_type !== 'other') {
+          <label class="fld"><span>Net weight (g)</span><input type="number" [ngModel]="addDraft().weight_g" (ngModelChange)="addDraft().weight_g = $event" placeholder="e.g. 12.5"></label>
+          <label class="fld"><span>Purity</span>
+            <select [ngModel]="addDraft().purity_pct" (ngModelChange)="addDraft().purity_pct = $event">
+              @for (o of (addDraft().metal_type === 'gold' ? goldPurities : silverPurities); track o.val) { <option [ngValue]="o.val">{{ o.label }}</option> }
+            </select>
+          </label>
+        }
+        <label class="fld"><span>Manual value (₹) <em>· override / for "Other"</em></span><input type="number" [ngModel]="addDraft().manual_value" (ngModelChange)="addDraft().manual_value = $event" placeholder="leave blank to use live rate"></label>
+        <label class="fld"><span>Purchase date</span><input type="date" [ngModel]="addDraft().purchase_date" (ngModelChange)="addDraft().purchase_date = $event"></label>
+        <label class="fld"><span>Purchase price (₹)</span><input type="number" [ngModel]="addDraft().purchase_price" (ngModelChange)="addDraft().purchase_price = $event"></label>
+        <label class="fld"><span>Sellable on <em>· when you can sell it (buy planner)</em></span><input type="date" [ngModel]="addDraft().sellable_on" (ngModelChange)="addDraft().sellable_on = $event"></label>
+        <label class="fld span2"><span>Location <em>· where the piece is kept</em></span><input [ngModel]="addDraft().location" (ngModelChange)="addDraft().location = $event" placeholder="e.g. Bank locker · HDFC Anna Nagar  /  Home safe"></label>
+        <label class="fld span2"><span>Notes</span><textarea rows="2" [ngModel]="addDraft().notes" (ngModelChange)="addDraft().notes = $event"></textarea></label>
+      </div>
+      <p class="cagr-note">Value is computed live (weight × purity × today's rate). Add a purchase date + price to get a CAGR; for "Other" pieces enter a manual value.</p>
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="closeAdd()">Cancel</button>
+        <button class="btn primary" (click)="submitAdd()" [disabled]="adding() || !addDraft().name.trim()">{{ adding() ? 'Saving…' : 'Save piece' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Undo toast -->
+@if (pendingDelete(); as pd) {
+  <div class="undo-toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+    <span>Deleted <b>{{ pd.item.name }}</b></span>
+    <button class="undo-btn" (click)="undoDelete()">Undo</button>
+    <button class="undo-x" (click)="finalizeDelete()" title="Dismiss">✕</button>
+  </div>
+}

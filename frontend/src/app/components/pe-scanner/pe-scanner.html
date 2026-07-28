@@ -1,0 +1,348 @@
+<div class="ps-page">
+
+  <!-- ════════ Header ══════════════════════════════════════════════════════ -->
+  <div class="ps-header">
+    <div>
+      <h1 class="ps-title">PE Spread Builder</h1>
+      <p class="ps-sub">
+        Buy <b>cheap PEs</b> as Phase 1 — pin as many as you want — then scan for the
+        richest PE to <b>sell against the active pin</b> at the same expiry. Entry
+        prices are frozen at pin time; live prices update on every refresh.
+      </p>
+    </div>
+  </div>
+
+  <!-- ════════ Pinned positions panel ══════════════════════════════════════ -->
+  @if (pinnedBuys().length > 0) {
+    <div class="ps-pins">
+      <div class="ps-pins-head">
+        <div class="ps-pins-title">
+          <span class="ps-chip ps-chip-buy">{{ pinnedBuys().length }} PINNED</span>
+          <span class="ps-pins-hint">Click a card to make it active. The rich-PE scan locks to the active pin's expiry.</span>
+        </div>
+        <div class="ps-pins-actions">
+          @if (activePin()) {
+            <label class="ps-toggle">
+              <input type="checkbox" [checked]="autoRefresh()" (change)="toggleAutoRefresh()"/>
+              <span>Auto-refresh {{ pollInterval() }}s</span>
+            </label>
+            @if (autoRefresh()) {
+              <div class="ps-countdown">
+                @if (lastRichUpdate(); as t) { Last {{ fmtTime(t) }} · } Next {{ nextPollIn() }}s
+              </div>
+            }
+          }
+          <button class="ps-mini-btn"
+                  (click)="refreshAllPins()"
+                  [disabled]="refreshingPins()"
+                  title="Pull live chains for every pinned expiry">
+            {{ refreshingPins() ? '⏳' : '🔄' }} Refresh all
+          </button>
+        </div>
+      </div>
+
+      <div class="ps-pin-grid">
+        @for (p of pinnedBuys(); track p.id) {
+          <div class="ps-pin-card"
+               [class.active]="activePinId() === p.id"
+               (click)="setActive(p.id)">
+            <div class="ps-pin-card-head">
+              <div>
+                <div class="ps-pin-strike">{{ p.strike | number:'1.0-0' }} PE</div>
+                <div class="ps-pin-exp">{{ p.expiry }} · {{ p.dte }} DTE</div>
+              </div>
+              <div class="ps-pin-card-right">
+                @if (activePinId() === p.id) {
+                  <span class="ps-active-badge">ACTIVE</span>
+                }
+                <button class="ps-pin-x"
+                        (click)="$event.stopPropagation(); removePin(p.id)"
+                        title="Remove pin">✕</button>
+              </div>
+            </div>
+
+            <div class="ps-pin-prices">
+              <div class="ps-price-col">
+                <span class="ps-price-label">Entry</span>
+                <span class="ps-price-val frozen">{{ fmtRs(p.entry.price) }}</span>
+                <span class="ps-price-sub">
+                  IV {{ p.entry.iv | number:'1.1-1' }}%
+                  @if (p.entry.delta != null) { · Δ {{ p.entry.delta | number:'1.2-2' }} }
+                </span>
+              </div>
+              <div class="ps-price-arrow">→</div>
+              <div class="ps-price-col">
+                <span class="ps-price-label">Current</span>
+                <span class="ps-price-val live">
+                  {{ fmtRs(p.current.price) }}
+                </span>
+                <span class="ps-price-sub">
+                  @if (p.current.iv != null) { IV {{ p.current.iv | number:'1.1-1' }}% }
+                  @if (p.current.delta != null) { · Δ {{ p.current.delta | number:'1.2-2' }} }
+                </span>
+              </div>
+            </div>
+
+            <div class="ps-pin-pnl-row">
+              <div class="ps-pnl-cell" [ngClass]="pnlClass(pinPnl(p))">
+                <span class="ps-pnl-label">P&L / share</span>
+                <span class="ps-pnl-val">{{ fmtRsSigned(pinPnl(p)) }}</span>
+              </div>
+              <div class="ps-pnl-cell" [ngClass]="pnlClass(pinPnl(p))">
+                <span class="ps-pnl-label">P&L × {{ lotSize() }}</span>
+                <span class="ps-pnl-val">{{ fmtRsSignedCompact(pinPnlLot(p)) }}</span>
+              </div>
+              <div class="ps-pnl-cell" [ngClass]="pnlClass(pinPnl(p))">
+                <span class="ps-pnl-label">%</span>
+                <span class="ps-pnl-val">{{ fmtPct(pinPnlPct(p), 1) }}</span>
+              </div>
+            </div>
+
+            <div class="ps-pin-footer">
+              <span>Pinned {{ ageSince(p.entry.pinnedAt) }}</span>
+              @if (p.current.updatedAt) {
+                <span class="ps-pin-fresh">· Updated {{ ageSince(p.current.updatedAt) }}</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ════════ Shared filter ═══════════════════════════════════════════════ -->
+  <div class="ps-shared-filters">
+    <div class="ps-group">
+      <label class="ps-label">Underlying</label>
+      <select class="ps-input" [ngModel]="underlying()" (ngModelChange)="underlying.set($event)">
+        <option value="NIFTY">NIFTY</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ════════ Cheap section ══════════════════════════════════════════════ -->
+  <section class="ps-section" [class.collapsed]="cheapCollapsed()">
+    <div class="ps-sec-head" (click)="cheapCollapsed.set(!cheapCollapsed())">
+      <div>
+        <h2 class="ps-sec-title">
+          <span class="ps-chip ps-chip-buy">PHASE 1</span>
+          Cheap PE to buy
+        </h2>
+        @if (cheapCollapsed() && cheapResult()) {
+          <span class="ps-sec-sub">{{ cheapResult()?.candidates_evaluated || 0 }} candidates · click to expand</span>
+        }
+      </div>
+      <button class="ps-collapse-btn">{{ cheapCollapsed() ? '▾' : '▴' }}</button>
+    </div>
+
+    @if (!cheapCollapsed()) {
+      <div class="ps-sec-body">
+        <div class="ps-filters">
+          <div class="ps-group">
+            <label class="ps-label">DTE range</label>
+            <div class="ps-pair">
+              <input type="number" class="ps-input num" [ngModel]="cheapMinDte()" (ngModelChange)="cheapMinDte.set(+$event)"/>
+              <span class="ps-dash">→</span>
+              <input type="number" class="ps-input num" [ngModel]="cheapMaxDte()" (ngModelChange)="cheapMaxDte.set(+$event)"/>
+            </div>
+          </div>
+          <div class="ps-group">
+            <label class="ps-label">OTM %</label>
+            <div class="ps-pair">
+              <input type="number" class="ps-input num" step="0.5" [ngModel]="cheapMnyMin()" (ngModelChange)="cheapMnyMin.set(+$event)"/>
+              <span class="ps-dash">→</span>
+              <input type="number" class="ps-input num" step="0.5" [ngModel]="cheapMnyMax()" (ngModelChange)="cheapMnyMax.set(+$event)"/>
+            </div>
+          </div>
+          <div class="ps-group">
+            <label class="ps-label">Top N</label>
+            <input type="number" class="ps-input num" [ngModel]="cheapTopN()" (ngModelChange)="cheapTopN.set(+$event)"/>
+          </div>
+          <div class="ps-group ps-group-action">
+            <button class="ps-run-btn buy" (click)="runCheapScan()" [disabled]="cheapLoading()">
+              {{ cheapLoading() ? 'Scanning…' : 'Run Scan' }}
+            </button>
+          </div>
+        </div>
+
+        @if (cheapError()) { <div class="ps-error">{{ cheapError() }}</div> }
+        @if (cheapResult()?.notice) {
+          <div class="ps-fallback">
+            <span class="ps-fallback-icon">⚠</span>
+            <div><strong>Filter auto-expanded.</strong> {{ cheapResult()?.notice }}.</div>
+          </div>
+        }
+
+        @if (cheapRows().length) {
+          <div class="ps-table-wrap">
+            <table class="ps-table">
+              <thead>
+                <tr>
+                  <th class="num">#</th>
+                  <th>Expiry</th>
+                  <th class="num">DTE</th>
+                  <th class="num">Strike</th>
+                  <th class="num">OTM %</th>
+                  <th class="num">Premium</th>
+                  <th class="num">IV %</th>
+                  <th class="num">Δ</th>
+                  <th class="num">Score</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (r of cheapRows(); track r.expiry + '-' + r.strike) {
+                  <tr [class.is-pinned]="activePin()?.expiry === r.expiry && activePin()?.strike === r.strike">
+                    <td class="num dim">{{ r.rank }}</td>
+                    <td>{{ r.expiry }}</td>
+                    <td class="num">{{ r.dte }}</td>
+                    <td class="num">{{ r.strike | number:'1.0-0' }}</td>
+                    <td class="num">{{ fmtPct(r.moneyness_pct, 2) }}</td>
+                    <td class="num">{{ fmtRs(r.pe?.price) }}</td>
+                    <td class="num">{{ r.pe?.iv | number:'1.1-1' }}</td>
+                    <td class="num">{{ r.pe?.delta | number:'1.2-2' }}</td>
+                    <td class="num">
+                      <span class="score-chip" [ngClass]="scoreClass(r.composite_score)">{{ fmtScore(r.composite_score) }}</span>
+                    </td>
+                    <td>
+                      <button class="ps-select-btn" (click)="selectBuy(r)">+ Buy this</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else if (!cheapLoading() && !cheapResult()) {
+          <div class="ps-empty">Hit <b>Run Scan</b> to find cheap PEs to buy.</div>
+        }
+      </div>
+    }
+  </section>
+
+  <!-- ════════ Rich section ═══════════════════════════════════════════════ -->
+  <section class="ps-section">
+    <div class="ps-sec-head">
+      <div>
+        <h2 class="ps-sec-title">
+          <span class="ps-chip ps-chip-sell">PHASE 2</span>
+          Rich PE to sell
+          @if (activePin(); as ap) {
+            <span class="ps-locked-badge">🔒 vs {{ ap.strike | number:'1.0-0' }} PE @ {{ ap.expiry }}</span>
+          }
+        </h2>
+        @if (activePin()) {
+          <span class="ps-sec-sub">Same expiry as the active pin. Rows in green are Structure B (strike below your pin).</span>
+        }
+      </div>
+    </div>
+
+    <div class="ps-sec-body">
+      <div class="ps-filters">
+        @if (!activePin()) {
+          <div class="ps-group">
+            <label class="ps-label">DTE range</label>
+            <div class="ps-pair">
+              <input type="number" class="ps-input num" [ngModel]="richMinDte()" (ngModelChange)="richMinDte.set(+$event)"/>
+              <span class="ps-dash">→</span>
+              <input type="number" class="ps-input num" [ngModel]="richMaxDte()" (ngModelChange)="richMaxDte.set(+$event)"/>
+            </div>
+          </div>
+        } @else {
+          <div class="ps-group">
+            <label class="ps-label">DTE (locked)</label>
+            <div class="ps-locked-value">{{ activePin()?.dte }}</div>
+          </div>
+        }
+        <div class="ps-group">
+          <label class="ps-label">OTM %</label>
+          <div class="ps-pair">
+            <input type="number" class="ps-input num" step="0.5" [ngModel]="richMnyMin()" (ngModelChange)="richMnyMin.set(+$event)"/>
+            <span class="ps-dash">→</span>
+            <input type="number" class="ps-input num" step="0.5" [ngModel]="richMnyMax()" (ngModelChange)="richMnyMax.set(+$event)"/>
+          </div>
+        </div>
+        <div class="ps-group">
+          <label class="ps-label">Top N</label>
+          <input type="number" class="ps-input num" [ngModel]="richTopN()" (ngModelChange)="richTopN.set(+$event)"/>
+        </div>
+        <div class="ps-group ps-group-action">
+          <button class="ps-run-btn sell" (click)="runRichScan()" [disabled]="richLoading()">
+            {{ richLoading() ? 'Scanning…' : 'Run Scan' }}
+          </button>
+        </div>
+      </div>
+
+      @if (richError()) { <div class="ps-error">{{ richError() }}</div> }
+      @if (richResult()?.notice) {
+        <div class="ps-fallback">
+          <span class="ps-fallback-icon">⚠</span>
+          <div><strong>Filter auto-expanded.</strong> {{ richResult()?.notice }}.</div>
+        </div>
+      }
+
+      @if (richRows().length) {
+        <div class="ps-table-wrap">
+          <table class="ps-table">
+            <thead>
+              <tr>
+                <th class="num">#</th>
+                <th>Expiry</th>
+                <th class="num">DTE</th>
+                <th class="num">Strike</th>
+                <th class="num">OTM %</th>
+                <th class="num">Premium</th>
+                <th class="num">IV %</th>
+                <th class="num">Δ</th>
+                <th class="num">Ann. yield</th>
+                @if (activePin()) {
+                  <th class="num">Net credit</th>
+                  <th class="num">Width</th>
+                  <th>Structure</th>
+                }
+                <th class="num">Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of richRows(); track r.expiry + '-' + r.strike) {
+                <tr [class.is-structure-b]="isStructureB(r)">
+                  <td class="num dim">{{ r.rank }}</td>
+                  <td>{{ r.expiry }}</td>
+                  <td class="num">{{ r.dte }}</td>
+                  <td class="num">{{ r.strike | number:'1.0-0' }}</td>
+                  <td class="num">{{ fmtPct(r.moneyness_pct, 2) }}</td>
+                  <td class="num">{{ fmtRs(r.pe?.price) }}</td>
+                  <td class="num">{{ r.pe?.iv | number:'1.1-1' }}</td>
+                  <td class="num">{{ r.pe?.delta | number:'1.2-2' }}</td>
+                  <td class="num">{{ fmtAnnYield(r.raw?.annualized_yield) }}</td>
+                  @if (activePin()) {
+                    <td class="num" [ngClass]="pnlClass(netCredit(r))">{{ fmtRsSigned(netCredit(r)) }}</td>
+                    <td class="num">{{ spreadWidth(r) ?? '—' }}</td>
+                    <td>
+                      @if (isStructureB(r)) {
+                        <span class="ps-tag ps-tag-good">Structure B</span>
+                      } @else {
+                        <span class="ps-tag ps-tag-dim">— above pin</span>
+                      }
+                    </td>
+                  }
+                  <td class="num">
+                    <span class="score-chip" [ngClass]="scoreClass(r.composite_score)">{{ fmtScore(r.composite_score) }}</span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else if (!richLoading() && !richResult()) {
+        <div class="ps-empty">
+          @if (activePin()) { Loading sell candidates… } @else { Hit <b>Run Scan</b> or pin a buy above to auto-scan for sell candidates. }
+        </div>
+      } @else if (!richLoading() && richRows().length === 0 && activePin()) {
+        <div class="ps-empty">
+          No PE strikes available at the active pin's expiry in the current moneyness range. Widen the OTM % range.
+        </div>
+      }
+    </div>
+  </section>
+
+</div>

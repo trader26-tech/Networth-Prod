@@ -1,0 +1,29 @@
+kiteconnect>=5.0.0
+pandas>=2.0.0
+openpyxl>=3.1.0
+xlrd>=2.0.1                 # read old-format .xls bank statements (OLE2) for bond reconcile
+python-multipart>=0.0.9
+python-dotenv>=1.0.0
+rich>=13.0.0
+tabulate>=0.9.0
+requests>=2.31.0
+# Web server (production)
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+websockets>=12.0
+# Persistent store (used when SUPABASE_URL + SUPABASE_KEY are set)
+supabase>=2.7.0
+# AI / RAG
+chromadb>=0.5.0
+httpx>=0.27.0
+# MCP server — remote connector for Claude (Model Context Protocol). Python 3.10+
+# (Railway runs 3.11). Optional at runtime: the app boots fine without it, MCP
+# just stays disabled unless the GOOGLE_MCP_* / MCP_BASE_URL env vars are set.
+fastmcp>=3.4.4,<4
+# Fundamentals — 1Y price sparklines (Yahoo Finance with .NS suffix)
+yfinance>=0.2.50
+
+# Document previews — transcode HEIC/HEIF/TIFF → JPEG
+pillow>=10
+pillow-heif>=0.16
+pyotp>=2.9

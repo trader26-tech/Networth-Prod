@@ -1,0 +1,37 @@
+<div class="placeholder-page">
+  <div class="placeholder-card">
+    <a class="back-link" routerLink="/strategies">← Back to Strategies</a>
+
+    <div class="placeholder-icon">{{ meta?.icon || '⚡' }}</div>
+    <h1 class="placeholder-title">{{ meta?.name || 'Short Strangle' }}</h1>
+    <p class="placeholder-tagline">{{ meta?.tagline }}</p>
+
+    <div class="placeholder-status">
+      <span class="status-pill">🚧 Under Construction</span>
+    </div>
+
+    <p class="placeholder-text">
+      The Short Strangle module is currently being built. Because of the higher risk
+      profile, this module will include extensive risk-management tooling, IV-regime
+      filtering, and the defined-risk Iron Condor variant.
+    </p>
+
+    <div class="placeholder-features">
+      <h3>Features coming in this module:</h3>
+      <ul>
+        @for (f of meta?.keyFeatures || []; track $index) {
+          <li>{{ f }}</li>
+        }
+      </ul>
+    </div>
+
+    <div class="placeholder-cta">
+      <a class="cta-btn cta-primary" routerLink="/covered-call">
+        Use Covered Call (live now) →
+      </a>
+      <a class="cta-btn cta-secondary" routerLink="/math-handbook">
+        Read the math →
+      </a>
+    </div>
+  </div>
+</div>

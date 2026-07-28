@@ -1,0 +1,273 @@
+<div class="lt-page eq" [class.embedded]="embedded">
+
+  <!-- ── character header ─────────────────────────────────────────────────── -->
+  <div class="lt-head">
+    <div class="lt-avatar">
+      @if (imgOk()) { <img [src]="avatarImg" alt="Kuber" (error)="imgOk.set(false)"> }
+      @else { <span class="lt-emoji">{{ bot.emoji }}</span> }
+    </div>
+    <div class="lt-who">
+      <h1>{{ bot.name }}</h1>
+      <p>{{ bot.role }} · <span class="lt-tab">Stocks</span></p>
+    </div>
+    <div class="lt-badge">FY 2025-26</div>
+    @if (embedded) {
+      <button class="lt-icon" (click)="toggleSize.emit()" [title]="expanded ? 'Minimise' : 'Expand'">
+        @if (expanded) {
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9L4 4M9 9V5M9 9H5M15 15l5 5M15 15v4M15 15h4"/></svg>
+        } @else {
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7"/></svg>
+        }
+      </button>
+      <button class="lt-icon" (click)="closed.emit()" title="Close">✕</button>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="lt-loading">Reading your stock holdings & P&L…</div>
+  } @else if (error()) {
+    <div class="lt-error">{{ error() }}</div>
+  } @else {
+
+  <!-- ── chat window ──────────────────────────────────────────────────────── -->
+  <div class="lt-chat">
+    <div class="lt-scroll" #scroller>
+      @for (m of msgs(); track $index) {
+        @if (m.role === 'user') {
+          <div class="row user"><div class="bubble user">{{ m.text }}</div></div>
+        } @else {
+          <div class="row bot">
+            <div class="ava">@if (imgOk()) { <img [src]="avatarImg" alt="" (error)="imgOk.set(false)"> } @else { {{ bot.emoji }} }</div>
+            <div class="bot-col">
+              @if (m.text) { <div class="bubble bot" [innerHTML]="boldify(m.text)"></div> }
+
+              @switch (m.card) {
+
+                <!-- family roll-up hero -->
+                @case ('family') {
+                  <div class="eq-hero">
+                    <div class="eh-main">
+                      <span class="eh-k">Capital-gains tax · whole family</span>
+                      <b class="eh-v neg">{{ inr(m.data.total_tax) }}</b>
+                      <span class="eh-s">on {{ inr(m.data.realized_stcg + m.data.realized_ltcg) }} of realized gains</span>
+                    </div>
+                    <div class="eh-side">
+                      <div><span>Short-term</span><b>{{ inr(m.data.realized_stcg) }}</b></div>
+                      <div><span>Long-term</span><b>{{ inr(m.data.realized_ltcg) }}</b></div>
+                      <div><span>Saveable</span><b class="pos">{{ inr(m.data.total_saveable) }}</b></div>
+                    </div>
+                  </div>
+                }
+
+                <!-- per-person liability -->
+                @case ('liability') {
+                  <div class="card-wrap">
+                    @for (p of m.data; track p.person) {
+                      <div class="eq-liab">
+                        <div class="el-top">
+                          <span class="el-ava" [style.background]="'linear-gradient(135deg,#7c5cff,#9d7bff)'">{{ initial(p.person) }}</span>
+                          <span class="el-name">{{ p.person }}<em> · {{ resLabel(p.residency) }}</em></span>
+                          <span class="el-tax" [class.pos]="p.liability.total_tax===0" [class.neg]="p.liability.total_tax>0">{{ inr(p.liability.total_tax) }}</span>
+                        </div>
+                        <div class="el-grid">
+                          <div><span>STCG @20%</span><b>{{ inr(p.realized.stcg) }}</b><i>{{ inr(p.liability.stcg_tax.total) }} tax</i></div>
+                          <div><span>LTCG @12.5%</span><b>{{ inr(p.realized.ltcg) }}</b><i>{{ inr(p.liability.ltcg_tax.total) }} tax</i></div>
+                          <div><span>₹1.25L free left</span><b class="pos">{{ inr(p.liability.ltcg_free_left) }}</b></div>
+                        </div>
+                        @if (p.liability.carry_forward_stcl || p.liability.carry_forward_ltcl) {
+                          <div class="el-note">↪ Carrying forward
+                            @if (p.liability.carry_forward_stcl) { <b>{{ inr(p.liability.carry_forward_stcl) }}</b> short-term loss }
+                            @if (p.liability.carry_forward_ltcl) { <b>{{ inr(p.liability.carry_forward_ltcl) }}</b> long-term loss }
+                            — offsets future gains (8 years).</div>
+                        }
+                        @if (p.liability.nri_tds_note) { <div class="el-note nri">🌏 {{ p.liability.nri_tds_note }}</div> }
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- harvest losses -->
+                @case ('harvest') {
+                  <div class="card-wrap">
+                    @for (p of m.data; track p.person) {
+                      <div class="eq-block">
+                        <div class="eb-owner">{{ p.person }} <em>· saves {{ inr(p.unrealized.harvest_total_saved) }}</em></div>
+                        @for (h of p.unrealized.harvest; track h.symbol) {
+                          <div class="eq-op harvest">
+                            <div class="op-l">
+                              <span class="op-sym">{{ h.symbol }}</span>
+                              <span class="op-sub">{{ h.qty }} sh · at loss ({{ h.term==='long' ? 'long' : 'short' }}-term)</span>
+                            </div>
+                            <div class="op-r">
+                              <b class="neg">−{{ inr(h.loss) }}</b>
+                              <span class="op-saved">book it → save {{ inr(h.tax_saved) }}</span>
+                            </div>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- crossover countdown -->
+                @case ('crossover') {
+                  <div class="card-wrap">
+                    @for (p of m.data; track p.person) {
+                      <div class="eq-block">
+                        <div class="eb-owner">{{ p.person }} <em>· saves {{ inr(p.unrealized.crossover_total_saved) }}</em></div>
+                        @for (c of p.unrealized.crossover; track c.symbol + c.buy_date) {
+                          <div class="eq-op cross">
+                            <div class="op-l">
+                              <span class="op-sym">{{ c.symbol }}</span>
+                              <span class="op-sub">{{ c.qty }} sh · {{ inr(c.gain) }} gain</span>
+                            </div>
+                            <div class="op-r">
+                              <span class="op-count"><b>{{ c.days_to_lt }}</b> days to long-term</span>
+                              <span class="op-saved">wait → save {{ inr(c.tax_saved) }}</span>
+                            </div>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- ₹1.25L LTCG headroom -->
+                @case ('headroom') {
+                  <div class="card-wrap">
+                    @for (p of m.data; track p.person) {
+                      <div class="eq-head">
+                        <div class="hd-top"><span class="hd-name">{{ p.person }}</span>
+                          <span class="hd-amt pos">{{ inr(p.unrealized.ltcg_headroom) }} free</span></div>
+                        <div class="hd-bar"><div class="hd-fill" [style.width.%]="100 * (1 - p.unrealized.ltcg_headroom/125000)"></div></div>
+                        <div class="hd-sub">
+                          @if (p.unrealized.lt_gain > 0) {
+                            You’re holding <b>{{ inr(p.unrealized.lt_gain) }}</b> of long-term gains — realize up to <b>{{ inr(p.unrealized.ltcg_headroom) }}</b> of it at <b>zero tax</b> this year.
+                          } @else {
+                            <b>{{ inr(p.unrealized.ltcg_headroom) }}</b> of the ₹1.25 L free limit is unused.
+                          }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- holdings overview -->
+                @case ('positions') {
+                  <div class="card-wrap">
+                    @for (p of m.data; track p.person) {
+                      <div class="eq-block">
+                        <div class="eb-owner">{{ p.person }}</div>
+                        @for (pos of p.unrealized.positions; track pos.symbol) {
+                          <div class="eq-pos">
+                            <span class="ep-sym">{{ pos.symbol }}<em class="ep-term" [class.lt]="pos.term==='long'" [class.mix]="pos.term==='mixed'">{{ pos.term==='long' ? 'LT' : pos.term==='short' ? 'ST' : 'MIX' }}</em></span>
+                            <span class="ep-qty">{{ pos.qty }} sh</span>
+                            <span class="ep-val">{{ inr(pos.value) }}</span>
+                            <span class="ep-pnl" [class.pos]="pos.unrealized>=0" [class.neg]="pos.unrealized<0">{{ pos.unrealized>=0 ? '+' : '' }}{{ inr(pos.unrealized) }}</span>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- residency editor -->
+                @case ('profiles') {
+                  <div class="profiles card-wrap">
+                    @for (pr of profiles(); track pr.name) {
+                      <div class="prof">
+                        <div class="pr-main">
+                          <div class="pr-ava">{{ initial(pr.name) }}</div>
+                          <div>
+                            <span class="pr-name">{{ pr.name }}<em> · {{ pr.relation }}</em></span>
+                            <span class="pr-meta">{{ resLabel(pr.residency) }}</span>
+                          </div>
+                        </div>
+                        <div class="pr-toggle">
+                          <button [class.on]="pr.residency==='resident'" (click)="setResidency(pr.name,'resident')">Resident</button>
+                          <button [class.on]="pr.residency==='nri'" (click)="setResidency(pr.name,'nri')">NRI</button>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- what-if picker + live result -->
+                @case ('whatif') {
+                  <div class="eq-wi">
+                    <!-- person chips -->
+                    <div class="wi-row">
+                      <span class="wi-k">Whose</span>
+                      <div class="wi-chips">
+                        @for (p of peopleWithHoldings(); track p.person) {
+                          <button [class.on]="wiPerson()===p.person" (click)="pickWiPerson(p.person)">{{ p.person }}</button>
+                        }
+                      </div>
+                    </div>
+                    <!-- stock chips -->
+                    <div class="wi-row">
+                      <span class="wi-k">Which stock</span>
+                      <div class="wi-chips scroll">
+                        @for (pos of wiPositions(); track pos.symbol) {
+                          <button [class.on]="wiSymbol()===pos.symbol" (click)="pickWiSymbol(pos.symbol)">
+                            {{ pos.symbol }} <em>{{ pos.qty }}</em>
+                          </button>
+                        }
+                      </div>
+                    </div>
+                    @if (wiSymbol()) {
+                      <!-- qty + price -->
+                      <div class="wi-inputs">
+                        <label class="wi-field"><span>Shares to sell</span>
+                          <input type="text" inputmode="numeric" [value]="wiQty()" (input)="setWiQty($any($event.target).value)"></label>
+                        <label class="wi-field"><span>Price ₹</span>
+                          <input type="text" inputmode="decimal" [value]="wiPrice()" (input)="setWiPrice($any($event.target).value)"></label>
+                      </div>
+                      @if (wiPos()) { <div class="wi-hint">Holding {{ wiPos()!.qty }} sh · avg cost {{ inr(wiPos()!.avg_cost) }} · {{ wiPos()!.lt_qty }} already long-term</div> }
+
+                      @if (wiError()) { <div class="wi-err">{{ wiError() }}</div> }
+                      @else if (wiResult(); as r) {
+                        <div class="wi-result" [class.busy]="wiBusy()">
+                          <div class="wr-headline">
+                            <div class="wrh-tax"><span>Tax on this sale</span><b class="neg">{{ inr(r.total_tax) }}</b></div>
+                            <div class="wrh-gain"><span>Gain</span><b>{{ inr(r.total_gain) }}</b></div>
+                          </div>
+                          <div class="wr-split">
+                            <div class="wrs st"><span>Short-term @20%</span><b>{{ inr(r.st_gain) }}</b><i>{{ inr(r.st_tax.total) }} tax</i></div>
+                            <div class="wrs lt"><span>Long-term @12.5%</span><b>{{ inr(r.lt_gain) }}</b><i>{{ inr(r.lt_tax.total) }} tax{{ r.lt_tax.exempt_used ? ' · '+inr(r.lt_tax.exempt_used)+' exempt' : '' }}</i></div>
+                          </div>
+                          @if (r.shortfall > 0) { <div class="wr-note">You only hold {{ r.qty_matched }} sh — computed on those.</div> }
+                          @if (r.lt_gain > 0 && r.lt_tax.taxable === 0) { <div class="wr-note pos">✨ This whole long-term gain fits inside the ₹1.25 L free limit — zero long-term tax.</div> }
+                        </div>
+                      } @else if (wiBusy()) { <div class="wi-calc">Computing…</div> }
+                    }
+                  </div>
+                }
+              }
+            </div>
+          </div>
+        }
+      }
+
+      @if (typing()) {
+        <div class="row bot"><div class="ava">@if (imgOk()) { <img [src]="avatarImg" alt="" (error)="imgOk.set(false)"> } @else { {{ bot.emoji }} }</div>
+          <div class="bubble bot typing"><span></span><span></span><span></span></div></div>
+      }
+
+      @if (options().length && !typing()) {
+        <div class="lt-options">
+          @for (o of options(); track o.key) {
+            <button class="opt" (click)="choose(o)">{{ o.label }}</button>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="lt-disclaimer">
+      ⚖️ Realized figures from your Zerodha Console Tax-P&amp;L; live levers from your tradebook + Yahoo prices.
+      Estimates for planning on FY 2025-26 rules — confirm with a chartered accountant before acting.
+    </div>
+  </div>
+
+  }
+</div>

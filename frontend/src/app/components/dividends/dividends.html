@@ -1,0 +1,617 @@
+<div class="dv-panel">
+  <div class="dv-head">
+    <div class="dv-title">
+      <h3>Dividends</h3>
+    </div>
+    @if (syncMsg()) { <span class="dv-sync-msg">{{ syncMsg() }}</span> }
+
+    <!-- One Sync control. The dropdown holds everything: add corporate actions
+         (upload), auto-sync NSE/BSE, and the uploaded-file history. -->
+    <div class="dv-sync-wrap">
+      <button class="dv-sync-btn primary" [class.on]="syncMenu()" [class.busy]="syncing() || importing()"
+              (click)="syncMenu.set(!syncMenu())" [disabled]="syncing() || importing()" title="Add or sync dividends">
+        <svg class="dsb-ic" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+             stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+        </svg>
+        <span class="dsb-t">{{ syncing() ? 'Syncing…' : importing() ? 'Importing…' : 'Add / sync' }}</span>
+        <span class="cv" [class.open]="syncMenu()">▾</span>
+      </button>
+      @if (syncMenu()) {
+        <div class="dv-sync-back" (click)="syncMenu.set(false)"></div>
+        <div class="dv-sync-pop">
+          <div class="dss-sec">Add dividends</div>
+          <label class="dss-row upload" [class.busy]="importing()">
+            <span class="dss-x">＋ Add corporate actions</span><span class="dss-go">CSV / XLSX</span>
+            <input type="file" accept=".csv,.xlsx,.xls" (change)="importCorpActions($event); syncMenu.set(false)" [disabled]="importing()">
+          </label>
+          <div class="dss-div"></div>
+          <div class="dss-sec">Auto-sync declared <span class="dss-note">often blocked from the cloud — use the upload</span></div>
+          <button class="dss-row" (click)="syncDeclared('NSE')" [disabled]="syncing()">
+            <span class="dss-x">{{ syncing() ? 'Syncing…' : 'NSE' }}</span>
+            @if (syncOk()['NSE']) { <span class="dss-tick">✓ up to date</span> } @else { <span class="dss-go">Sync ›</span> }
+          </button>
+          <button class="dss-row" (click)="syncDeclared('BSE')" [disabled]="syncing()">
+            <span class="dss-x">BSE</span>
+            @if (syncOk()['BSE']) { <span class="dss-tick">✓ up to date</span> } @else { <span class="dss-go">Sync ›</span> }
+          </button>
+          <div class="dss-div"></div>
+          <button class="dss-row" (click)="toggleUploads(); syncMenu.set(false)">
+            <span class="dss-x">Uploaded files</span>
+            @if (uploads().length) { <span class="dv-up-badge">{{ uploads().length }}</span> } @else { <span class="dss-go">none yet</span> }
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+
+  @if (view() === 'dividends') {
+  <!-- ── uploaded corporate-actions history ─────────────────────────────────── -->
+  @if (showUploads()) {
+    <div class="dv-uploads">
+      <div class="dv-up-head">
+        <b>Corporate action uploads</b>
+        <span class="dv-up-hint">Each file adds pending dividends for the stocks you hold — never deletes anything.</span>
+        <button class="dv-up-close" (click)="showUploads.set(false)" aria-label="Close">✕</button>
+      </div>
+
+      @if (!uploads().length) {
+        <div class="dv-up-empty">
+          No uploads yet. Download the <b>Corporate Actions</b> report (BSE/NSE), then
+          use <b>⭱ Add corporate actions</b> above — matched dividends land on your calendar.
+        </div>
+      } @else {
+        @for (u of uploads(); track u.id) {
+          <div class="dv-up-card" [class.open]="expandedUpload() === u.id">
+            <button class="dv-up-row" (click)="toggleUploadDetail(u.id)">
+              <span class="dv-up-cv">{{ expandedUpload() === u.id ? '▾' : '▸' }}</span>
+              <span class="dv-up-file">
+                <b>{{ u.filename }}</b>
+                <span class="dv-up-meta">{{ caWhen(u.uploaded_at) }} · {{ kindsSummary(u.kinds) }}</span>
+              </span>
+              <span class="dv-up-stat">
+                <b [class.pos]="u.matched_count > 0">{{ u.matched_count }}</b>
+                <small>for you</small>
+              </span>
+              @if (uploadTotal(u) > 0) { <span class="dv-up-amt">{{ inr(uploadTotal(u)) }}</span> }
+              <span class="dv-up-x" (click)="removeUpload(u); $event.stopPropagation()" title="Forget this upload">🗑</span>
+            </button>
+
+            @if (expandedUpload() === u.id) {
+              <div class="dv-up-detail">
+                <div class="dv-up-cov">
+                  Covers {{ caDate(u.date_from) }} → {{ caDate(u.date_to) }} ·
+                  {{ u.dividend_rows }} declared dividend{{ u.dividend_rows === 1 ? '' : 's' }} ·
+                  {{ u.unheld_count }} not held
+                </div>
+                @if (u.matched?.length) {
+                  <table class="dv-up-tbl">
+                    <thead><tr><th>Stock</th><th class="r">Ex-date</th><th class="r">₹/sh</th><th class="r">Shares</th><th class="r">Amount</th></tr></thead>
+                    <tbody>
+                      @for (m of u.matched; track m.symbol + m.date) {
+                        <tr>
+                          <td><b>{{ m.symbol }}</b>@if (m.name) { <span class="mut"> · {{ m.name }}</span> }</td>
+                          <td class="r">{{ caDate(m.date) }}</td>
+                          <td class="r">{{ inr(m.per_share) }}</td>
+                          <td class="r">{{ m.shares }}</td>
+                          <td class="r"><b>{{ inr(m.amount) }}</b></td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                } @else {
+                  <div class="dv-up-none">None of this file's dividends matched a current holding.</div>
+                }
+              </div>
+            }
+          </div>
+        }
+      }
+    </div>
+  }
+
+  @if (mode() === 'calendar') {
+    <div class="dv-nav">
+      <button class="dv-arw" (click)="prevMonth()" aria-label="Previous month">‹</button>
+      <button class="dv-month" (click)="thisMonth()" title="Jump to current month">{{ monthLabel() }}</button>
+      <button class="dv-arw" (click)="nextMonth()" aria-label="Next month">›</button>
+      <!-- collected (received) is the headline · total incl. pending is context -->
+      <div class="dv-hstats">
+        <div class="dv-hstat">
+          <b class="pos">{{ inr(fyCollected()) }}</b>
+          <small>collected · {{ fyLabel() }}@if (fyTotal() - fyCollected() > 1) { <span class="pend">+{{ inr(fyTotal() - fyCollected()) }} pending</span> }</small>
+        </div>
+        <div class="dv-hstat sep">
+          <b>{{ inr(monthCollected()) }} <span class="of">/ {{ inr(monthTotal()) }}</span></b>
+          <small>collected / total · this month</small>
+        </div>
+      </div>
+      <button class="dv-inhold" (click)="viewInHoldings.emit({ year: viewYear(), month: viewMonth() + 1 })"
+              title="Show the stocks paying a dividend this month in your Holdings">Payers in Holdings →</button>
+    </div>
+
+    <div class="dv-wdrow">
+      @for (w of weekdays; track $index) { <span class="dv-wd">{{ w }}</span> }
+    </div>
+    <div class="dv-grid">
+      @for (c of cells(); track $index) {
+        @if (c) {
+          <button class="dv-cell" [ngClass]="[c.tone, c.isToday ? 'today' : '', c.count > 0 ? 'has' : '']" (click)="openLog(c.key)"
+                  [title]="c.count ? (c.count + ' dividend(s) · ' + inr(c.total) + (c.pending > 0 ? ' · ' + inr(c.pending) + ' to receive' : '')) : 'Log a dividend on this day'">
+            <span class="dv-d">{{ c.d }}</span>
+            @if (c.count > 0) { <span class="dv-amt">{{ inr(c.total) }}</span> }
+          </button>
+        } @else { <span class="dv-cell empty"></span> }
+      }
+    </div>
+
+    <div class="dv-legend">
+      <span class="lg dv-l4"></span><span>Received</span>
+      <span class="lg-sep"></span>
+      <span class="lg yl3"></span><span>Pending</span>
+      <span class="lg-sep"></span>
+      <span class="lg rd3"></span><span>Not received</span>
+      <span class="lg-sep"></span>
+      <span class="lg mx3"></span><span>Partly</span>
+    </div>
+  } @else if (mode() === 'trend') {
+    <div class="dv-nav">
+      <button class="dv-arw" (click)="prevYear()" aria-label="Previous year">‹</button>
+      <span class="dv-month">{{ trendYear() }}</span>
+      <button class="dv-arw" (click)="nextYear()" aria-label="Next year">›</button>
+      <span class="dv-yr">avg <b>{{ inr(chart().avg) }}</b>/mo · {{ chart().months }} paid</span>
+    </div>
+
+    <div class="dv-chart">
+      @if (hoverInfo(); as hi) {
+        <div class="dv-htip" [style.left.%]="hi.xPct">
+          <div class="dv-htip-top"><span class="dv-htip-m">{{ hi.month }} {{ trendYear() }}</span><span class="dv-htip-v">{{ inr(hi.total) }}</span></div>
+          @if (hi.people.length) {
+            <div class="dv-htip-ppl">
+              @for (p of hi.people; track p.name) {
+                <div class="dv-htip-p"><span>{{ p.name }}</span><span>{{ inr(p.amt) }}</span></div>
+              }
+            </div>
+          } @else { <span class="dv-htip-c">No dividends this month</span> }
+        </div>
+      }
+      <svg [attr.viewBox]="'0 0 ' + chart().W + ' ' + chart().H" class="dv-line" (mouseleave)="hover.set(null)">
+        <defs>
+          <linearGradient id="dvg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(46,158,79,.28)"></stop>
+            <stop offset="100%" stop-color="rgba(46,158,79,0)"></stop>
+          </linearGradient>
+        </defs>
+        @for (g of chart().grid; track g.y) {
+          <line [attr.x1]="36" [attr.y1]="g.y" [attr.x2]="chart().W - 12" [attr.y2]="g.y" class="dl-grid"></line>
+          <text [attr.x]="32" [attr.y]="g.y + 3" text-anchor="end" class="dl-yl">{{ axisLabel(g.val) }}</text>
+        }
+        <path [attr.d]="chart().area" fill="url(#dvg)" stroke="none"></path>
+        <path [attr.d]="chart().line" class="dl-line"></path>
+        @if (selectedMonth() !== null) {
+          <line [attr.x1]="chart().pts[selectedMonth()!].x" y1="8" [attr.x2]="chart().pts[selectedMonth()!].x" [attr.y2]="chart().baseY" class="dl-selected"></line>
+        }
+        @if (hover() !== null) {
+          <line [attr.x1]="chart().pts[hover()!].x" y1="8" [attr.x2]="chart().pts[hover()!].x" [attr.y2]="chart().baseY" class="dl-cursor"></line>
+        }
+        @for (p of chart().pts; track p.label) {
+          <circle [attr.cx]="p.x" [attr.cy]="p.y" [attr.r]="$index === activeMonth() ? 4.8 : (p.cur ? 4 : 3)"
+                  class="dl-dot" [class.zero]="p.total === 0" [class.active]="$index === activeMonth()"></circle>
+          <text [attr.x]="p.x" [attr.y]="chart().baseY + 15" text-anchor="middle" class="dl-x" [class.cur]="p.cur" [class.sel]="$index === selectedMonth()">{{ p.short }}</text>
+          <rect [attr.x]="p.x - (chart().W - 50) / 24" y="6" [attr.width]="(chart().W - 50) / 12" [attr.height]="chart().baseY - 6"
+                fill="transparent" class="dl-hit" (mouseenter)="hover.set($index)" (click)="selectMonth($index)"></rect>
+        }
+      </svg>
+    </div>
+  } @else {
+    <!-- People — each person's dividend, net of their own TDS -->
+    <div class="dv-nav">
+      <button class="dv-arw" (click)="prevYear()" aria-label="Previous year">‹</button>
+      <span class="dv-month">{{ trendYear() }}</span>
+      <button class="dv-arw" (click)="nextYear()" aria-label="Next year">›</button>
+      <span class="dv-yr">{{ byPerson().length }} {{ byPerson().length === 1 ? 'person' : 'people' }}</span>
+    </div>
+
+    <div class="dv-people">
+      @if (byPerson().length) {
+        <table class="dv-ptable">
+          <colgroup><col style="width:30%"><col style="width:17%"><col style="width:17%"><col style="width:16%"><col style="width:20%"></colgroup>
+          <thead><tr><th class="l">Person</th><th>Got</th><th>Pending</th><th>TDS</th><th>Net in a/c</th></tr></thead>
+          <tbody>
+            @for (p of byPerson(); track p.person) {
+              <tr>
+                <td class="l name">{{ p.person }}</td>
+                <td class="got">{{ inr(p.received) }}</td>
+                <td class="due" [class.zero]="p.pending <= 0">{{ inr(p.pending) }}</td>
+                <td><span class="dv-tds-in"><input type="number" min="0" max="100" step="1"
+                      [value]="tdsPct(p.person)" (change)="setTdsPct(p.person, $any($event.target).value)" [placeholder]="defaultTdsPct()"><i>%</i></span></td>
+                <td><span class="dv-net-in"><i>₹</i><input type="number" min="0" step="1"
+                      [value]="p.net ? (p.net | number:'1.0-0') : null" [disabled]="p.received <= 0"
+                      (change)="setNetFor(p.person, p.received, $any($event.target).value)" title="Type what actually hit the account"></span></td>
+              </tr>
+            }
+          </tbody>
+          <tfoot><tr>
+            <td class="l">Total</td>
+            <td class="got">{{ inr(byPersonReceived()) }}</td>
+            <td class="due">{{ inr(byPersonPending()) }}</td>
+            <td></td>
+            <td class="net">{{ inr(byPersonNet()) }}</td>
+          </tr></tfoot>
+        </table>
+        <div class="dv-people-hint">Type the <b>Net in a/c</b> (what actually got credited) or a TDS % — either updates the other. TDS is per-person and applies everywhere.</div>
+      } @else { <div class="dv-people-empty">No dividends in {{ trendYear() }} yet.</div> }
+    </div>
+  }
+
+  <!-- single stacked "top payers" bar — 100% = total dividends for the period -->
+  @if (mode() !== 'people') {
+  <div class="dv-payers">
+    <div class="dv-pay-h">Top payers · {{ payerBar().label }} <span class="dv-pay-total">{{ inr(payerBar().total) }}</span></div>
+    @if (payerBar().segments.length) {
+      <div class="dv-stack" (mouseleave)="hoverSeg.set(null)">
+        @for (sg of payerBar().segments; track sg.symbol) {
+          <span class="dv-seg" [style.width.%]="sg.pct * 100" [style.background]="sg.color"
+                [class.hot]="hoverSeg() === $index" (mouseenter)="hoverSeg.set($index)"
+                [title]="sg.symbol + ' · ' + inr(sg.amt) + ' · ' + (sg.pct * 100 | number:'1.0-0') + '%'">
+            @if (sg.pct >= 0.07) { <span class="dv-seg-lbl" [style.color]="sg.lbl">{{ sg.symbol }}</span> }
+          </span>
+        }
+      </div>
+      <div class="dv-pay-cap">
+        @if (hoverSeg() !== null && payerBar().segments[hoverSeg()!]; as sg) {
+          <b>{{ sg.symbol }}</b> — {{ inr(sg.amt) }} · {{ (sg.pct * 100) | number:'1.0-1' }}%
+        } @else {
+          Hover a band for the stock & amount
+          @if (mode() === 'trend') {
+            @if (selectedMonth() !== null) { · <button class="dv-clear" (click)="selectedMonth.set(null)">show full year</button> }
+            @else { · click a month to focus it }
+          }
+        }
+      </div>
+    } @else { <div class="dv-pay-empty">No dividends for this period yet.</div> }
+  </div>
+  }
+  }
+
+  <!-- ══ TAX VIEW ══ per-person booked P&L for filing (Zerodha Tax P&L upload) ══ -->
+  @if (view() === 'tax') {
+    @if (!kvDurable()) {
+      <div class="dv-kv-warn">
+        <div class="dv-kv-h"><b>⚠ Uploads won't persist yet</b> — the durable store isn't set up, so tax statements (and F&O statements / tradebooks) are kept in a temporary file that a redeploy wipes.</div>
+        <div class="dv-kv-fix">Run this once in <b>Supabase → SQL editor</b>, then re-upload:</div>
+        <code class="dv-kv-sql">CREATE TABLE IF NOT EXISTS app_cache (key TEXT PRIMARY KEY, value JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());</code>
+      </div>
+    }
+    @if (!taxStmts().length) {
+      <div class="dv-tax-empty">
+        <b>No tax statements yet.</b>
+        Download your <b>Tax P&L</b> from Zerodha (Console → Reports → Tax P&L, as XLSX) and
+        upload it with <b>⭱ Upload Tax P&L</b> above. One file per person per financial year —
+        add more people and years and switch between them here.
+      </div>
+    } @else {
+      <div class="dv-tax-nav">
+        <span class="dtn-lbl">Financial year</span>
+        <div class="seg sm">
+          @for (fy of taxFYs(); track fy) {
+            <button [class.on]="taxFy() === fy" (click)="taxFy.set(fy)">FY {{ fyShort(fy) }}</button>
+          }
+        </div>
+        <span class="dtn-tot">booked <b>{{ inr(taxTotals().booked) }}</b> · <b class="free">{{ inr(taxTotals().freeLeft) }}</b> LTCG tax-free left</span>
+      </div>
+
+      <!-- per-person LTCG tax-free HEADROOM: how full each ₹1.25L/yr exemption is.
+           Filled = LTCG already booked · empty = still harvestable tax-free. -->
+      <div class="dv-tax-graph">
+        <div class="dtg-cap">LTCG you can still book tax-free · ₹{{ ltcgExempt() / 100000 | number:'1.0-2' }}L per person / year</div>
+        @for (b of taxBars(); track b.person) {
+          <div class="dtg-row">
+            <span class="dtg-name">{{ b.person }}</span>
+            <div class="dtg-track" [class.over]="b.over" [title]="inr(b.ltcg) + ' LTCG booked of ₹' + (ltcgExempt()/100000) + 'L exemption'">
+              <div class="dtg-seg used" [style.width.%]="b.usedPct"></div>
+            </div>
+            <span class="dtg-free" [class.zero]="b.freeLeft <= 0">{{ b.freeLeft > 0 ? inr(b.freeLeft) + ' left' : 'exhausted' }}</span>
+          </div>
+        }
+        <div class="dtg-legend">
+          <span class="lg used"></span> LTCG booked
+          <span class="lg free"></span> still tax-free
+        </div>
+      </div>
+
+      <!-- per-person breakdown cards -->
+      <div class="dv-tax-cards">
+        @for (s of taxForFy(); track s.client_id) {
+          <div class="dtc">
+            <div class="dtc-h">
+              <b>{{ s.person }}</b><span class="dtc-cid">{{ s.client_id }}</span>
+              <button class="dtc-x" (click)="deleteTaxPnl(s)" title="Remove this statement">🗑</button>
+            </div>
+            <div class="dtc-total" [class.pos]="s.total_booked >= 0" [class.neg]="s.total_booked < 0">
+              {{ inr(s.total_booked) }}<small>booked profit · FY {{ fyShort(s.fy) }}</small>
+            </div>
+            <div class="dtc-grid">
+              <span class="dtc-k">Short-term</span>
+              <span class="dtc-k">Long-term</span>
+              <span class="dtc-k">Intraday</span>
+              <span class="dtc-k">F&O</span>
+              <span class="dtc-k">Dividends</span>
+              <span class="dtc-v" [class.pos]="s.short_term > 0" [class.neg]="s.short_term < 0">{{ inr(s.short_term) }}</span>
+              <span class="dtc-v" [class.pos]="s.long_term > 0" [class.neg]="s.long_term < 0">{{ inr(s.long_term) }}</span>
+              <span class="dtc-v">{{ inr(s.intraday) }}</span>
+              <span class="dtc-v" [class.pos]="s.fno_gain > 0" [class.neg]="s.fno_gain < 0">{{ inr(s.fno_gain) }}</span>
+              <span class="dtc-v">{{ inr(s.dividends) }}</span>
+            </div>
+            <div class="dtc-ltcg" [class.full]="s.ltcg_free_left <= 0">
+              <div class="dtc-ltcg-top">
+                <span class="dtc-ltcg-lbl">Can still book tax-free</span>
+                <b class="dtc-ltcg-val" [class.zero]="s.ltcg_free_left <= 0">{{ s.ltcg_free_left > 0 ? inr(s.ltcg_free_left) : 'exemption used up' }}</b>
+              </div>
+              <div class="dtc-ltcg-bar"><div class="dtc-ltcg-used" [style.width.%]="ltcgUsedPct(s)"></div></div>
+              <div class="dtc-ltcg-math">₹{{ ltcgExempt() / 100000 | number:'1.0-2' }}L exemption − {{ inr(s.long_term) }} LTCG booked</div>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  }
+</div>
+
+<!-- ── Sync result modal — KPI hero · month-wise split · full dividend table ────── -->
+@if (showSyncResult() && lastSync(); as sr) {
+  <div class="modal-back" (click)="showSyncResult.set(false)">
+    <div class="modal dv-syncmodal" (click)="$event.stopPropagation()">
+      <button class="dsm-x" (click)="showSyncResult.set(false)" aria-label="Close">✕</button>
+
+      <!-- header strip -->
+      <div class="dsm-top" [class.flat]="!syncChanged()">
+        <span class="dsm-badge" [class.ok]="syncChanged()">
+          @if (syncChanged()) {
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          } @else {
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+          }
+        </span>
+        <div class="dsm-tt">
+          <div class="dsm-htitle">
+            @if (syncNewCount()) { {{ syncNewCount() }} new dividend{{ syncNewCount() === 1 ? '' : 's' }} added }
+            @else if (syncChanged()) { Dividends synced }
+            @else { All dividends up to date }
+          </div>
+          <div class="dsm-hsub">NSE + BSE declared corporate actions · {{ caWhen(syncedAt()!) }}</div>
+        </div>
+      </div>
+
+      <!-- compact summary + toggle — the numbers stay one tap away; the LIST is the
+           main content so it's visible immediately, even on short screens. -->
+      @if (syncKpis(); as k) {
+        <button class="dsm-sumbar" [class.open]="showSyncDetails()" (click)="toggleSyncDetails()">
+          <span class="dsm-sb-stats">
+            <span class="dsm-sb-stat"><b>{{ inr(k.thisMonth) }}</b><small>{{ k.monthLabel }}</small></span>
+            <span class="dsm-sb-stat"><b class="ac">{{ inr(k.fy) }}</b><small>{{ k.fyLabel }}</small></span>
+            <span class="dsm-sb-stat"><b>{{ k.upcomingCount }}</b><small>upcoming</small></span>
+            @if (k.addedCount) { <span class="dsm-sb-stat"><b class="pos">+{{ inr(k.addedAmt) }}</b><small>{{ k.addedCount }} new</small></span> }
+            @if (k.nextDate) { <span class="dsm-sb-stat"><b>{{ caDateShort(k.nextDate) }}</b><small>next · {{ k.nextSym }}</small></span> }
+          </span>
+          <span class="dsm-sb-toggle">{{ showSyncDetails() ? 'Hide summary' : 'Summary' }} <span class="cv" [class.open]="showSyncDetails()">▾</span></span>
+        </button>
+      }
+
+      @if (showSyncDetails()) {
+      <!-- KPI hero (kbar-style, like the Holdings hero). Money figures come from the
+           SAME store as the Dividends page, so they always reconcile. -->
+      @if (syncKpis(); as k) {
+      <div class="dsm-kbar">
+        <div class="dsm-kb hero">
+          <span class="dsm-kb-k">{{ k.monthLabel }}</span>
+          <span class="dsm-kb-v big">{{ inr(k.thisMonth) }}</span>
+          <span class="dsm-kb-s">dividends this month</span>
+        </div>
+        <div class="dsm-kb">
+          <span class="dsm-kb-k">{{ k.fyLabel }}</span>
+          <span class="dsm-kb-v accent">{{ inr(k.fy) }}</span>
+          <span class="dsm-kb-s">this financial year</span>
+        </div>
+        <div class="dsm-kb">
+          <span class="dsm-kb-k">Upcoming</span>
+          <span class="dsm-kb-v">{{ inr(k.upcoming) }}</span>
+          <span class="dsm-kb-s">{{ k.upcomingCount }} dividend{{ k.upcomingCount === 1 ? '' : 's' }} · {{ k.months }} month{{ k.months === 1 ? '' : 's' }}</span>
+        </div>
+        <div class="dsm-kb" [class.click]="k.addedCount" (click)="k.addedCount && setSyncFilter('new')" [title]="k.addedCount ? 'Show the ' + k.addedCount + ' new dividends' : ''">
+          <span class="dsm-kb-k">Added now</span>
+          <span class="dsm-kb-v" [class.pos]="k.addedCount">{{ k.addedCount ? '+' + inr(k.addedAmt) : '—' }}</span>
+          <span class="dsm-kb-s">{{ k.addedCount ? k.addedCount + ' new · tap to see' : '0 new' }} · {{ k.trackedCount }} tracked</span>
+        </div>
+        @if (k.nextDate) {
+          <div class="dsm-kb">
+            <span class="dsm-kb-k">Next payout</span>
+            <span class="dsm-kb-v">{{ caDateShort(k.nextDate) }}</span>
+            <span class="dsm-kb-s">{{ k.nextSym }} · {{ inr(k.nextAmt) }}</span>
+          </div>
+        }
+      </div>
+      }
+
+      <!-- per-person split — each person's share + how this sync changed it -->
+      @if (syncByPerson().length) {
+        <div class="dsm-people">
+          <div class="dsm-people-h">By person <span>each person's share of the declared dividends · change this sync</span></div>
+          <div class="dsm-pcards">
+            @for (p of syncByPerson(); track p.person) {
+              <div class="dsm-pcard" [class.moved]="p.changed > 0.5">
+                <div class="dsm-pc-top">
+                  <span class="dsm-pc-name">{{ p.person }}</span>
+                  @if (p.changed > 0.5) { <span class="dsm-pc-delta up">▲ {{ signedInr(p.changed) }}</span> }
+                  @else if (p.changed < -0.5) { <span class="dsm-pc-delta down">▼ {{ signedInr(p.changed) }}</span> }
+                  @else { <span class="dsm-pc-delta flat">no change</span> }
+                </div>
+                <div class="dsm-pc-val">{{ inr(p.total) }}</div>
+                @if (p.changed > 0.5 || p.changed < -0.5) {
+                  <div class="dsm-pc-row"><span class="was">was {{ inr(p.before) }}</span><span class="arw">→</span><span class="now">now {{ inr(p.total) }}</span></div>
+                } @else {
+                  <div class="dsm-pc-row"><span class="was">already on your calendar</span></div>
+                }
+              </div>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- month split — compact horizontal strip -->
+      @if (syncByMonth().length) {
+        <div class="dsm-mstrip">
+          <div class="dsm-strip-h">By month <span>when it lands · tap to open</span></div>
+          <div class="dsm-mchips">
+            @for (mo of syncByMonth(); track mo.ym) {
+              <button class="dsm-mchip" (click)="jumpToMonth(mo.ym + '-01'); showSyncResult.set(false)" title="Show {{ mo.label }} on the calendar">
+                <div class="dsm-mc-top">
+                  <span class="dsm-mc-name">{{ mo.label }}</span>
+                  <span class="dsm-mc-amt">{{ inr(mo.total) }}</span>
+                </div>
+                <div class="dsm-mbar"><span [style.width.%]="mo.pct * 100"></span></div>
+                <div class="dsm-mc-meta">
+                  {{ mo.count }} dividend{{ mo.count === 1 ? '' : 's' }}
+                  @if (mo.newCount) { <span class="dsm-mnew">+{{ mo.newCount }} new</span> }
+                </div>
+              </button>
+            }
+          </div>
+        </div>
+      }
+      }
+
+      <!-- full-width dividend table — current month onward, same data as the calendar (the MAIN content) -->
+      <div class="dsm-tblwrap">
+        <div class="dsm-tblhead">
+          <div class="dsm-strip-h flush">
+            @switch (syncTableFilter()) {
+              @case ('new') {
+                @if (syncRowsView().length) { Newly added this sync <span>{{ syncRowsView().length }} added just now · tap a row to open</span> }
+                @else { Newly added this sync <span>nothing new — all declared dividends were already tracked</span> }
+              }
+              @case ('refreshed') { Refreshed this sync <span>{{ syncRowsView().length }} share-count update{{ syncRowsView().length === 1 ? '' : 's' }} · tap a row to open</span> }
+              @default { All upcoming dividends <span>{{ syncRowsView().length }} from {{ syncKpis()?.monthLabel }} on · tap a row to open</span> }
+            }
+          </div>
+          <div class="dsm-fchips">
+            <button class="dsm-fchip new" [class.on]="syncTableFilter() === 'new'" (click)="setSyncFilter('new')">✨ New <span>{{ syncNewCount() }}</span></button>
+            <button class="dsm-fchip" [class.on]="syncTableFilter() === 'all'" (click)="setSyncFilter('all')">All <span>{{ syncRows().length }}</span></button>
+            @if (syncRefreshedCount()) {
+              <button class="dsm-fchip upd" [class.on]="syncTableFilter() === 'refreshed'" (click)="setSyncFilter('refreshed')">Refreshed <span>{{ syncRefreshedCount() }}</span></button>
+            }
+          </div>
+        </div>
+        <div class="dsm-tscroll">
+          <table class="dv-up-tbl dsm-tbl big">
+            <thead><tr><th>Stock</th><th class="r">Ex-date</th><th class="r">₹/sh</th><th class="r">Shares</th><th class="r">Amount</th><th class="r">Status</th></tr></thead>
+            <tbody>
+              @for (m of syncRowsView(); track m.id) {
+                <tr class="clk" (click)="jumpToMonth(m.date); showSyncResult.set(false)" title="Show on the calendar">
+                  <td class="dsm-sym"><span class="dsm-symin"><b>{{ m.symbol }}</b>@if (m.state === 'new') { <span class="dsm-tag">NEW</span> } @else if (m.state === 'refreshed') { <span class="dsm-tag upd">UPDATED</span> }@if (m.name && m.name !== m.symbol) { <span class="mut">{{ m.name }}</span> }</span></td>
+                  <td class="r nb">{{ caDate(m.date) }}</td>
+                  <td class="r nb">{{ inr(m.per_share) }}</td>
+                  <td class="r nb">{{ m.shares }}</td>
+                  <td class="r nb"><b [class.add]="m.state === 'new'">{{ inr(m.amount) }}</b></td>
+                  <td class="r nb"><span class="dsm-pill" [class.recv]="m.status === 'received'" [class.pend]="m.status === 'pending'" [class.miss]="m.status === 'not_received'">{{ stateLabel(m.status) }}</span></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="6" class="dsm-empty-td">
+                  @if (syncTableFilter() === 'new') { No new dividends this sync — every declared dividend for your holdings was already on your calendar. }
+                  @else if (syncTableFilter() === 'refreshed') { No share-count changes this sync. }
+                  @else { No upcoming dividends from {{ syncKpis()?.monthLabel }} onward for the stocks you hold. }
+                </td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (sr.pruned.length) {
+          <div class="dsm-removed">
+            <b>Removed (sold):</b>
+            @for (m of sr.pruned; track m.symbol + m.date) { <span class="dsm-rmv">{{ m.symbol }} · {{ caDateShort(m.date) }} · {{ inr(m.amount) }}</span> }
+          </div>
+        }
+      </div>
+
+      <div class="dsm-foot">
+        <span class="dsm-foot-note">Tip: tap any month or row to jump to it on the calendar.</span>
+        <button class="btn primary" (click)="showSyncResult.set(false)">Done</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Log / day modal -->
+@if (showLog()) {
+  <div class="modal-back" (click)="showLog.set(false)">
+    <div class="modal dv-modal" (click)="$event.stopPropagation()">
+      <div class="modal-head">
+        <h3>Log dividend</h3>
+        <button class="x" (click)="showLog.set(false)">✕</button>
+      </div>
+
+      @if (error()) { <div class="dv-err">{{ error() }}</div> }
+
+      <!-- already logged on this date -->
+      @if (dayItems().length) {
+        <div class="dv-day-list">
+          <div class="dv-dl-head">On {{ logDraft().date }}</div>
+          @for (d of dayItems(); track d.id) {
+            <div class="dv-dl-row">
+              <span class="dv-dl-sym">{{ d.symbol }}</span>
+              <span class="dv-dl-edit">
+                <span class="dv-e-cur"><i>{{ curSym(d.symbol) }}</i><input class="dv-e" type="number" min="0" step="0.0001" [value]="d.per_share" (change)="editDiv(d, 'per_share', $any($event.target).value)" [title]="curSym(d.symbol) + ' per share'"></span>
+                <span class="dv-e-x">×</span>
+                <input class="dv-e dv-e-num" type="number" min="0" step="1" [value]="d.shares" (change)="editDiv(d, 'shares', $any($event.target).value)" title="shares">
+              </span>
+              <span class="dv-st3" role="group" aria-label="Status">
+                <button class="r" [class.on]="d.status === 'received'" (click)="setStatus(d, 'received')" title="Received">✓</button>
+                <button class="p" [class.on]="d.status === 'pending'" (click)="setStatus(d, 'pending')" title="Pending">◷</button>
+                <button class="n" [class.on]="d.status === 'not_received'" (click)="setStatus(d, 'not_received')" title="Not received">✕</button>
+              </span>
+              <span class="dv-dl-amt">@if (isUsdSym(d.symbol)) { ${{ (d.per_share * d.shares) | number:'1.0-2' }} } @else { {{ inr(d.amount) }} }</span>
+              <button class="dv-dl-del" (click)="remove(d)" title="Delete">🗑</button>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- add form -->
+      <div class="dv-form">
+        <label class="dv-f date"><span>Date</span>
+          <input type="date" [ngModel]="logDraft().date" (ngModelChange)="setLog('date', $event)"></label>
+        <label class="dv-f sym"><span>Stock</span>
+          <input type="text" list="dv-symbols" placeholder="e.g. ITC" [ngModel]="logDraft().symbol" (ngModelChange)="setLog('symbol', $event)" autocomplete="off">
+          <datalist id="dv-symbols">@for (s of symbols(); track s) { <option [value]="s"></option> }</datalist></label>
+        <label class="dv-f"><span>{{ curSym(logDraft().symbol) }} / share</span>
+          <input type="number" step="0.0001" min="0" placeholder="0.58" [ngModel]="logDraft().per_share" (ngModelChange)="setLog('per_share', $event)"></label>
+        <label class="dv-f"><span>Shares held</span>
+          <input type="number" step="1" min="0" placeholder="auto" [ngModel]="logDraft().shares" (ngModelChange)="setLog('shares', $event)"></label>
+      </div>
+
+      <div class="dv-status">
+        <span class="dv-status-l">Status</span>
+        <div class="dv-st3 wide" role="group" aria-label="Status">
+          <button class="r" [class.on]="logDraft().status === 'received'" (click)="setLog('status', 'received')">✓ Received</button>
+          <button class="p" [class.on]="logDraft().status === 'pending'" (click)="setLog('status', 'pending')">◷ Pending</button>
+          <button class="n" [class.on]="logDraft().status === 'not_received'" (click)="setLog('status', 'not_received')">✕ Not received</button>
+        </div>
+      </div>
+
+      <div class="dv-preview" [class.pending]="logDraft().status === 'pending'" [class.notrecv]="logDraft().status === 'not_received'">
+        <span>{{ statusLabel(logDraft().status) }}</span>
+        @if (isUsdSym(logDraft().symbol)) {
+          <b>${{ amountPreview() | number:'1.0-2' }} <small>≈ {{ inr(amountPreview() * usdInr()) }}</small></b>
+        } @else {
+          <b>{{ inr(amountPreview()) }}</b>
+        }
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="showLog.set(false)">Done</button>
+        <button class="btn primary" (click)="save()" [disabled]="!canSave() || saving()">{{ saving() ? 'Saving…' : '＋ Add entry' }}</button>
+      </div>
+    </div>
+  </div>
+}
+

@@ -1,0 +1,71 @@
+{
+  "strategies": {
+    "ADFD837D": {
+      "id": "ADFD837D",
+      "name": "Test",
+      "underlying": "NIFTY",
+      "expiry": "2026-04-28",
+      "spot_at_entry": 23900.0,
+      "legs": [
+        {
+          "symbol": "NIFTY26APR23900CE",
+          "exchange": "NFO",
+          "type": "CE",
+          "strike": 23900.0,
+          "transaction_type": "SELL",
+          "qty": 1,
+          "lot_size": 75,
+          "entry_premium": 50.0,
+          "order_id": "PAPER00001001"
+        }
+      ],
+      "net_credit": 3750.0,
+      "sl_amount": null,
+      "target_amount": null,
+      "status": "open",
+      "use_real": false,
+      "entry_time": "2026-04-27T00:05:47",
+      "exit_time": null,
+      "exit_pnl": null
+    },
+    "444B78C8": {
+      "id": "444B78C8",
+      "name": "Custom Strategy",
+      "underlying": "NIFTY",
+      "expiry": "2026-04-28",
+      "spot_at_entry": 23897.95,
+      "legs": [
+        {
+          "symbol": "NIFTY26APR23900CE",
+          "exchange": "NFO",
+          "type": "CE",
+          "strike": 23900.0,
+          "transaction_type": "SELL",
+          "qty": 1,
+          "lot_size": 65,
+          "entry_premium": 193.45,
+          "order_id": "PAPER00001002"
+        },
+        {
+          "symbol": "NIFTY26APR23900PE",
+          "exchange": "NFO",
+          "type": "PE",
+          "strike": 23900.0,
+          "transaction_type": "SELL",
+          "qty": 1,
+          "lot_size": 65,
+          "entry_premium": 161.2,
+          "order_id": "PAPER00001003"
+        }
+      ],
+      "net_credit": 23052.25,
+      "sl_amount": -23052.0,
+      "target_amount": 11526.0,
+      "status": "target_hit",
+      "use_real": false,
+      "entry_time": "2026-04-27T00:07:46",
+      "exit_time": "2026-04-28T11:27:13",
+      "exit_pnl": 11531.0
+    }
+  }
+}

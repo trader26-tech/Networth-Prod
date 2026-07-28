@@ -1,0 +1,846 @@
+<!-- ── Chanakya — whole-picture tax strategist (home dashboard only) ─────────── -->
+@if (taxOpen() && taxExpanded()) {
+  <div class="chanakya-backdrop" (click)="taxExpanded.set(false)"></div>
+}
+<div class="chanakya" [class.is-expanded]="taxExpanded()">
+  @if (taxOpen()) {
+    <div class="chanakya-pop" [class.expanded]="taxExpanded()">
+      <app-home-tax [embedded]="true" [expanded]="taxExpanded()" [dash]="data()"
+                    (toggleSize)="taxExpanded.set(!taxExpanded())"
+                    (closed)="closeTax()"></app-home-tax>
+    </div>
+  } @else {
+    <button class="chanakya-fab" (click)="taxOpen.set(true)" title="Chanakya — cut your tax across everything">
+      <span class="fab-ava">
+        @if (taxImgOk()) { <img [src]="taxImg" alt="Chanakya" (error)="taxImgOk.set(false)"> }
+        @else { <span class="fab-emoji">🧮</span> }
+      </span>
+    </button>
+  }
+</div>
+
+<div class="dash-head">
+  <div class="dh-titles">
+    <h1>Wealth Dashboard</h1>
+    <span class="dh-sub">Everything you own — growing & earning, in one view</span>
+  </div>
+  <div class="head-actions">
+    <div class="rem-anchor">
+      <button class="icon-btn rem-bell" [class.on]="showBell()" [class.has-issues]="healthCount() > 0" (click)="toggleBell()" title="Data health — Kite logins &amp; F&O data to fix">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        @if (healthCount() > 0) { <span class="alert-badge">{{ healthCount() }}</span> }
+      </button>
+
+      @if (showBell()) {
+        <div class="bell-pop" (click)="$event.stopPropagation()">
+          <div class="bell-head">
+            <div class="bh-t">
+              <b>Data health</b>
+              <span class="bh-sub">Fix these to keep your F&amp;O numbers real</span>
+            </div>
+            @if (healthCount() > 0) { <span class="bh-count">{{ healthCount() }}</span> }
+          </div>
+
+          <div class="bell-body">
+            @if (healthOk() && (health()?.ignored_count || 0) === 0) {
+              <div class="bell-ok">
+                <div class="ok-tick">✓</div>
+                <b>All good</b>
+                <span>Every Kite session is live and tradebooks are up to date.</span>
+              </div>
+            } @else {
+              @for (i of health()?.issues || []; track i.key) {
+                <div class="bell-it" [attr.data-sev]="i.severity">
+                  <span class="bi-dot"></span>
+                  <div class="bi-main">
+                    <span class="bi-title">{{ i.title }}</span>
+                    <span class="bi-detail">{{ i.detail }}</span>
+                    <div class="bi-actions">
+                      <a class="bi-btn fix" routerLink="/fno" (click)="closeBell()">{{ i.fix_label }} →</a>
+                      <button class="bi-btn" [disabled]="healthBusy() === i.key" (click)="dismissIssue(i, 'done')" title="I've handled it (comes back if it happens again)">Done</button>
+                      <button class="bi-btn" [disabled]="healthBusy() === i.key" (click)="dismissIssue(i, 'ignore')" title="Ignore until I un-ignore it">Ignore</button>
+                    </div>
+                  </div>
+                </div>
+              }
+
+              @if ((health()?.ignored_count || 0) > 0) {
+                <button class="bell-ign-toggle" (click)="showIgnored.set(!showIgnored())">
+                  {{ showIgnored() ? '▾' : '▸' }} {{ health()?.ignored_count }} ignored
+                </button>
+                @if (showIgnored()) {
+                  @for (i of health()?.ignored || []; track i.key) {
+                    <div class="bell-it ignored">
+                      <span class="bi-dot"></span>
+                      <div class="bi-main">
+                        <span class="bi-title">{{ i.title }}</span>
+                        <span class="bi-detail">{{ i.dismissed_as === 'ignore' ? 'Ignored' : 'Marked done' }} · {{ i.detail }}</span>
+                        <div class="bi-actions">
+                          <button class="bi-btn" [disabled]="healthBusy() === i.key" (click)="restoreIssue(i)">Restore</button>
+                        </div>
+                      </div>
+                    </div>
+                  }
+                }
+              }
+            }
+          </div>
+        </div>
+      }
+    </div>
+    @if (data()) {
+      <button class="icon-btn" [class.on]="showExport()" (click)="openExport()" title="Download data (Excel / PDF)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+      </button>
+    }
+    <button class="icon-btn" (click)="load()" [disabled]="loading()" title="Refresh">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" [class.spin]="loading()"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+    </button>
+  </div>
+</div>
+
+@if (error()) { <div class="banner err">{{ error() }}</div> }
+@if (loading()) { <div class="state">Loading your portfolio…</div> }
+
+@if (!loading() && data(); as d) {
+  <!-- ===== Hero: net worth + allocation ===== -->
+  <div class="hero">
+    <div class="hero-left">
+      <span class="h-label">Net worth · {{ d.position_count }} assets@if (market.isOpen()) { <span class="nw-live"><span class="dot"></span>LIVE · {{ updatedLabel() }}</span> }</span>
+      <span class="h-value">{{ inr(d.net_worth) }}</span>
+      <span class="h-exact">{{ inrFull(d.net_worth) }}</span>
+      @if (liabilities(); as lb) {
+        <span class="h-nwbreak">{{ inr(d.gross_assets) }} assets<span class="nwb-minus"> − {{ inr(lb.total) }} liabilities</span></span>
+      }
+      <div class="h-kpis">
+        <div class="kpi"><span class="k">Portfolio CAGR</span><span class="v pos">{{ pct(d.portfolio_cagr) }}<small>/yr</small></span></div>
+        <!-- All liabilities (loans + tenant advances) clubbed into ONE tile; hover
+             for the full breakdown of what makes it up. -->
+        @if (liabilities(); as lb) {
+          <div class="kpi has-pop">
+            <span class="k">Liabilities <small>· {{ lb.count }} item{{ lb.count === 1 ? '' : 's' }}</small></span>
+            <span class="v neg">−{{ inr(lb.total) }}@if (lb.emi > 0) { <small>· {{ inr(lb.emi) }}/mo EMI</small> }</span>
+            <div class="kpi-pop">
+              <div class="kp-head">What you owe</div>
+              @if (lb.loanTotal > 0) {
+                <div class="kp-sec"><span>Loans <em>{{ inr(lb.loanEmi) }}/mo EMI</em></span><b class="neg">−{{ inr(lb.loanTotal) }}</b></div>
+                @for (lp of lb.loans; track lp.person) {
+                  <div class="kp-row"><span class="kp-name">{{ lp.person }} <em>{{ inr(lp.emi_monthly_inr) }}/mo</em></span><b class="neg">−{{ inr(lp.outstanding_inr) }}</b></div>
+                }
+              }
+              @if (lb.advTotal > 0) {
+                <div class="kp-sec"><span>Advances to repay <em>deposits held</em></span><b class="warn">−{{ inr(lb.advTotal) }}</b></div>
+                @for (a of lb.advances; track a.tenant + a.unit) {
+                  <div class="kp-row"><span class="kp-name">{{ a.tenant }} <em>{{ a.unit }}</em></span><b class="warn">−{{ inr(a.amount) }}</b></div>
+                }
+              }
+              <div class="kp-foot"><span>Total liabilities</span><b class="neg">−{{ inr(lb.total) }}</b></div>
+            </div>
+          </div>
+        }
+        <div class="kpi" [class.has-pop]="incomeEarners().length">
+          <span class="k">Income · this month</span>
+          <span class="v" [class.pos]="d.income_due.expected > 0 && d.income_due.pending <= 0">{{ inr(d.income_due.expected) }} <small>{{ inr(d.income_due.received) }} collected</small></span>
+          @if (incomeEarners().length) {
+            <div class="kpi-pop">
+              <div class="kp-head">Who earns it · per month</div>
+              @for (p of incomeEarners(); track p.person) {
+                <div class="kp-row"><span class="kp-name">{{ p.person }}</span><b>{{ inr(p.monthly_income) }}</b></div>
+              }
+              <div class="kp-foot"><span>Earned / mo</span><b>{{ inr(d.monthly_income) }}</b></div>
+            </div>
+          }
+        </div>
+        @if (d.dividends && d.dividends.lifetime > 0) {
+          <div class="kpi" [class.has-pop]="d.dividends.by_person.length">
+            <span class="k">Dividends · {{ d.dividends.year }}</span>
+            <span class="v pos">{{ inr(d.dividends.this_year) }}</span>
+            @if (d.dividends.by_person.length) {
+              <div class="kpi-pop">
+                <div class="kp-head">Who received it · {{ d.dividends.year }}</div>
+                @for (pp of d.dividends.by_person; track pp.person) {
+                  <div class="kp-row"><span class="kp-name">{{ pp.person }}</span><b>{{ inr(pp.this_year) }}</b></div>
+                }
+                <div class="kp-foot"><span>Total this year</span><b>{{ inr(d.dividends.this_year) }}</b></div>
+              </div>
+            }
+          </div>
+        }
+        <!-- F&O P&L — realized (booked) + live open mark-to-market · per person on
+             hover. A KPI, not part of net worth (trading cash sits in the bank). -->
+        @if (d.fno && d.fno.accounts) {
+          <div class="kpi" [class.has-pop]="d.fno.by_person.length">
+            <span class="k">F&O P&L <small>· {{ d.fno.accounts }} acct{{ d.fno.accounts === 1 ? '' : 's' }}</small></span>
+            <span class="v" [class.pos]="d.fno.total > 0" [class.neg]="d.fno.total < 0">{{ inrSigned(d.fno.total) }}@if (d.fno.open) { <small>· {{ inrSigned(d.fno.open) }} open</small> }</span>
+            @if (d.fno.by_person.length) {
+              <div class="kpi-pop">
+                <div class="kp-head">Booked + open · per person</div>
+                @for (fp of d.fno.by_person; track fp.person) {
+                  <div class="kp-row"><span class="kp-name">{{ fp.person }}@if (fp.open) { <em>{{ inrSigned(fp.open) }} open</em> }</span><b [class.pos]="fp.total > 0" [class.neg]="fp.total < 0">{{ inrSigned(fp.total) }}</b></div>
+                }
+                <div class="kp-row"><span class="kp-name">Booked <em>realised</em></span><b [class.pos]="d.fno.booked > 0" [class.neg]="d.fno.booked < 0">{{ inrSigned(d.fno.booked) }}</b></div>
+                @if (d.fno.open) { <div class="kp-row"><span class="kp-name">Open <em>unrealised, live</em></span><b [class.pos]="d.fno.open > 0" [class.neg]="d.fno.open < 0">{{ inrSigned(d.fno.open) }}</b></div> }
+                <div class="kp-foot"><span>Total F&O P&L</span><b [class.pos]="d.fno.total > 0" [class.neg]="d.fno.total < 0">{{ inrSigned(d.fno.total) }}</b></div>
+              </div>
+            }
+          </div>
+        }
+        @if (d.total_gain != null) { <div class="kpi"><span class="k">Total gain</span><span class="v" [class.pos]="d.total_gain >= 0">{{ inr(d.total_gain) }}</span></div> }
+      </div>
+    </div>
+
+    @if (donut(); as dn) {
+      <div class="alloc">
+        <div class="donut-wrap" tabindex="0">
+          <svg viewBox="0 0 120 120" class="donut">
+            <circle cx="60" cy="60" [attr.r]="dn.R" fill="none" stroke="#eef1f8" stroke-width="14"/>
+            @for (s of dn.segs; track s.asset_class) {
+              <circle cx="60" cy="60" [attr.r]="dn.R" fill="none" [attr.stroke]="s.color" stroke-width="14"
+                      [attr.stroke-dasharray]="s.dash" [attr.stroke-dashoffset]="s.offset"
+                      transform="rotate(-90 60 60)" stroke-linecap="butt"/>
+            }
+            <text x="60" y="54" text-anchor="middle" class="d-mid">{{ d.by_class.length }}</text>
+            <text x="60" y="68" text-anchor="middle" class="d-sub">classes</text>
+          </svg>
+          <div class="alloc-pop">
+            <div class="ap-title">Allocation</div>
+            @for (c of d.by_class; track c.asset_class) {
+              <div class="lg-row">
+                <span class="lg-dot" [style.background-color]="color(c.asset_class)"></span>
+                <div class="lg-main">
+                  <span class="lg-name">{{ c.label }}</span>
+                  <span class="lg-meta">{{ (c.pct * 100) | number:'1.0-0' }}% of total</span>
+                </div>
+                <div class="lg-right">
+                  <span class="lg-val">{{ inr(c.value) }}</span>
+                  @if (c.cagr != null) {
+                    <span class="lg-cagr" [class.pos]="c.cagr >= 0" [class.neg]="c.cagr < 0">{{ pct(c.cagr) }}/yr</span>
+                  } @else { <span class="lg-cagr muted">—</span> }
+                </div>
+              </div>
+            }
+            @if (liabilities(); as lb) {
+              <div class="lg-row liab">
+                <span class="lg-dot liab-dot"></span>
+                <div class="lg-main"><span class="lg-name">Liabilities</span><span class="lg-meta">{{ lb.count }} item{{ lb.count === 1 ? '' : 's' }}@if (lb.emi > 0) { · {{ inr(lb.emi) }}/mo EMI}</span></div>
+                <div class="lg-right"><span class="lg-val neg">−{{ inr(lb.total) }}</span></div>
+              </div>
+              <div class="lg-row net">
+                <span class="lg-dot" style="visibility:hidden"></span>
+                <div class="lg-main"><span class="lg-name">Net worth</span><span class="lg-meta">assets − liabilities</span></div>
+                <div class="lg-right"><span class="lg-val">{{ inr(d.net_worth) }}</span></div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- ===== Per-person breakdown ===== -->
+  @if (d.by_person.length) {
+    <div class="people">
+      @for (p of d.by_person; track p.person; let i = $index) {
+        <div class="person-card" (click)="openPerson(p.person)" title="See {{ p.person }}'s assets">
+          <div class="pc-top">
+            <!-- Inline photo upload. The card itself has (click)=openPerson, so the
+                 slot stops propagation AND we trigger the hidden input EXPLICITLY
+                 (pcPhoto.click()) rather than relying on native <label> activation —
+                 that gets suppressed here by the parent's stopPropagation in some
+                 browsers, which is why "add photo" silently did nothing. -->
+            <span class="pc-avatar-slot" (click)="$event.stopPropagation()">
+              <span class="pc-avatar-wrap" role="button" tabindex="0"
+                    [title]="'Set ' + p.person + '’s photo'"
+                    (click)="pcPhoto.click()" (keydown.enter)="pcPhoto.click()">
+                @if (p.photo) {
+                  <span class="pc-avatar pc-avatar-img"><img [src]="p.photo" [alt]="p.person"></span>
+                } @else {
+                  <span class="pc-avatar" [style.background-color]="p.color || personColor(i)">{{ p.person.charAt(0) }}</span>
+                }
+                <span class="pc-cam" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.2"/></svg></span>
+              </span>
+              <input #pcPhoto type="file" accept="image/*" hidden (change)="onPhotoPicked($event, p.person)">
+            </span>
+            <div class="pc-id"><span class="pc-name">{{ p.person }}</span><span class="pc-meta">{{ p.count }} asset{{ p.count === 1 ? '' : 's' }} · {{ p.class_count }} class{{ p.class_count === 1 ? '' : 'es' }}</span></div>
+            <span class="pc-share">{{ (p.pct * 100) | number:'1.0-0' }}%</span>
+          </div>
+          <span class="pc-value">{{ inr(p.value) }}</span>
+          @if ((p.loan_outstanding ?? 0) > 0) {
+            <span class="pc-liab">{{ inr(p.gross_value) }} assets <span class="nwb-minus">− {{ inr(p.loan_outstanding) }} loan</span></span>
+          }
+          <div class="pc-stats">
+            <span class="ps"><i>CAGR</i><b [class.pos]="(p.cagr ?? 0) >= 0" [class.neg]="(p.cagr ?? 0) < 0">{{ pct(p.cagr) }}</b></span>
+            <span class="ps"><i>Income</i><b>{{ inr(p.monthly_income) }}<small>/mo</small></b></span>
+            @if ((p.loan_emi ?? 0) > 0) { <span class="ps"><i>EMI</i><b class="neg">{{ inr(p.loan_emi) }}<small>/mo</small></b></span> }
+            @else if (personDividend(p.person) > 0) { <span class="ps"><i>Dividends</i><b class="pos">{{ inr(personDividend(p.person)) }}<small>/yr</small></b></span> }
+          </div>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ===== Money calendar — in & out, tick received/paid from here ===== -->
+  <app-reminder-calendar class="dash-cal" [hideCategories]="dashHideCategories" (feedChange)="reminders.set($event)"></app-reminder-calendar>
+
+  <div class="grid">
+    <!-- ===== Reach your goal (auto plan) ===== -->
+    <div class="card goal-card">
+      <div class="card-head"><h3>🎯 Reach your goal</h3></div>
+
+      <!-- sliders drive everything -->
+      <div class="sliders">
+        <div class="sld">
+          <div class="sld-top"><span>Target corpus</span><b>{{ goalCr() }} Cr</b></div>
+          <input type="range" min="5" max="500" step="5" [ngModel]="goalCr()" (ngModelChange)="goalCr.set(+$event)">
+        </div>
+        <div class="sld">
+          <div class="sld-top"><span>Within</span><b>{{ targetYears() }} yrs</b></div>
+          <input type="range" min="3" max="40" step="1" [ngModel]="targetYears()" (ngModelChange)="targetYears.set(+$event)">
+        </div>
+        <div class="sld">
+          <div class="sld-top"><span>Monthly income</span><b>{{ inr(reqMonthly()) }}</b></div>
+          <input type="range" min="0" max="5000000" step="50000" [ngModel]="reqMonthly()" (ngModelChange)="reqMonthly.set(+$event)">
+        </div>
+      </div>
+
+      @if (plan(); as g) {
+        @if (g.status === 'ontrack') {
+          <div class="goal-result ok">✓ On track — at {{ pct(g.curC) }}/yr you reach {{ inr(g.target) }} in {{ g.newYears != null ? (g.newYears | number:'1.0-0') : '—' }} yrs. No changes needed.</div>
+        } @else {
+          <div class="plan-grid">
+            <div class="plan-col sell">
+              <div class="pcol-head">🔻 Sell <small>weakest growth</small></div>
+              @for (s of g.sells.slice(0, 3); track $index) {
+                <div class="plan-row">
+                  <span class="pr-dot" [style.background-color]="color(s.asset_class)"></span>
+                  <span class="pr-info"><b>{{ s.name }}</b><small>{{ s.class_label }} · {{ pct(s.cagr) }}/yr</small></span>
+                  <span class="pr-amt">{{ inr(s.sell) }}</span>
+                </div>
+              }
+              @if (!g.sells.length) { <div class="empty-line">—</div> }
+              @if (g.sells.length > 3) { <span class="more-link">+{{ g.sells.length - 3 }} more</span> }
+            </div>
+            <div class="plan-arrow">→</div>
+            <div class="plan-col buy">
+              <div class="pcol-head">🔺 Reinvest <small>income spent · growth compounds</small></div>
+              @for (b of g.buys; track $index) {
+                <div class="plan-row">
+                  <span class="pr-dot" [style.background-color]="color(b.asset_class)"></span>
+                  <span class="pr-info"><b>{{ b.label }}</b><small>{{ b.why }}</small></span>
+                  <span class="pr-amt pos">+{{ inr(b.amount) }}</span>
+                </div>
+              }
+              @if (!g.buys.length) { <div class="empty-line">—</div> }
+            </div>
+          </div>
+
+          <div class="goal-foot">
+            @if (g.status === 'unreachable') {
+              <div class="goal-result bad">✗ Not achievable in {{ g.years }} yrs — best case {{ g.newYears != null ? (g.newYears | number:'1.0-0') : '—' }} yrs.</div>
+            }
+            <button class="view-plan" (click)="openPlanModal()">Simulate &amp; customise
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+        }
+      }
+    </div>
+
+    <!-- ===== Urgent cash ===== -->
+    <div class="card cash-card">
+      <div class="card-head"><h3>⚡ Need cash fast</h3></div>
+      <div class="cash-inputs">
+        <label><span>Amount needed</span><div class="in"><i>₹</i><input type="number" [ngModel]="cashNeed()" (ngModelChange)="cashNeed.set(+$event)"></div></label>
+        <label><span>Within</span>
+          <select [ngModel]="cashWithinDays()" (ngModelChange)="cashWithinDays.set(+$event)">
+            <option [ngValue]="0">Any time</option>
+            <option [ngValue]="7">1 week</option>
+            <option [ngValue]="30">1 month</option>
+            <option [ngValue]="120">4 months</option>
+          </select>
+        </label>
+      </div>
+
+      @if (cashPlan(); as cp) {
+        <div class="cash-verdict" [class.ok]="cp.covered" [class.warn]="!cp.covered">
+          @if (cp.covered) { ✓ Raise {{ inr(cp.need) }} by selling {{ cp.picks.length }} asset{{ cp.picks.length === 1 ? '' : 's' }} — ready in ~{{ cp.maxDays }} day{{ cp.maxDays === 1 ? '' : 's' }}. }
+          @else { Only {{ inr(cp.raised) }} reachable{{ cashWithinDays() ? ' in this window' : '' }} — short by {{ inr(cp.shortfall) }}. }
+        </div>
+        <div class="sell-list">
+          @for (p of cp.picks; track $index) {
+            <div class="sell-row">
+              <span class="sl-dot" [style.background-color]="color(p.asset_class)"></span>
+              <span class="sl-info"><b>{{ p.name }}</b><small>{{ p.class_label }} · {{ p.owner }} · {{ p.liquidity_label }}</small></span>
+              <span class="sl-amt">{{ inr(p.sell) }}@if (!p.divisible) { <em>whole</em> }</span>
+            </div>
+          }
+        </div>
+        <p class="hint">Sells the most liquid, weakest-returning assets first — so your best performers stay invested.</p>
+      }
+    </div>
+
+    <!-- ===== Buy planner ===== -->
+    <app-buy-planner [monthlySurplus]="(d.monthly_income || 0) - (d.spent_this_month || 0)" [positions]="d.positions"></app-buy-planner>
+  </div>
+
+  <p class="foot-note">CAGR is value-weighted price appreciation across assets that have a purchase date (gold & undated assets are excluded). Liquidity & sell-time are class defaults. Income shows rent + bond coupons due this month. The goal simulator assumes a ~7.5% income yield and ignores capital-gains tax.</p>
+
+  <!-- ===== Download / export modal ===== -->
+  @if (showExport()) {
+    <div class="modal-back settings-back" (click)="$event.target === $event.currentTarget && closeExport()">
+      <div class="modal export-modal">
+        <div class="modal-head">
+          <div><h3>⬇️ Download your data</h3><span class="pm-sub">Pick what to include, then grab it as Excel or PDF. Everything's selected by default.</span></div>
+          <button class="x" (click)="closeExport()">✕</button>
+        </div>
+
+        <div class="exp-secttitle">
+          <span>Asset classes</span>
+          <div class="exp-allnone">
+            <button [class.on]="exportAllSelected()" (click)="exportSelectAll()">All</button>
+            <button [class.on]="exportClasses().size === 0" (click)="exportSelectNone()">None</button>
+          </div>
+        </div>
+
+        <div class="exp-grid">
+          @for (o of exportOptions(); track o.asset_class) {
+            <button class="exp-chip" [class.on]="isExportClass(o.asset_class)" (click)="toggleExportClass(o.asset_class)">
+              <span class="ec-check"><span class="ec-dot" [style.background-color]="color(o.asset_class)"></span></span>
+              <span class="ec-body">
+                <b>{{ o.label }}</b>
+                <small>{{ o.count }} · {{ inr(o.value) }}</small>
+              </span>
+              <span class="ec-tick">{{ isExportClass(o.asset_class) ? '✓' : '' }}</span>
+            </button>
+          }
+        </div>
+
+        <div class="exp-secttitle"><span>Include</span></div>
+        <div class="exp-sections">
+          <label class="exp-sec"><input type="checkbox" [ngModel]="exportSummary()" (ngModelChange)="exportSummary.set($event)"><span>Summary &amp; totals</span></label>
+          <label class="exp-sec"><input type="checkbox" [ngModel]="exportByClass()" (ngModelChange)="exportByClass.set($event)"><span>Assets by class</span></label>
+          <label class="exp-sec"><input type="checkbox" [ngModel]="exportByPerson()" (ngModelChange)="exportByPerson.set($event)"><span>By person</span></label>
+          <label class="exp-sec"><input type="checkbox" [ngModel]="exportHoldings()" (ngModelChange)="exportHoldings.set($event)"><span>Every holding (detailed)</span></label>
+        </div>
+
+        <div class="exp-summary">
+          <span>{{ exportCount() }} assets · {{ inr(exportValue()) }}</span>
+          @if (exportEmpty()) { <span class="exp-warn">Select at least one class and one section</span> }
+        </div>
+
+        @if (exportErr()) { <div class="exp-error">{{ exportErr() }}</div> }
+
+        <div class="exp-actions">
+          <button class="exp-btn excel" [disabled]="exportEmpty() || !!exportBusy()" (click)="runExport('excel')">
+            @if (exportBusy() === 'excel') { <span class="exp-spin"></span> Building… }
+            @else { <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 13 6 6M15 13l-6 6"/></svg> Excel (.xlsx) }
+          </button>
+          <button class="exp-btn pdf" [disabled]="exportEmpty() || !!exportBusy()" (click)="runExport('pdf')">
+            @if (exportBusy() === 'pdf') { <span class="exp-spin"></span> Building… }
+            @else { <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6M9 18h4"/></svg> PDF (.pdf) }
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ===== Asset assumptions / settings modal ===== -->
+  @if (showSettings()) {
+    <div class="modal-back settings-back" (click)="$event.target === $event.currentTarget && showSettings.set(false)">
+      <div class="modal settings-modal">
+        <div class="modal-head"><div><h3>⚙️ Asset assumptions</h3><span class="pm-sub">How fast each asset's value grows, and the income it throws off. Drives what's right to sell.</span></div>
+          <button class="x" (click)="showSettings.set(false)">✕</button></div>
+
+        <div class="set-mode">
+          <div class="seg">
+            <button [class.on]="settingsMode() === 'class'" (click)="settingsMode.set('class')">By class <small>generic</small></button>
+            <button [class.on]="settingsMode() === 'asset'" (click)="settingsMode.set('asset')">By holding <small>your assets</small></button>
+          </div>
+        </div>
+
+        @if (settingsMode() === 'class') {
+          <div class="set-grid-head"><span>Asset class</span><span>Value grows /yr</span><span>Income yield /yr</span><span>Sell as</span></div>
+          @for (c of classRows(); track c.asset_class) {
+            <div class="set-grid-row">
+              <span class="set-name"><span class="set-dot" [style.background-color]="color(c.asset_class)"></span>{{ c.label }}</span>
+              <div class="set-in"><input type="number" step="0.5" [ngModel]="cagrDraft[c.asset_class]" (ngModelChange)="onCagrClass(c.asset_class, $event)" placeholder="—"><i>%</i></div>
+              <div class="set-in"><input type="number" step="0.5" [ngModel]="yldDraft[c.asset_class]" (ngModelChange)="onYieldClass(c.asset_class, $event)" placeholder="0"><i>%</i></div>
+              <div class="seg-sm">
+                @for (m of SELL_MODES; track m.key) {
+                  <button [class.on]="(goalSettings().sellMode[c.asset_class] || 'full') === m.key" (click)="setSellMode(c.asset_class, m.key)" [title]="m.label">{{ m.key === 'full' ? 'Full' : m.key === 'partial' ? 'Part' : 'Lots' }}</button>
+                }
+              </div>
+            </div>
+          }
+          <p class="set-note">Generic per-class rates — used for any asset you don't fine-tune below. e.g. an apartment's <b>value grows</b> at one rate while its <b>rent</b> is the income yield. Bonds default to 0% value growth + their coupon yield.</p>
+        } @else {
+          <div class="set-grid-head asset"><span>Your holding</span><span>Future growth /yr</span><span>Income yield /yr</span></div>
+          <div class="set-asset-list">
+            @for (p of assetRows(); track p.i) {
+              <div class="set-grid-row asset" [class.overridden]="hasAssetOverride(p)">
+                <span class="set-name"><span class="set-dot" [style.background-color]="color(p.asset_class)"></span>
+                  <span class="an"><b>{{ p.name }}</b><small>{{ p.class_label }} · {{ p.owner }} · {{ inr(p.value) }}</small></span></span>
+                <div class="set-in"><input type="number" step="0.5" [ngModel]="cagrDraft[posKey(p)]" (ngModelChange)="onCagrAsset(p, $event)" placeholder="—"><i>%</i></div>
+                <div class="set-in"><input type="number" step="0.5" [ngModel]="yldDraft[posKey(p)]" (ngModelChange)="onYieldAsset(p, $event)" placeholder="0"><i>%</i></div>
+              </div>
+            }
+          </div>
+          <p class="set-note">Set the <b>expected future growth</b> of each specific holding (and its income yield). These override the class rate, so the "what to sell" ranking reflects what <i>you</i> think each asset will actually do. Blank = use the class rate.</p>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ===== Year-by-year income schedule modal ===== -->
+  @if (showIncome() && incomeSchedule(); as sch) {
+    <div class="modal-back settings-back" (click)="$event.target === $event.currentTarget && showIncome.set(false)">
+      <div class="modal income-modal">
+        <div class="modal-head">
+          <div><h3>📅 Income schedule</h3><span class="pm-sub">What each asset pays you, year by year. Income rises only as each asset's <b>value compounds</b> (rent tracks value) — no new capital added; bond coupons stay flat. Tap a year for the monthly split.</span></div>
+          <button class="x" (click)="showIncome.set(false)">✕</button>
+        </div>
+        <div class="isched-totals">
+          <div><span class="it-k">Year 1</span><span class="it-v">{{ inr(sch.firstMonthly) }}<small>/mo</small></span></div>
+          <div><span class="it-k">By year {{ sch.rows.length }}</span><span class="it-v pos">{{ inr(sch.lastMonthly) }}<small>/mo</small></span></div>
+          <div><span class="it-k">Total over {{ sch.rows.length }} yrs</span><span class="it-v">{{ inr(sch.grand) }}</span></div>
+        </div>
+        <div class="isched-head"><span>Year</span><span>Income split by asset</span><span>Per yr · per mo</span></div>
+        <div class="isched-list">
+          @for (r of sch.rows; track r.calYear) {
+            <div class="isched-year" [class.open]="expandedYear() === r.calYear">
+              <button class="isy-row" (click)="toggleYear(r.calYear)">
+                <span class="isy-chev">{{ expandedYear() === r.calYear ? '▾' : '▸' }}</span>
+                <span class="isy-year">{{ r.calYear }}</span>
+                <span class="isy-bar">@for (p of r.per; track p.asset_class) { <span [style.width.%]="p.widthPct" [style.background-color]="p.color"></span> }</span>
+                <span class="isy-total">{{ inr(r.total) }}<small>{{ inr(r.monthly) }}/mo</small></span>
+              </button>
+              @if (expandedYear() === r.calYear) {
+                <div class="isy-months">
+                  <div class="im-note">≈ <b>{{ inr(r.monthly) }}</b> every month in {{ r.calYear }}, from:</div>
+                  @for (p of r.per; track p.asset_class) {
+                    <div class="im-row">
+                      <span class="im-dot" [style.background-color]="p.color"></span>
+                      <span class="im-name">{{ p.label }} <em>{{ p.growth > 0.0005 ? '↗ +' + (p.growth * 100 | number:'1.0-1') + '%/yr' : 'fixed' }}</em></span>
+                      <span class="im-amt"><b>{{ inr(p.monthly) }}</b>/mo<small>{{ inr(p.annual) }}/yr</small></span>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ===== Interactive simulator modal ===== -->
+  @if (showPlan() && simResult(); as s) {
+    <div class="modal-back" (click)="$event.target === $event.currentTarget && showPlan.set(false)">
+      <div class="modal sim-modal">
+        <div class="modal-head">
+          <div><h3>🎯 Simulate your plan</h3><span class="pm-sub">Set your goal, tick what to sell &amp; where to reinvest — see your portfolio change live</span></div>
+          <div class="mh-actions">
+            @if (incomeSchedule()) {
+              <button class="gear-btn" (click)="showIncome.set(true)" title="Year-by-year income schedule" aria-label="Income schedule">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </button>
+            }
+            <button class="gear-btn" (click)="openSettings()" title="Set each asset's growth & income yield" aria-label="Settings">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+            <button class="x" (click)="showPlan.set(false)">✕</button>
+          </div>
+        </div>
+
+        <!-- goal sliders -->
+        <div class="sliders">
+          <div class="sld">
+            <div class="sld-top"><span>Target corpus</span><b>{{ goalCr() }} Cr</b></div>
+            <input type="range" min="5" max="500" step="5" [ngModel]="goalCr()" (ngModelChange)="goalCr.set(+$event)">
+          </div>
+          <div class="sld">
+            <div class="sld-top"><span>Within</span><b>{{ targetYears() }} yrs</b></div>
+            <input type="range" min="3" max="40" step="1" [ngModel]="targetYears()" (ngModelChange)="targetYears.set(+$event)">
+          </div>
+          <div class="sld">
+            <div class="sld-top"><span>Monthly income</span><b>{{ inr(reqMonthly()) }}</b></div>
+            <input type="range" min="0" max="5000000" step="50000" [ngModel]="reqMonthly()" (ngModelChange)="reqMonthly.set(+$event)">
+          </div>
+          <div class="sld">
+            <div class="sld-top"><span>Income grows /yr <small>(inflation)</small></span><b>{{ incomeGrows() ? '+' + inflationPct() + '%' : 'off' }}</b></div>
+            <div class="sld-infl">
+              <label class="infl-sw"><input type="checkbox" [ngModel]="incomeGrows()" (ngModelChange)="incomeGrows.set($event)"><span class="sw"></span></label>
+              <input type="range" min="0" max="15" step="0.5" [ngModel]="inflationPct()" (ngModelChange)="inflationPct.set(+$event)" [disabled]="!incomeGrows()">
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== RESULT (hero) — sits above the toggles, updates live ===== -->
+        <div class="sim-top">
+          <div class="sim-hero">
+            <div class="sh-metric"><span class="shm-k">Net worth in {{ s.years }} yrs</span><span class="shm-v">{{ inr(s.NWnow) }} <i>→</i> <b [class.pos]="s.projectedNW >= s.target" [class.neg]="s.projectedNW < s.target">{{ inr(s.projectedNW) }}</b></span><span class="shm-sub">goal {{ inr(s.target) }}</span></div>
+            <div class="sh-metric"><span class="shm-k">Blended CAGR</span><span class="shm-v">{{ pct(s.cNow) }} <i>→</i> <b [class.pos]="s.cAfter >= s.cNow" [class.neg]="s.cAfter < s.cNow">{{ pct(s.cAfter) }}</b></span></div>
+            <div class="sh-metric"><span class="shm-k">Monthly income</span><span class="shm-v">{{ inr(s.incNow) }} <i>→</i> <b [class.pos]="s.incAfter >= s.incNow" [class.neg]="s.incAfter < s.incNow">{{ inr(s.incAfter) }}</b></span></div>
+            <div class="sh-metric"><span class="shm-k">Reach {{ inr(s.target) }} in</span><span class="shm-v"><b [class.pos]="s.reachOk" [class.neg]="!s.reachOk">{{ s.yearsAfter != null ? (s.yearsAfter | number:'1.0-0') + ' yrs' : '—' }}</b><small> / {{ s.years }} yr goal</small></span></div>
+          </div>
+
+          <div class="sim-top-row">
+            <div class="sim-why">
+              <div class="why-row"><span class="why-i">①</span><span><b>Sell {{ inr(s.freed) }}</b> from {{ s.soldCount }} asset{{ s.soldCount === 1 ? '' : 's' }} growing at only <b>{{ pct(s.soldCagr) }}/yr</b> — they drag your average down.</span></div>
+              <div class="why-row"><span class="why-i">②</span><span><b>Reinvest</b> it into faster compounders &amp; income assets — lifting CAGR <b>{{ pct(s.cNow) }} → {{ pct(s.cAfter) }}</b> and income to <b>{{ inr(s.incAfter) }}/mo</b>.</span></div>
+              <div class="why-row" [class.ok]="s.reachOk" [class.warn]="!s.reachOk"><span class="why-i">③</span><span>
+                @if (s.reachOk) { ✓ Reaches <b>{{ inr(s.target) }}</b> in <b>{{ s.yearsAfter != null ? (s.yearsAfter | number:'1.0-0') : '—' }} yrs</b> — within your {{ s.years }}-yr goal. }
+                @else { Reaches {{ inr(s.target) }} in <b>{{ s.yearsAfter != null ? (s.yearsAfter | number:'1.0-0') : '—' }} yrs</b>, short of {{ s.years }} — sell more laggards or reinvest into higher-growth classes. }
+              </span></div>
+              @if (s.inflation > 0) {
+                <div class="why-row" [class.warn]="s.depletedYear != null" [class.surplus]="s.depletedYear == null"><span class="why-i">{{ s.depletedYear != null ? '⚠' : '📈' }}</span><span>
+                  Withdrawing <b>{{ inr(s.reqMonthly) }}/mo</b> rising <b>+{{ (s.inflation * 100) | number:'1.0-1' }}%/yr</b> → <b>{{ inr(s.withdrawAtHorizon) }}/mo</b> by year {{ s.years }}.
+                  @if (s.depletedYear != null) {  At that pace the corpus <b>runs dry in year {{ s.depletedYear }}</b> — sell more into growth, raise CAGR, or lower the withdrawal. }
+                  @else {  The projection above already absorbs these rising withdrawals. }
+                </span></div>
+              } @else if (s.incomeSurplus > 5000) {
+                <div class="why-row surplus"><span class="why-i">💡</span><span>You'll get <b>{{ inr(s.incAfter) }}/mo</b> — <b>{{ inr(s.incomeSurplus) }}/mo more</b> than you need. Spend the {{ inr(s.reqMonthly) }} and <b>reinvest the surplus {{ inr(s.incomeSurplus) }}/mo</b> ({{ inr(s.incomeSurplus * 12) }}/yr) into growth to hit the goal sooner.</span></div>
+              } @else if (s.incomeSurplus < -5000) {
+                <div class="why-row warn"><span class="why-i">⚠</span><span>Income is <b>{{ inr(-s.incomeSurplus) }}/mo short</b> of your {{ inr(s.reqMonthly) }} target — tick an income asset (e.g. {{ buyOptions()[0].label }}) or sell more into it.</span></div>
+              }
+            </div>
+            <div class="sim-alloc">
+              <div class="sa-head">New asset mix</div>
+              <div class="sa-chart">
+                <svg viewBox="0 0 120 120" class="donut">
+                  <circle cx="60" cy="60" [attr.r]="donutR" fill="none" stroke="#eef1f8" stroke-width="15"/>
+                  @for (seg of s.pie; track seg.asset_class) {
+                    <circle cx="60" cy="60" [attr.r]="donutR" fill="none" [attr.stroke]="seg.color" stroke-width="15"
+                            [attr.stroke-dasharray]="seg.dash" [attr.stroke-dashoffset]="seg.offset" transform="rotate(-90 60 60)"/>
+                  }
+                </svg>
+                <div class="sa-legend">
+                  @for (r of s.allocRows; track r.asset_class) {
+                    <div class="sal-row">
+                      <span class="sal-dot" [style.background-color]="r.color"></span>
+                      <span class="sal-name">{{ r.label }}</span>
+                      <span class="sal-pct">{{ (r.pct * 100) | number:'1.0-0' }}%</span>
+                      <span class="sal-delta" [class.pos]="r.delta > 1000" [class.neg]="r.delta < -1000">{{ r.delta > 1000 ? '▲ ' + inr(r.delta) : r.delta < -1000 ? '▼ ' + inr(-r.delta) : '—' }}</span>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== CONTROLS (toggles) — drive the result above ===== -->
+        <div class="sim-controls">
+          <div class="sim-step">
+            <div class="step-head"><span class="step-n">1</span><span class="step-t">Sell to free capital</span></div>
+            <div class="step-kpis">
+              <div class="rk sell"><span class="rk-k">💰 Freed</span><span class="rk-v">{{ inr(s.freed) }}</span><span class="rk-sub">{{ s.soldCount }} asset{{ s.soldCount === 1 ? '' : 's' }}</span></div>
+              <div class="rk slow"><span class="rk-k">🐌 They grow at</span><span class="rk-v">{{ pct(s.soldCagr) }}</span><span class="rk-sub">/yr — your laggards</span></div>
+            </div>
+            <div class="simc-list">
+              @for (p of sellOptions(); track p.i) {
+                <button class="sim-row" [class.on]="isSimSell(p.i)" (click)="toggleSimSell(p.i)">
+                  <span class="ck">{{ isSimSell(p.i) ? '✓' : '' }}</span>
+                  <span class="sim-dot" [style.background-color]="color(p.asset_class)"></span>
+                  <span class="sim-info"><b>{{ p.name }}</b><small>{{ p.class_label }} · grows {{ pct(p.futCagr) }}/yr</small></span>
+                  <span class="sim-amt" [class.dim]="!isSimSell(p.i)">+{{ inr(p.realisable) }}</span>
+                </button>
+              }
+            </div>
+          </div>
+
+          <div class="sim-step">
+            <div class="step-head"><span class="step-n">2</span><span class="step-t">Reinvest the {{ inr(s.freed) }}</span></div>
+            <div class="step-kpis">
+              <div class="rk growth"><span class="rk-k">📈 New CAGR</span><span class="rk-v">{{ pct(s.cAfter) }}</span><span class="rk-sub">was {{ pct(s.cNow) }}</span></div>
+              <div class="rk income"><span class="rk-k">💵 Income added</span><span class="rk-v">+{{ inr(s.reinvestInc) }}</span><span class="rk-sub">/mo from reinvest</span></div>
+            </div>
+            <div class="simc-list">
+              @for (b of buyOptions(); track b.asset_class) {
+                <button class="sim-row" [class.on]="isSimBuy(b.asset_class)" (click)="toggleSimBuy(b.asset_class)">
+                  <span class="ck">{{ isSimBuy(b.asset_class) ? '✓' : '' }}</span>
+                  <span class="sim-dot" [style.background-color]="color(b.asset_class)"></span>
+                  <span class="sim-info"><b>{{ b.label }}</b>
+                    <small>@if (b.cagr != null && b.cagr > 0.001) { grows {{ pct(b.cagr) }}/yr }@if (b.cagr != null && b.cagr > 0.001 && b.yield > 0.001) {  +  }@if (b.yield > 0.001) { {{ (b.yield * 100) | number:'1.1-1' }}% income }@if ((b.cagr == null || b.cagr <= 0.001) && b.yield <= 0.001) { no growth/income set }</small></span>
+                  @if (isSimBuy(b.asset_class)) {
+                    <span class="sim-gen">+{{ inr(s.perBuy) }}@if (b.yield > 0.001) { <small>→ {{ inr(s.perBuy * b.yield / 12) }}/mo</small> }</span>
+                  }
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ===== Person detail modal ===== -->
+  @if (personDetail(); as pd) {
+    <div class="modal-back" (click)="$event.target === $event.currentTarget && selectedPerson.set(null)">
+      <div class="modal person-modal">
+        <div class="modal-head">
+          <div class="pm-id">
+            <span class="pm-photo" role="button" tabindex="0" [title]="'Set ' + pd.person?.person + '’s photo'"
+                  (click)="pmPhoto.click()" (keydown.enter)="pmPhoto.click()">
+              <span class="pm-photo-inner">
+                @if (pd.person?.photo && !photoUploading()) {
+                  <img [src]="pd.person?.photo" [alt]="pd.person?.person || ''">
+                } @else {
+                  <span class="pm-photo-ph" [style.background-color]="pd.person?.color || '#5b8def'">
+                    @if (photoUploading()) { … } @else { {{ pd.person?.person?.charAt(0) }} }
+                  </span>
+                }
+              </span>
+              <span class="pm-photo-edit" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.2"/></svg>
+              </span>
+              <input #pmPhoto type="file" accept="image/*" hidden (change)="onPhotoPicked($event, pd.person?.person || '')">
+            </span>
+            <div class="pm-id-txt">
+              <h3>{{ pd.person?.person }}</h3>
+              @if (pd.person) { <span class="pm-sub">{{ pd.person.count }} assets · {{ pd.person.class_count }} classes · {{ (pd.person.pct * 100) | number:'1.0-0' }}% of net worth</span> }
+              @if (pd.person?.photo) {
+                <div class="pm-photo-actions">
+                  <button type="button" class="pm-photo-rm" (click)="removePhoto(pd.person?.person || '')">Remove photo</button>
+                </div>
+              }
+            </div>
+          </div>
+          <button class="x" (click)="selectedPerson.set(null)">✕</button>
+        </div>
+        @if (pd.person) {
+          <div class="pm-kpis">
+            <div class="pmk"><span>Purchase</span><b>{{ inr(pd.invested) }}</b></div>
+            <div class="pmk"><span>Value</span><b>{{ inr(pd.person.value) }}</b></div>
+            <div class="pmk"><span>Income</span><b>{{ inr(pd.person.monthly_income) }}<small>/mo</small></b></div>
+          </div>
+        }
+        <div class="pm-assets">
+          <!-- allocation split — a value-ordered stacked bar of the person's classes -->
+          @if (pmAlloc().length) {
+            <div class="pm-alloc">
+              <div class="pm-alloc-bar">
+                @for (g of pmAlloc(); track g.asset_class) {
+                  <span [style.width.%]="g.pct * 100" [style.background]="g.color"
+                        [title]="g.label + ' · ' + inr(g.value) + ' · ' + ((g.pct * 100) | number:'1.0-0') + '%'"></span>
+                }
+              </div>
+              <div class="pm-alloc-legend">
+                @for (g of pmAlloc(); track g.asset_class) {
+                  <span class="pm-lg"><i [style.background]="g.color"></i>{{ g.label }}<b>{{ (g.pct * 100) | number:'1.0-0' }}%</b></span>
+                }
+              </div>
+            </div>
+          }
+          <div class="pm-sec-head plain"><span>Split by asset class</span></div>
+
+          <!-- search + filter icon + reset -->
+          <div class="pm-bar">
+            <div class="pm-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" placeholder="Search…" [ngModel]="pmSearch()" (ngModelChange)="pmSearch.set($event)">
+              @if (pmSearch()) { <button class="clr" (click)="pmSearch.set('')">✕</button> }
+            </div>
+            @if (pmClassOptions().length > 1) {
+              <button #pmFbtn class="pm-fbtn" [class.on]="pmShowFilter() || pmFilterCount() > 0" (click)="openPmFilter(pmFbtn)" title="Filter">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+                Filter @if (pmFilterCount() > 0) { <span class="pm-fbadge">{{ pmFilterCount() }}</span> }
+              </button>
+            }
+            <button class="pm-rbtn" (click)="pmReset()" title="Reset filters & sort to default">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              Reset
+            </button>
+          </div>
+
+          <!-- filtered-summary hero (only while filtering/searching) -->
+          @if (pmActive()) {
+            <div class="pm-hero">
+              <div class="pmh"><span>Assets</span><b>{{ pmStats().count }}</b></div>
+              <div class="pmh"><span>Purchase</span><b>{{ inr(pmStats().invested) }}</b></div>
+              <div class="pmh"><span>Value</span><b>{{ inr(pmStats().value) }}</b></div>
+              <div class="pmh"><span>Income</span><b>{{ inr(pmStats().income) }}<small>/mo</small></b></div>
+            </div>
+          }
+
+          <!-- split by asset class — tap a class to reveal its holdings; sort any column -->
+          <div class="pm-ctbl-wrap">
+            <table class="pm-ctable">
+              <colgroup><col class="c-name"><col class="c-num"><col class="c-num"><col class="c-num"></colgroup>
+              <thead><tr>
+                <th class="srt" (click)="pmToggleSort('name')">Class / asset{{ pmArrow('name') }}</th>
+                <th class="num srt" (click)="pmToggleSort('purchase')">Purchase{{ pmArrow('purchase') }}</th>
+                <th class="num srt" (click)="pmToggleSort('value')">Value{{ pmArrow('value') }}</th>
+                <th class="num srt" (click)="pmToggleSort('income')">Income/mo{{ pmArrow('income') }}</th>
+              </tr></thead>
+              @for (g of pmByClass(); track g.asset_class) {
+                <tbody class="pm-cgroup" [class.open]="isPmOpen(g.asset_class)">
+                  <tr class="pm-crow" (click)="togglePmClass(g.asset_class)" [title]="(isPmOpen(g.asset_class) ? 'Hide' : 'Show') + ' ' + g.label + ' holdings'">
+                    <td class="pm-cname">
+                      <span class="pm-chev">{{ isPmOpen(g.asset_class) ? '▾' : '▸' }}</span>
+                      <span class="pm-cdot2" [style.background-color]="g.color"></span>
+                      <b>{{ g.label }}</b><small>{{ g.count }} asset{{ g.count === 1 ? '' : 's' }}</small>
+                    </td>
+                    <td class="num">@if (g.invested != null) { {{ inr(g.invested) }} } @else { <span class="pt-dash">—</span> }</td>
+                    <td class="num pt-cval">@if (g.isSalary) { <span class="pt-dash">—</span> } @else { <b>{{ inr(g.value) }}</b> }</td>
+                    <td class="num">@if (g.income) { <span class="pos">{{ inr(g.income) }}</span> } @else { <span class="pt-dash">—</span> }</td>
+                  </tr>
+                  @if (isPmOpen(g.asset_class)) {
+                    @for (a of g.assets; track $index) {
+                      <tr class="pm-arow">
+                        <td class="pt-name" [title]="a.name"><span class="pa-dot" [style.background-color]="g.color"></span>{{ a.name }}@if (a.sub) { <small> · {{ a.sub }}</small> }</td>
+                        <td class="num">@if (a.invested != null) { {{ inr(a.invested) }} } @else { <span class="pt-dash">—</span> }</td>
+                        <td class="num pt-val">@if (a.isSalary) { <span class="pt-dash">—</span> } @else { {{ inr(a.value) }} }</td>
+                        <td class="num">@if (a.monthly_income) { {{ inr(a.monthly_income) }} } @else { <span class="pt-dash">—</span> }</td>
+                      </tr>
+                    }
+                  }
+                </tbody>
+              }
+              <tfoot><tr>
+                <td class="pm-cname"><b>Total</b><small>{{ pmStats().count }} assets · {{ pmByClass().length }} classes</small></td>
+                <td class="num">{{ inr(pmStats().invested) }}</td>
+                <td class="num pt-cval"><b>{{ inr(pmStats().value) }}</b></td>
+                <td class="num pos">{{ inr(pmStats().income) }}</td>
+              </tr></tfoot>
+            </table>
+            @if (!pmByClass().length) {
+              <div class="pm-empty">No assets match — <button class="pm-clear-inline" (click)="pmClearFilters()">clear filters</button></div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+}
+
+<!-- person-modal filter popover — rendered at the component ROOT (outside every
+     modal/backdrop) so its z-index competes at the true page root and no app
+     chrome or stacking context can trap it or steal its clicks. Fixed-positioned
+     from the funnel button's rect. -->
+@if (pmShowFilter()) {
+  <div class="pm-fp" [style.top.px]="pmFilterPos()?.top" [style.right.px]="pmFilterPos()?.right">
+    <div class="pm-fp-cols">
+      <div class="pm-fp-cats">
+        <button [class.on]="pmFilterCat() === 'class'" (click)="pmFilterCat.set('class')"><span>Asset class</span>@if (pmClasses().size) { <span class="pm-fp-dot"></span> }</button>
+        <button [class.on]="pmFilterCat() === 'type'" (click)="pmFilterCat.set('type')"><span>Type</span>@if (pmIncomeOnly()) { <span class="pm-fp-dot"></span> }</button>
+      </div>
+      <div class="pm-fp-opts">
+        @switch (pmFilterCat()) {
+          @case ('class') {
+            @for (c of pmClassOptions(); track c.value) {
+              <label class="pm-fp-chk"><input type="checkbox" [checked]="pmClasses().has(c.value)" (change)="pmToggleClass(c.value)"><span class="pm-cdot" [style.background-color]="c.value === '__salary' ? '#16a085' : color(c.value)"></span><span>{{ c.label }}</span></label>
+            }
+          }
+          @case ('type') {
+            <label class="pm-fp-chk"><input type="checkbox" [checked]="pmIncomeOnly()" (change)="pmIncomeOnly.set(!pmIncomeOnly())"><span>Income-generating only</span></label>
+          }
+        }
+      </div>
+    </div>
+    <div class="pm-fp-foot">
+      <button class="pm-fp-clear" [disabled]="!pmActive()" (click)="pmClearFilters()">Clear all</button>
+      <button class="pm-fp-done" (click)="pmShowFilter.set(false)">Done</button>
+    </div>
+  </div>
+}

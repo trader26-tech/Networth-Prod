@@ -1,0 +1,814 @@
+<div class="land-head">
+  <div>
+    <h1>Bonds</h1>
+    <p class="sub">Every bond across your family's broker accounts — your <b>monthly income</b>, each bond's <b>YTM</b>, the <b>capital you've recovered</b>, and exactly <b>which account</b> each payment lands in. Held-to-maturity basis.</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" (click)="openAdd()">＋ Add bond</button>
+  </div>
+</div>
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head"><span class="ni">⚙︎</span>
+      <div><strong>One-time setup — create / update the Supabase table</strong>
+        <p>Paste the SQL from <b>SUPABASE.md → "Bonds table"</b> into <b>Supabase → SQL Editor → Run</b> (including the <b>ALTER TABLE</b> block for the new schedule columns), then hit retry.</p></div>
+    </div>
+    <div class="notice-actions"><button class="btn primary" (click)="load()">I've run it — retry</button></div>
+  </div>
+}
+
+@if (error()) { <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div> }
+@if (loading()) { <div class="state">Loading…</div> }
+
+@if (!loading() && !needsMigration() && !hasData()) {
+  <div class="upload-empty">
+    <div class="ue-card">
+      <div class="ue-badge">📜</div>
+      <h2>Track every bond's income, yield & capital recovery</h2>
+      <p>Add a bond with its <b>YTM</b> and first-payment date — we generate the repayment schedule, then you adjust each period's interest & principal to match reality. We compute the effective coupon, YTM, monthly income and how much capital you've recovered.</p>
+      <button class="btn primary big-btn" (click)="openAdd()">＋ Add your first bond</button>
+    </div>
+  </div>
+}
+
+@if (!loading() && hasData() && summary(); as s) {
+  <!-- Hero -->
+  <div class="hero bond-hero">
+    <div class="hero-main">
+      <div class="hero-top-row">
+        <span class="hero-label">Monthly income · {{ s.account_count }} account{{ s.account_count === 1 ? '' : 's' }} · {{ s.count }} bond{{ s.count === 1 ? '' : 's' }}@if (tds()) { · <b class="net-flag">net of TDS</b> }</span>
+      </div>
+      <span class="hero-value">{{ inr(incomeMonthly()) }} <small>/mo</small></span>
+      <span class="hero-exact">{{ inr(incomeAnnual()) }} a year · {{ inrFull(incomeMonthly()) }}/mo</span>
+
+      <div class="hero-tags">
+        <div class="tag ytm has-tip" data-tip="Portfolio yield to maturity — money-weighted (XIRR) over every bond's real (edited) coupon + principal schedule." [class.pos]="(s.portfolio_ytm ?? 0) >= 0">
+          <span class="t-k">Portfolio YTM</span><span class="t-v">{{ pct(s.portfolio_ytm) }} <small>/yr</small></span>
+        </div>
+        <div class="tag has-tip" data-tip="Total amount invested across all bonds (at cost)."><span class="t-k">Invested</span><span class="t-v">{{ inr(s.total_invested) }}</span></div>
+        <div class="tag has-tip" data-tip="Principal already returned to you (reinvestable) out of total invested."><span class="t-k">Capital recovered</span><span class="t-v">{{ inr(s.total_capital_recovered) }} <small>/ {{ inr(s.total_invested) }}</small></span></div>
+        <div class="tag has-tip" data-tip="Invested-weighted effective-average coupon."><span class="t-k">Avg coupon</span><span class="t-v">{{ s.avg_coupon != null ? (s.avg_coupon | number:'1.2-2') + '%' : '—' }}</span></div>
+        <div class="tag has-tip" data-tip="Principal still to be returned (future redemptions)."><span class="t-k">Outstanding</span><span class="t-v">{{ inr(s.total_maturity_value) }}</span></div>
+        <div class="tag has-tip" data-tip="Invested-weighted average years left to maturity."><span class="t-k">Avg years left</span><span class="t-v">{{ spanText(s.avg_years_to_maturity) }}</span></div>
+        @if (s.taxfree_invested > 0) {
+          <div class="tag has-tip" data-tip="Share of capital in tax-free bonds."><span class="t-k">Tax-free</span><span class="t-v">{{ s.total_invested > 0 ? ((s.taxfree_invested / s.total_invested * 100) | number:'1.0-0') + '%' : '—' }}</span></div>
+        }
+      </div>
+    </div>
+
+    <!-- Combined credit-rating gauge (zoned semicircle + needle) -->
+    @if (ratingGauge(); as g) {
+      <div class="hero-side">
+        <div class="gauge-wrap has-tip" [attr.data-tip]="'Invested-weighted combined credit rating. ' + ((g.pct * 100) | number:'1.0-0') + '% of your capital is rated.'">
+          <svg viewBox="0 0 200 120" class="gauge">
+            <!-- track -->
+            <path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="#eef1f8" stroke-width="15" stroke-linecap="round"/>
+            <!-- colored risk zones -->
+            @for (z of g.zones; track $index) {
+              <path d="M20 100 A80 80 0 0 1 180 100" fill="none" [attr.stroke]="z.color" stroke-width="15" stroke-linecap="butt"
+                    [attr.stroke-dasharray]="z.dash" [attr.stroke-dashoffset]="z.offset"/>
+            }
+            <!-- needle -->
+            <line [attr.x1]="g.cx" [attr.y1]="g.cy" [attr.x2]="g.needle.x" [attr.y2]="g.needle.y" stroke="#1a1c2e" stroke-width="3" stroke-linecap="round"/>
+            <circle [attr.cx]="g.cx" [attr.cy]="g.cy" r="5.5" fill="#1a1c2e"/>
+            <!-- end ticks -->
+            <text x="16" y="116" class="g-end">low</text>
+            <text x="184" y="116" class="g-end" text-anchor="end">AAA</text>
+          </svg>
+          <div class="gauge-read">
+            <span class="gr-label" [style.color]="g.color">{{ g.label }}</span>
+            <span class="gr-score">{{ g.score | number:'1.1-1' }} <small>/ {{ g.max }}</small></span>
+          </div>
+          <div class="gauge-cap">Combined credit rating · {{ (g.pct * 100) | number:'1.0-0' }}% rated</div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Controls: view toggle + TDS toggle -->
+  <div class="controls">
+    <div class="seg">
+      <button [class.on]="view() === 'repayments'" (click)="view.set('repayments')">Repayments <small>timeline</small></button>
+      <button [class.on]="view() === 'investments'" (click)="view.set('investments')">Investments <small>by account</small></button>
+    </div>
+    <label class="tds-toggle has-tip" data-tip="Show payouts net of 10% TDS on interest. Tax-free bonds are exempt; principal is never taxed.">
+      <input type="checkbox" [ngModel]="tds()" (ngModelChange)="tds.set($event)">
+      <span class="track"><span class="knob"></span></span>
+      <span class="tds-label">TDS 10%</span>
+    </label>
+  </div>
+
+  <!-- Shared filter bar -->
+  <div class="filters">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" placeholder="Search issuer, member or broker…" [ngModel]="search()" (ngModelChange)="search.set($event)">
+      @if (search()) { <button class="clr" (click)="search.set('')" title="Clear">✕</button> }
+    </div>
+    <label class="fsel"><span>Member</span>
+      <select [ngModel]="ownerFilter()" (ngModelChange)="ownerFilter.set($event)">
+        <option value="">All members</option>
+        @for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }
+      </select></label>
+    <label class="fsel"><span>Broker</span>
+      <select [ngModel]="brokerFilter()" (ngModelChange)="brokerFilter.set($event)">
+        <option value="">All brokers</option>
+        @for (b of brokers(); track b) { <option [value]="b">{{ b }}</option> }
+      </select></label>
+    @if (hasFilters()) { <button class="clear-all" (click)="clearFilters()">Clear filters</button> }
+  </div>
+
+  <!-- ══ REPAYMENTS VIEW — fully-expanded schedule ══ -->
+  @if (view() === 'repayments') {
+    <!-- Repayment timeline: monthly bars + a movable "inspect day" marker that
+         drives the detail panel (collected that month, into which account). -->
+    @if (repayChart(); as rc) {
+      <div class="rep-chart-card">
+        <div class="rcc-head">
+          <div>
+            <h2>Repayment timeline</h2>
+            <span class="rcc-sub">Each bar is a month's payout. <b>Click a bar</b> to see that month's breakdown below.</span>
+          </div>
+          <div class="rcc-ctrls">
+            <div class="seg small">
+              <button [class.on]="series() === 'both'" (click)="series.set('both')">Both</button>
+              <button [class.on]="series() === 'interest'" (click)="series.set('interest')">Interest</button>
+              <button [class.on]="series() === 'principal'" (click)="series.set('principal')">Principal</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="rep-chart">
+          @for (m of rc.months; track m.month) {
+            <div class="rc-col" [class.sel]="m.month === activeMonth()" (click)="selectBar(m.month)" [title]="m.label + ' — click for details below'">
+              <div class="rc-bar">
+                @if (rc.showInt) { <div class="rc-seg int" [style.height.%]="m.iH"></div> }
+                @if (rc.showPri) { <div class="rc-seg pri" [style.height.%]="m.pH"></div> }
+              </div>
+            </div>
+          }
+        </div>
+        <div class="rc-axis">
+          @for (y of rc.years; track y.year) { <span class="rc-yr" [style.flex]="y.count">{{ y.year }}</span> }
+        </div>
+
+        <!-- Selected-month breakdown — calendar (left) · share + companies (right) -->
+        @if (monthDetail(); as md) {
+          <div class="mi-panel">
+            <div class="mi-head">
+              <button class="mm-nav" (click)="stepActiveMonth(-1)" [disabled]="!canStepActive(-1)" title="Previous month" aria-label="Previous month">‹</button>
+              <div class="mi-when">
+                <span class="mi-title">{{ md.label }}</span>
+                <span class="mi-sub">{{ md.payCount }} payment{{ md.payCount === 1 ? '' : 's' }} · {{ md.bonds.length }} bond{{ md.bonds.length === 1 ? '' : 's' }}</span>
+              </div>
+              @if (pendingTotal() > 0) {
+                <span class="bs-pending-chip has-tip" data-tip="Payouts already due but not yet marked received. Tap a calendar day to update.">◷ {{ inr(pendingTotal()) }} to receive</span>
+              }
+              <button class="mm-nav" (click)="stepActiveMonth(1)" [disabled]="!canStepActive(1)" title="Next month" aria-label="Next month">›</button>
+            </div>
+
+            <div class="mi-grid">
+              <!-- LEFT: money-by-day calendar — status-graded, tap a day to mark received -->
+              <div class="mi-col">
+                <div class="mi-col-h with-key">
+                  <span>Money by day <small class="mm-caltip">tap a day to mark received</small></span>
+                </div>
+                <div class="mm-cal-dow">@for (d of dow; track $index) { <span>{{ d }}</span> }</div>
+                <div class="mm-cal">
+                  @for (c of md.cells; track $index) {
+                    @if (c) {
+                      @if (c.count > 0) {
+                        <button type="button" class="mm-day has has-tip" [ngClass]="c.tone" [class.today]="c.isToday"
+                                (click)="openDay(md.month, c.day)"
+                                [attr.data-tip]="statusTip(c) + ' — ' + dayTip(c)">
+                          <span class="mm-dnum">{{ c.day }}</span>
+                          <span class="mm-damt">{{ inrShort(tds() ? c.net : c.total) }}</span>
+                        </button>
+                      } @else {
+                        <div class="mm-day" [class.today]="c.isToday"><span class="mm-dnum">{{ c.day }}</span></div>
+                      }
+                    } @else { <div class="mm-day empty"></div> }
+                  }
+                </div>
+                <div class="mm-cal-legend">
+                  <span class="ml bs-l3"></span><span>Received</span>
+                  <span class="ml-sep"></span>
+                  <span class="ml yl3"></span><span>Pending</span>
+                  <span class="ml-sep"></span>
+                  <span class="ml rd3"></span><span>Not received</span>
+                  <span class="ml-sep"></span>
+                  <span class="ml mx3"></span><span>Partly</span>
+                </div>
+              </div>
+
+              <!-- RIGHT: who earned this month (cards) · share of month.
+                   Fixed to the calendar's height; scrolls if content overflows. -->
+              <div class="mi-col mi-right">
+               <div class="mi-right-inner">
+                <div class="mi-col-h">Earned this month</div>
+                <div class="mi-people">
+                  @for (p of md.people; track p.owner) {
+                    <button class="mi-person" [class.open]="expandedPerson() === p.owner" (click)="togglePerson(p.owner)">
+                      <div class="mi-person-row">
+                        <span class="mi-person-name">{{ p.owner }}</span>
+                        <span class="mi-person-amt">{{ inr(p.val) }}</span>
+                      </div>
+                      <div class="mi-person-split">
+                        @if (md.series === 'both') {
+                          <span class="sp-i">Interest {{ inr(tds() ? p.net - p.principal : p.interest) }}</span>
+                          @if (p.principal > 0) { <span class="sp-p">Principal {{ inr(p.principal) }}</span> }
+                        } @else if (md.series === 'interest') {
+                          <span class="sp-i">interest</span>
+                        } @else {
+                          <span class="sp-p">principal returned</span>
+                        }
+                      </div>
+                      <div class="mi-person-meta">
+                        <span>{{ p.brokers.length }} account{{ p.brokers.length === 1 ? '' : 's' }}</span>
+                        <span class="mi-person-chev">{{ expandedPerson() === p.owner ? '▾' : '▸' }}</span>
+                      </div>
+
+                      @if (p.intDue > 0) {
+                        <div class="mi-collect" (click)="$event.stopPropagation()">
+                          <div class="mi-collect-bar" [class.full]="p.intPct >= 0.999">
+                            <span [style.width.%]="(p.intPct || 0) * 100"></span>
+                          </div>
+                          <div class="mi-collect-row">
+                            <span class="mi-collect-t">
+                              Received <b>{{ inr(p.intRecv) }}</b> of {{ inr(p.intDue) }}
+                              @if (reconciledTill(p.owner); as till) { <span class="mi-till">· till {{ fmtDate(till) }}</span> }
+                            </span>
+                            <span class="mi-update" role="button" tabindex="0" (click)="openReconcile()" (keyup.enter)="openReconcile()" data-tip="Upload your bank statement — we'll match credits and mark interest received">
+                              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>
+                              Upload bank statement
+                            </span>
+                          </div>
+                        </div>
+                      }
+
+                      @if (expandedPerson() === p.owner) {
+                        <div class="mi-person-brokers" (click)="$event.stopPropagation()">
+                          @for (b of p.brokers; track b.broker) {
+                            <div class="mi-broker">
+                              <div class="mi-broker-l">
+                                <span class="mi-broker-name">{{ b.broker || '—' }}</span>
+                                @if (md.series === 'both') {
+                                  <div class="mi-broker-split">interest {{ inr(tds() ? b.net - b.principal : b.interest) }}@if (b.principal > 0) { · <span class="sp-p">principal {{ inr(b.principal) }}</span> }</div>
+                                }
+                              </div>
+                              <span class="mi-broker-amt">{{ inr(b.val) }}</span>
+                            </div>
+                          }
+                        </div>
+                      }
+                    </button>
+                  }
+                </div>
+
+                <div class="mi-col-h mi-share-h">Share of this month</div>
+                <div class="mm-bar">
+                  @for (b of md.bonds; track b.issuer; let i = $index) {
+                    <span class="mm-seg has-tip" [style.width.%]="b.pct * 100" [style.background]="segColor(i)"
+                          [attr.data-tip]="b.issuer + ' · ' + inr(b.val) + ' · ' + ((b.pct * 100) | number:'1.0-0') + '%'"></span>
+                  }
+                </div>
+                <div class="mm-legend">
+                  @for (b of md.bonds; track b.issuer; let i = $index) {
+                    <div class="mm-leg">
+                      <span class="mm-dot" [style.background]="segColor(i)"></span>
+                      <span class="mm-leg-iss" [title]="b.issuer">{{ b.issuer }}</span>
+                      @if (b.principal > 0) { <span class="mm-leg-note">incl. principal {{ inr(b.principal) }}</span> }
+                      <span class="mm-leg-val">{{ inr(b.val) }} <small>{{ (b.pct * 100) | number:'1.0-0' }}%</small></span>
+                    </div>
+                  }
+                </div>
+               </div>
+              </div>
+            </div>
+          </div>
+        }
+      </div>
+    }
+
+    @if (monthDetail(); as md) {
+      <div class="sched-head">
+        <h2>Payment schedule@if (md.series !== 'both') { <small class="sched-series">· {{ md.series }} only</small> }</h2>
+        <span class="sh-sub">{{ md.label }}: <b>{{ inr(md.seriesTotal) }}</b>@if (tds()) { <small> · net of TDS</small> }</span>
+      </div>
+      <div class="sched-flow">
+        <div class="smonth">
+          <div class="sm-head">
+            <div class="sm-when">
+              <span class="sm-mon">{{ md.label }}</span>
+              <span class="sm-cnt">{{ md.payCount }} payment{{ md.payCount === 1 ? '' : 's' }}</span>
+            </div>
+            <div class="sm-tot">
+              @if (md.series === 'both') {
+                @if (md.interest > 0) { <span class="t int"><i>Interest</i><b>{{ inr(tds() ? md.net - md.principal : md.interest) }}</b></span> }
+                @if (md.principal > 0) { <span class="t pri"><i>Principal</i><b>{{ inr(md.principal) }}</b></span> }
+                <span class="t all"><i>Total</i><b>{{ inr(tds() ? md.net : md.total) }}</b></span>
+              } @else {
+                <span class="t all"><i>{{ md.series === 'interest' ? 'Interest' : 'Principal' }}</i><b>{{ inr(md.seriesTotal) }}</b></span>
+              }
+            </div>
+          </div>
+          <div class="sm-pays">
+            @for (p of md.payments; track $index) {
+              <div class="spay">
+                <div class="sp-date"><b>{{ p.day }}</b><small>{{ monthShort(md.month).slice(0,3) }}</small></div>
+                <div class="sp-main">
+                  <b class="sp-iss" [title]="p.issuer">{{ p.issuer }}</b>
+                  <span class="sp-acct">{{ p.owner }}@if (p.broker) { · {{ p.broker }} }@if (p.tax_free) { <span class="chip tf">tax-free</span> }</span>
+                </div>
+                @if (md.series === 'both') {
+                  <div class="sp-split">
+                    <span class="sp-i" [class.dim]="p.interest <= 0"><i>interest</i><b>{{ p.interest > 0 ? inr(tds() && !p.tax_free ? p.net - p.principal : p.interest) : '—' }}</b></span>
+                    <span class="sp-p" [class.dim]="p.principal <= 0"><i>principal</i><b>{{ p.principal > 0 ? inr(p.principal) : '—' }}</b></span>
+                  </div>
+                }
+                <div class="sp-amt">{{ inr(p.val) }}</div>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    } @else {
+      <div class="state">No payments match this filter.</div>
+    }
+  }
+
+  <!-- ══ INVESTMENTS VIEW ══ -->
+  @if (view() === 'investments') {
+    <!-- ── Pending SIPs — a planned buy you'll log the real holdings of later ──── -->
+    <section class="sip-block">
+      <div class="sip-head">
+        <div class="sip-head-t">
+          <h3>Pending SIPs</h3>
+          <p>Log a SIP you've started but not fully bought yet. We'll remind you on the dashboard to fill in the real units &amp; price once it completes.</p>
+        </div>
+        <button class="sip-add" (click)="openAddSip()">+ Add SIP</button>
+      </div>
+
+      @if (pendingSips().length) {
+        <div class="sip-cards">
+          @for (s of pendingSips(); track s.id) {
+            <div class="sip-card" [class.hl]="highlightSip() === s.id">
+              <div class="sip-c-top">
+                <div class="sip-c-amt">{{ inrFull(s.total) }}</div>
+                <div class="sip-c-meta">
+                  <span class="sip-c-owner">{{ s.owner || '—' }}</span>
+                  <span class="sip-c-date" title="Expected completion">completes {{ fmtDate(s.expected_date) }}</span>
+                </div>
+              </div>
+              @if (s.note) { <div class="sip-c-note">{{ s.note }}</div> }
+              @if (s.splits.length) {
+                <div class="sip-splits">
+                  @for (sp of s.splits; track $index) {
+                    <div class="sip-split">
+                      <span class="ss-name" [title]="sp.name">{{ sp.name }}</span>
+                      <span class="ss-amt">{{ inrFull(sp.amount) }}</span>
+                      <button class="ss-log" (click)="logSplitAsBond(s, sp)" title="Add this as a real bond holding">Log as bond →</button>
+                    </div>
+                  }
+                  <div class="sip-split-sum" [class.bad]="sipSplitSum(s) !== s.total && sipSplitSum(s) > 0">
+                    <span>Split total</span><b>{{ inrFull(sipSplitSum(s)) }}<small> / {{ inrFull(s.total) }}</small></b>
+                  </div>
+                </div>
+              }
+              <div class="sip-c-actions">
+                <button class="sip-btn done" (click)="markSipLogged(s)" title="I've added the real holdings — stop reminding me">Mark logged ✓</button>
+                <button class="sip-btn" (click)="openEditSip(s)">Edit</button>
+                <button class="sip-btn del" (click)="removeSip(s)">Delete</button>
+              </div>
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="sip-empty">No pending SIPs. Started one? <button class="linkish" (click)="openAddSip()">Add it</button> so you don't forget to log the details.</div>
+      }
+
+      <!-- recently logged SIPs (collapsed reference) -->
+      @if (sips().length > pendingSips().length) {
+        <details class="sip-logged">
+          <summary>{{ sips().length - pendingSips().length }} logged SIP(s)</summary>
+          @for (s of sips(); track s.id) {
+            @if (s.status === 'logged') {
+              <div class="sip-logged-row">
+                <span>{{ inrFull(s.total) }} · {{ s.owner || '—' }} · {{ fmtDate(s.expected_date) }}</span>
+                <button class="linkish" (click)="reopenSip(s)">Reopen</button>
+              </div>
+            }
+          }
+        </details>
+      }
+    </section>
+
+    <!-- returns per person — broker accounts clubbed; click to see each account -->
+    @if (filteredPersonAccounts().length) {
+      <div class="pcards">
+        @for (p of filteredPersonAccounts(); track p.owner) {
+          <button class="pcard" [class.open]="expandedPerson() === p.owner" (click)="togglePerson(p.owner)"
+                  title="See {{ p.owner }}'s accounts">
+            <div class="pc-h">
+              <span class="pc-name">{{ p.owner }}</span>
+              <span class="pc-cnt">{{ p.accounts.length }} account{{ p.accounts.length === 1 ? '' : 's' }}</span>
+            </div>
+            <div class="pc-val">{{ inr(tds() ? p.monthly_income_net : p.monthly_income) }} <small>/mo</small></div>
+            <div class="pc-row">
+              <span class="pc-inv">Invested {{ inr(p.invested) }}</span>
+              <span class="pc-bonds">{{ p.bonds }} bond{{ p.bonds === 1 ? '' : 's' }}</span>
+            </div>
+
+            @if (expandedPerson() === p.owner) {
+              <div class="pc-accts" (click)="$event.stopPropagation()">
+                @for (a of p.accounts; track a.broker) {
+                  <div class="pc-acct">
+                    <div class="pc-acct-h">
+                      <span class="pc-acct-bk">{{ a.broker || '—' }}</span>
+                      <span class="pc-acct-cnt">{{ a.bonds }} bond{{ a.bonds === 1 ? '' : 's' }}</span>
+                    </div>
+                    <div class="pc-acct-rows">
+                      <div><span>Income</span><b>{{ inr(tds() ? a.monthly_income_net : a.monthly_income) }}<small>/mo</small></b></div>
+                      <div><span>Invested</span><b>{{ inr(a.invested) }}</b></div>
+                      <div><span>Next 12m interest</span><b>{{ inr(tds() ? a.interest_12m * 0.9 : a.interest_12m) }}</b></div>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+            <span class="pc-more">{{ expandedPerson() === p.owner ? 'Hide accounts ▴' : 'View accounts →' }}</span>
+          </button>
+        }
+      </div>
+    }
+
+    <!-- bonds table -->
+    <div class="table-wrap">
+      <table class="bond-table">
+        <thead>
+          <tr>
+            <th class="exp"></th><th>Bond</th><th class="ctr">Rating</th>
+            <th class="num">Invested</th><th class="num">Recovered</th><th class="num">Monthly</th><th class="num">YTM</th><th class="num"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (b of filteredBonds(); track b.id) {
+            <tr class="brow" [class.open]="expandedBond() === b.id" (click)="toggleBond(b.id)">
+              <td class="exp"><span class="chev">{{ expandedBond() === b.id ? '▾' : '▸' }}</span></td>
+              <td class="issuer">
+                <span class="iss-name" [title]="b.issuer">{{ b.issuer }}</span>
+                <span class="iss-sub">{{ b.owner }}{{ b.broker ? ' · ' + b.broker : '' }} · {{ b.bond_type }}</span>
+              </td>
+              <td class="ctr">@if (b.rating) { <span class="rating" [class]="ratingClass(b.rating)">{{ b.rating }}</span> } @else { <span class="dash">—</span> }</td>
+              <td class="num">{{ inr(b.invested) }}</td>
+              <td class="num recov has-tip" [attr.data-tip]="(b.capital_recovered_pct * 100 | number:'1.0-0') + '% of capital back'">{{ inr(b.capital_recovered) }}</td>
+              <td class="num inc">{{ inr(tds() ? b.monthly_income_net : b.monthly_income) }}<small>/mo</small></td>
+              <td class="num ytm" [class.pos]="(b.ytm ?? 0) >= 0">{{ pct(b.ytm) }}</td>
+              <td class="num act">
+                <button class="ic" (click)="$event.stopPropagation(); openEdit(b)" title="Edit">✎</button>
+                <button class="ic del" (click)="$event.stopPropagation(); remove(b)" title="Delete">🗑</button>
+              </td>
+            </tr>
+            @if (expandedBond() === b.id) {
+              <tr class="detail-row">
+                <td colspan="8">
+                  <div class="bd-grid">
+                    <div class="bd"><span>Type</span><b>{{ b.bond_type }}@if (b.tax_free) { <span class="chip tf">tax-free</span> }</b></div>
+                    <div class="bd"><span>Coupon (eff. avg)</span><b>{{ b.coupon_rate | number:'1.1-2' }}%</b></div>
+                    <div class="bd"><span>YTM</span><b>{{ pct(b.ytm) }}@if (b.ytm_input) { <small> (entered {{ b.ytm_input | number:'1.1-2' }}%)</small> }</b></div>
+                    <div class="bd"><span>Frequency</span><b>{{ freqLabel(b.coupon_freq) }}</b></div>
+                    <div class="bd"><span>Quantity</span><b>{{ b.quantity | number:'1.0-0' }} × {{ inrFull(b.face_value) }}</b></div>
+                    <div class="bd"><span>Buy price</span><b>{{ inrFull(b.buy_price) }}</b></div>
+                    <div class="bd"><span>Capital recovered</span><b>{{ inr(b.capital_recovered) }} · {{ b.capital_recovered_pct * 100 | number:'1.0-0' }}%</b></div>
+                    <div class="bd"><span>Outstanding</span><b>{{ inr(b.principal_outstanding) }}</b></div>
+                    <div class="bd"><span>Purchased</span><b>{{ fmtDate(b.purchase_date) }}</b></div>
+                    <div class="bd"><span>Matures</span><b>{{ fmtDate(b.maturity_date) }} · {{ spanText(b.years_to_maturity) }}</b></div>
+                    <div class="bd"><span>Next payment</span><b>@if (b.next_payment) { {{ fmtDate(b.next_payment.date) }} · {{ inr(b.next_payment.amount) }} } @else { — }</b></div>
+                    @if (b.isin) { <div class="bd"><span>ISIN</span><b>{{ b.isin }}</b></div> }
+                    @if (b.note) { <div class="bd wide"><span>Note</span><b>{{ b.note }}</b></div> }
+                  </div>
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  <p class="foot-note">YTM = money-weighted yield (XIRR) over each bond's actual (edited) cashflows. Coupon shown is the <b>effective average</b> (total interest ÷ years ÷ face). Toggle <b>TDS 10%</b> to see payouts net of withholding (tax-free bonds exempt). Filter by member/broker to see exactly which account each payment credits.</p>
+}
+
+<!-- Add / edit form -->
+@if (showSipForm()) {
+  <div class="modal-back">
+    <div class="modal sip-modal">
+      <div class="modal-head"><h3>{{ editingSipId() ? 'Edit SIP' : 'Add a SIP' }}</h3><button class="x" (click)="closeSipForm()">✕</button></div>
+
+      <p class="sip-modal-hint">Record a SIP you've started buying. Split the total across the bonds it's going into. On the completion date we'll nudge you (on the dashboard) to log the real units &amp; price.</p>
+
+      <div class="form-grid">
+        <label class="f"><span>Family member <small>(optional)</small></span>
+          <input type="text" [ngModel]="sipDraft().owner" (ngModelChange)="setSipField('owner', $event)" placeholder="e.g. Maha" list="bmember-list"></label>
+        <label class="f"><span>Total SIP amount</span>
+          <div class="rupee"><i>₹</i><input type="number" [ngModel]="sipDraft().total" (ngModelChange)="setSipField('total', $event)" placeholder="e.g. 25000"></div></label>
+        <label class="f"><span>Expected completion date</span>
+          <input type="date" [ngModel]="sipDraft().expected_date" (ngModelChange)="setSipField('expected_date', $event)"></label>
+        <label class="f wide"><span>Note <small>(optional)</small></span>
+          <input type="text" [ngModel]="sipDraft().note" (ngModelChange)="setSipField('note', $event)" placeholder="e.g. Monthly bond SIP via Zerodha"></label>
+      </div>
+
+      <div class="sip-splits-edit">
+        <div class="sse-head"><span>Split across bonds</span>
+          <b [class.bad]="sipDraftSum() > (sipDraft().total || 0)">{{ inrFull(sipDraftSum()) }}<small> / {{ inrFull(sipDraft().total || 0) }}</small></b>
+        </div>
+        @for (sp of sipDraft().splits; track $index) {
+          <div class="sse-row">
+            <input type="text" class="sse-name" [ngModel]="sp.name" (ngModelChange)="setSipSplit($index, 'name', $event)" placeholder="Bond name (e.g. REC 7.5% 2033)">
+            <div class="rupee sse-amt"><i>₹</i><input type="number" [ngModel]="sp.amount" (ngModelChange)="setSipSplit($index, 'amount', $event)" placeholder="10000"></div>
+            <button class="sse-del" (click)="removeSipSplit($index)" [disabled]="sipDraft().splits.length <= 1" title="Remove">✕</button>
+          </div>
+        }
+        <button class="sse-add" (click)="addSipSplit()">+ Add bond to split</button>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="closeSipForm()">Cancel</button>
+        <button class="btn" [disabled]="!canSaveSip() || savingSip()" (click)="saveSip()">{{ savingSip() ? 'Saving…' : (editingSipId() ? 'Save SIP' : 'Add SIP') }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (showForm()) {
+  <div class="modal-back">
+    <div class="modal bond-modal">
+      <div class="modal-head"><h3>{{ editingId() ? 'Edit bond' : 'Add bond' }}</h3><button class="x" (click)="closeForm()">✕</button></div>
+
+      <div class="form-grid">
+        <label class="f"><span>Family member</span>
+          <input type="text" [ngModel]="draft().owner" (ngModelChange)="setField('owner', $event)" placeholder="e.g. Maha" list="bmember-list"></label>
+        <label class="f"><span>Broker / account</span>
+          <input type="text" [ngModel]="draft().broker" (ngModelChange)="setField('broker', $event)" placeholder="e.g. Zerodha" list="bbroker-list"></label>
+
+        <label class="f wide"><span>Issuer / name</span>
+          <input type="text" [ngModel]="draft().issuer" (ngModelChange)="setField('issuer', $event)" placeholder="e.g. REC Ltd 7.5% 2033"></label>
+
+        <label class="f"><span>Bond type</span>
+          <select [ngModel]="draft().bond_type" (ngModelChange)="setField('bond_type', $event)">
+            @for (t of BOND_TYPES; track t) { <option [value]="t">{{ t }}</option> }
+          </select></label>
+        <label class="f"><span>Rating <small>(optional)</small></span>
+          <input type="text" [ngModel]="draft().rating" (ngModelChange)="setField('rating', $event)" placeholder="e.g. AAA"></label>
+
+        <label class="f"><span>Face value <small>(per unit)</small></span>
+          <div class="rupee"><i>₹</i><input type="number" [ngModel]="draft().face_value" (ngModelChange)="setField('face_value', $event)"></div></label>
+        <label class="f"><span>Quantity <small>(units)</small></span>
+          <input type="number" [ngModel]="draft().quantity" (ngModelChange)="setField('quantity', $event)" placeholder="0"></label>
+
+        <label class="f"><span>Buy price <small>(per unit)</small></span>
+          <div class="rupee"><i>₹</i><input type="number" [ngModel]="draft().buy_price" (ngModelChange)="setField('buy_price', $event)"></div></label>
+        <label class="f hl"><span>YTM <small>(% p.a. — you have this)</small></span>
+          <input type="number" step="0.01" [ngModel]="draft().ytm_input" (ngModelChange)="setField('ytm_input', $event)" placeholder="e.g. 9.0"></label>
+
+        <label class="f"><span>Coupon frequency</span>
+          <select [ngModel]="draft().coupon_freq" (ngModelChange)="setField('coupon_freq', $event)">
+            @for (f of FREQS; track f.v) { <option [value]="f.v">{{ f.l }}</option> }
+          </select></label>
+        <label class="f"><span>Repayment</span>
+          <select [ngModel]="draft().repayment_type" (ngModelChange)="setField('repayment_type', $event)">
+            <option value="bullet">Bullet (principal at maturity)</option>
+            <option value="amortizing">Amortizing (staggered principal)</option>
+          </select></label>
+
+        <label class="f"><span>Purchase date</span>
+          <input type="date" [ngModel]="draft().purchase_date" (ngModelChange)="setField('purchase_date', $event)"></label>
+        <label class="f hl"><span>First payment date</span>
+          <input type="date" [ngModel]="draft().first_payment_date" (ngModelChange)="setField('first_payment_date', $event)"></label>
+        <label class="f"><span>Maturity date</span>
+          <input type="date" [ngModel]="draft().maturity_date" (ngModelChange)="setField('maturity_date', $event)"></label>
+        <label class="f"><span>Sellable on <small>(buy planner)</small></span>
+          <input type="date" [ngModel]="draft().sellable_on" (ngModelChange)="setField('sellable_on', $event)"></label>
+
+        <label class="f tax"><input type="checkbox" [ngModel]="draft().tax_free" (ngModelChange)="setField('tax_free', $event)"> <span>Tax-free interest</span></label>
+        <label class="f wide"><span>Note <small>(optional)</small></span>
+          <input type="text" [ngModel]="draft().note" (ngModelChange)="setField('note', $event)" placeholder="ISIN, anything to remember"></label>
+      </div>
+
+      <!-- Generate + editable schedule -->
+      <div class="sched-block">
+        <div class="sb-head">
+          <div><strong>Repayment schedule</strong><small>Generate from YTM, then adjust each period's interest & principal to match your real payouts.</small></div>
+          <button class="btn" [disabled]="!canGenerate() || generating()" (click)="generateSchedule()">{{ generating() ? 'Generating…' : '↻ Generate from YTM' }}</button>
+        </div>
+
+        @if (draftBars(); as bars) {
+          <div class="sb-chart">
+            @for (bar of bars; track $index) {
+              <div class="sbc-col has-tip" [attr.data-tip]="fmtDate(bar.date) + ' · ' + inr(bar.total)">
+                <div class="sbc-stack"><div class="sbc-seg pri" [style.height.%]="bar.pH"></div><div class="sbc-seg int" [style.height.%]="bar.iH"></div></div>
+              </div>
+            }
+          </div>
+        }
+
+        @if (scheduleDraft().length) {
+          <div class="sched-grid">
+            <div class="sg-row sg-head"><span>Date</span><span>Interest ₹</span><span>Principal ₹</span><span>Total</span><span></span></div>
+            @for (row of scheduleDraft(); track $index) {
+              <div class="sg-row">
+                <input type="date" [ngModel]="row.date" (ngModelChange)="setSchedRow($index, 'date', $event)">
+                <input type="number" [ngModel]="row.interest" (ngModelChange)="setSchedRow($index, 'interest', $event)">
+                <input type="number" [ngModel]="row.principal" (ngModelChange)="setSchedRow($index, 'principal', $event)">
+                <span class="sg-total">{{ inr((+row.interest || 0) + (+row.principal || 0)) }}</span>
+                <button class="sg-del" (click)="removeSchedRow($index)" title="Remove">✕</button>
+              </div>
+            }
+          </div>
+          <button class="add-row" (click)="addSchedRow()">＋ Add payment row</button>
+        } @else {
+          <p class="sb-empty">Enter buy price, quantity, YTM, first-payment date, maturity & frequency above, then <b>Generate</b> — or add rows manually.</p>
+        }
+      </div>
+
+      <div class="preview-row">
+        <div class="pv"><span>Total interest</span><b>{{ inr(schedInterest()) }}</b></div>
+        <div class="pv"><span>Total principal</span><b>{{ inr(schedPrincipal()) }}</b></div>
+        <div class="pv"><span>Coupon (eff. avg)</span><b>{{ draftCoupon() != null ? (draftCoupon() | number:'1.2-2') + '%' : '—' }}</b></div>
+        <div class="pv"><span>YTM</span><b [class.pos]="(draftYtm() ?? 0) >= 0">{{ pct(draftYtm()) }}</b></div>
+        <div class="pv"><span>Invested</span><b>{{ inr((+draft().buy_price) * (+draft().quantity)) }}</b></div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="closeForm()">Cancel</button>
+        <button class="btn primary" (click)="save()" [disabled]="!canSave()">{{ editingId() ? 'Save changes' : 'Add bond' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<datalist id="bmember-list">
+  @for (o of owners(); track o) { <option [value]="o"></option> }
+</datalist>
+<datalist id="bbroker-list">
+  @for (b of brokers(); track b) { <option [value]="b"></option> }
+</datalist>
+
+<!-- Day modal — mark each of the day's bond payouts received / pending / not-received -->
+@if (showDay()) {
+  <div class="bs-modal-back" (click)="showDay.set(false)">
+    <div class="bs-modal" (click)="$event.stopPropagation()">
+      <div class="bs-modal-head">
+        <div class="bs-modal-when">
+          <h3>{{ dayLabelFull() }}</h3>
+          <span class="bs-modal-sub">{{ dayTotals().count }} payout{{ dayTotals().count === 1 ? '' : 's' }} · {{ inr(dayTotals().total) }}</span>
+        </div>
+        <button class="bs-modal-x" (click)="showDay.set(false)" aria-label="Close">✕</button>
+      </div>
+
+      <div class="bs-day-summary">
+        <span class="ds got"><i>Received</i><b>{{ inr(dayTotals().received) }}</b></span>
+        <span class="ds due"><i>Pending</i><b>{{ inr(dayTotals().pending) }}</b></span>
+        @if (dayTotals().notrecv > 0) { <span class="ds no"><i>Not received</i><b>{{ inr(dayTotals().notrecv) }}</b></span> }
+      </div>
+
+      <div class="bs-day-list">
+        @for (p of dayPayments(); track $index) {
+          <div class="bs-dl-row" [ngClass]="'st-' + p.status">
+            <div class="bs-dl-main">
+              <b class="bs-dl-iss" [title]="p.issuer">{{ p.issuer }}
+                @if (p.rating) { <span class="rating rat-sm" [ngClass]="ratingClass(p.rating)">{{ p.rating }}</span> }
+                @if (p.tax_free) { <span class="chip tf">tax-free</span> }
+              </b>
+              <span class="bs-dl-acct">{{ p.owner }}@if (p.broker) { · {{ p.broker }} }</span>
+              <span class="bs-dl-split">
+                <span class="i">interest {{ inr(!p.tax_free && (p.status === 'received' || tds()) ? p.interest * 0.9 : p.interest) }}</span>
+                @if (p.principal > 0) { <span class="p">principal {{ inr(p.principal) }}</span> }
+              </span>
+            </div>
+            <div class="bs-dl-right">
+              <span class="bs-dl-amt">{{ inr(p.status === 'received' || tds() ? p.net : p.total) }}</span>
+              <span class="bs-st3" role="group" aria-label="Status">
+                <button class="r" [class.on]="p.status === 'received'" (click)="setPayStatus(p.bond_id, dayKey(), 'received')" title="Received">✓</button>
+                <button class="p" [class.on]="p.status === 'pending'" (click)="setPayStatus(p.bond_id, dayKey(), 'pending')" title="Pending">◷</button>
+                <button class="n" [class.on]="p.status === 'not_received'" (click)="setPayStatus(p.bond_id, dayKey(), 'not_received')" title="Not received">✕</button>
+              </span>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="bs-modal-actions">
+        <button class="btn" (click)="markAllDay('received')">✓ Mark all received</button>
+        <button class="btn primary" (click)="showDay.set(false)">Done</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- ── Reconcile from bank statement ──────────────────────────────────────── -->
+@if (reconcileOpen()) {
+  <div class="bs-modal-back" (click)="closeReconcile()">
+    <div class="bs-modal rc-modal" (click)="$event.stopPropagation()">
+      <div class="modal-head">
+        <h3>🏦 Reconcile interest from a bank statement</h3>
+        <button class="x" (click)="closeReconcile()">✕</button>
+      </div>
+
+      @if (!reconcileResult()) {
+        <p class="rc-intro">Download your bank account statement as <b>Excel (.xls/.xlsx)</b> or <b>CSV</b>, then drop it here. We read every credit, match it to a bond's interest payout (by issuer, amount after TDS, and date), and let you confirm before marking them received.</p>
+        <label class="rc-drop" [class.busy]="reconcileBusy()">
+          <input type="file" hidden accept=".xls,.xlsx,.csv" (change)="onReconcileFile($event)">
+          @if (reconcileBusy()) { <span class="rc-drop-t">Reading {{ reconcileFileName() }}…</span> }
+          @else { <span class="rc-drop-t">📄 Choose statement file (.xls / .xlsx / .csv)</span> }
+        </label>
+        @if (reconcileError()) { <div class="rc-err">{{ reconcileError() }}</div> }
+
+        @if (uploads().length) {
+          <div class="rc-hist">
+            <div class="rc-hist-h">Recent statements</div>
+            @for (u of uploads().slice(0, 6); track u.id) {
+              <div class="rc-hist-row">
+                <span class="rc-hist-file" [title]="u.filename">📄 {{ u.filename }}</span>
+                <span class="rc-hist-cov">{{ u.date_from ? fmtDate(u.date_from) : '—' }} → {{ u.date_to ? fmtDate(u.date_to) : '—' }}</span>
+                <span class="rc-hist-meta">{{ u.marked }} marked · {{ inrFull(u.amount) }}</span>
+                <span class="rc-hist-when">{{ fmtDateTime(u.uploaded_at) }}</span>
+              </div>
+            }
+          </div>
+        }
+      } @else if (reconcileResult(); as rc) {
+        <div class="rc-summary">
+          Read <b>{{ rc.counts.credits }}</b> credits ·
+          <span class="rc-pill hi">{{ rc.counts.matched }} matched</span>
+          <span class="rc-pill rv">{{ rc.counts.review }} to review</span>
+          <span class="rc-pill ok">{{ rc.counts.already }} already received</span>
+          <span class="rc-pill mut">{{ rc.counts.unmatched }} ignored</span>
+        </div>
+
+        <div class="rc-body">
+          @if (rc.matched.length) {
+            <div class="rc-sec-h">✓ Matched — will be marked received</div>
+            @for (m of rc.matched; track m.bond_id + m.scheduled_date) {
+              <label class="rc-row" [class.on]="isAccepted(m)">
+                <input type="checkbox" [checked]="isAccepted(m)" (change)="toggleAccept(m)">
+                <span class="rc-issuer">{{ m.issuer }} <small>· {{ m.owner }}</small></span>
+                <span class="rc-amt">{{ inrFull(m.credit_amount) }}</span>
+                <span class="rc-when">paid {{ m.credit_date }} · due {{ m.scheduled_date }}</span>
+              </label>
+            }
+          }
+
+          @if (rc.review.length) {
+            <div class="rc-sec-h rv">⚠ Needs your review — amount differs, tick if correct</div>
+            @for (m of rc.review; track m.bond_id + m.scheduled_date) {
+              <label class="rc-row rv" [class.on]="isAccepted(m)">
+                <input type="checkbox" [checked]="isAccepted(m)" (change)="toggleAccept(m)">
+                <span class="rc-issuer">{{ m.issuer }} <small>· {{ m.owner }}</small></span>
+                <span class="rc-amt">{{ inrFull(m.credit_amount) }} <small class="rc-exp">(expected {{ inrFull(m.net) }})</small></span>
+                <span class="rc-when">paid {{ m.credit_date }} · due {{ m.scheduled_date }}</span>
+              </label>
+            }
+          }
+
+          @if (rc.already.length) {
+            <details class="rc-details">
+              <summary>{{ rc.already.length }} already marked received</summary>
+              @for (m of rc.already; track m.bond_id + m.scheduled_date) {
+                <div class="rc-row done">
+                  <span class="rc-check">✓</span>
+                  <span class="rc-issuer">{{ m.issuer }} <small>· {{ m.owner }}</small></span>
+                  <span class="rc-amt">{{ inrFull(m.credit_amount) }}</span>
+                  <span class="rc-when">{{ m.scheduled_date }}</span>
+                </div>
+              }
+            </details>
+          }
+
+          @if (rc.unmatched.length) {
+            <details class="rc-details">
+              <summary>{{ rc.unmatched.length }} other credits ignored (dividends, FD interest, transfers)</summary>
+              @for (c of rc.unmatched; track c.date + c.amount + c.narration) {
+                <div class="rc-row mut">
+                  <span class="rc-amt">{{ inrFull(c.amount) }}</span>
+                  <span class="rc-narr">{{ c.narration }}</span>
+                  <span class="rc-when">{{ c.date }}</span>
+                </div>
+              }
+            </details>
+          }
+        </div>
+
+        @if (reconcileError()) { <div class="rc-err">{{ reconcileError() }}</div> }
+        @if (reconcileDone() !== null) { <div class="rc-ok">✓ Marked {{ reconcileDone() }} payment(s) received.</div> }
+
+        <div class="bs-modal-actions">
+          <button class="btn" (click)="closeReconcile()">Cancel</button>
+          <button class="btn primary" [disabled]="reconcileBusy() || !acceptedCount()" (click)="confirmReconcile()">
+            {{ reconcileBusy() ? 'Saving…' : 'Mark ' + acceptedCount() + ' received' }}
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+}

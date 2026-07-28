@@ -1,0 +1,414 @@
+<div class="ib">
+  <!-- ═══════════ 1 · title bar ═══════════ -->
+  <header class="ib-bar">
+    <div class="ib-id">
+      <h2><span class="ib-spark">✦</span> From Claude</h2>
+      @if (batch(); as b) {
+        <span class="ib-meta">
+          {{ b.account || 'Account statement' }}
+          <i>·</i> {{ b.count }} transactions
+          @if (b.date_from) { <i>·</i> {{ fmtDay(b.date_from) }} → {{ fmtDay(b.date_to) }} }
+          <i>·</i> sent {{ fmtWhen(b.created_at) }}
+        </span>
+      } @else {
+        <span class="ib-meta">Statements you hand to Claude land here for you to verify.</span>
+      }
+    </div>
+
+    <div class="ib-bar-r">
+      @if (saving()) { <span class="ib-saving">Saving…</span> }
+      @if (batches().length) {
+        <button class="mgr-btn" [class.on]="railOpen()" (click)="toggleRail()">
+          <span class="mgr-spark">✦</span> Pushes <em>{{ batches().length }}</em>
+          <span class="mgr-chev">{{ railOpen() ? '▴' : '▾' }}</span>
+        </button>
+      }
+      <button class="ib-x" (click)="closed.emit()" aria-label="Close">✕</button>
+    </div>
+  </header>
+
+  <!-- ═══════════ 2 · every push, kept separate ═══════════ -->
+  @if (railOpen() && batches().length) {
+    <section class="pushrail">
+      <div class="pushrail-head">
+        <b>{{ batches().length }} push{{ batches().length === 1 ? '' : 'es' }} from Claude</b>
+        <span>Each statement is its own push — approve them one at a time, or remove one whole.</span>
+        @if (pendingPushes() > 1) {
+          <button class="pushrail-clear" (click)="removeAllPending()" [disabled]="busy()">
+            Remove all {{ pendingPushes() }} pending
+          </button>
+        }
+      </div>
+      <div class="pushrail-cards">
+        @for (b of batches(); track b.id) {
+          <article class="pushcard" [class.on]="batch()?.id === b.id" [class.done]="!b.pending">
+            <button class="pushcard-hit" (click)="openBatch(b.id)" [title]="'Sent ' + fmtWhenFull(b.created_at)">
+              <span class="pc-top">
+                <b>{{ pushBank(b) }}</b>
+                @if (pushMask(b)) { <em>{{ pushMask(b) }}</em> }
+                <span class="pc-when">{{ fmtWhen(b.created_at) }}</span>
+              </span>
+              <span class="pc-sent">Sent {{ fmtWhenFull(b.created_at) }} · {{ b.count }} txns</span>
+              <span class="pc-mid">
+                @if (b.pending) { <i class="pc-live">{{ b.pending }} to review</i> }
+                @else { <i class="pc-ok">✓ all handled</i> }
+                @if (b.approved) { · {{ b.approved }} approved }
+                @if (b.rejected) { · {{ b.rejected }} skipped }
+              </span>
+              <span class="pc-bar"><i [style.width.%]="pushDone(b)"></i></span>
+              <span class="pc-bot">
+                <span class="pc-out">{{ inr(b.spend_inr) }} out</span>
+                @if (b.income_inr > 0) { <span class="pc-in">{{ inr(b.income_inr) }} in</span> }
+              </span>
+            </button>
+            <button class="pushcard-x" (click)="removePush(b, $event)" [disabled]="busy()"
+                    title="Remove this whole push">✕</button>
+          </article>
+        }
+      </div>
+    </section>
+  }
+
+  @if (error()) { <div class="ib-note err">{{ error() }}</div> }
+  @if (!durable()) {
+    <div class="ib-note warn">Batches sit on the server’s local disk — run the <code>app_cache</code> migration so they survive a redeploy.</div>
+  }
+
+  @if (loading() && !batch()) { <div class="ib-state">Loading…</div> }
+
+  @if (!loading() && !batch()) {
+    <div class="ib-empty">
+      <div class="empty-card">
+        <h3>Nothing waiting for review</h3>
+        <p>Hand your account statement to Claude with the <b>Networth</b> connector on and say:</p>
+        <code>“Categorise this statement and send it to my Networth expenses.”</code>
+        <ol>
+          <li>Claude loads your exact category list from this app.</li>
+          <li>Every debit becomes a spend, every credit income.</li>
+          <li>Rows land here — your ledger is untouched until you approve.</li>
+        </ol>
+      </div>
+    </div>
+  }
+
+  @if (batch(); as b) {
+    <!-- ═══════════ 3 · KPI bar ═══════════ -->
+    <section class="ib-stats">
+      <div class="stat acct">
+        <span class="k">Account @if (acctMask()) { <em>{{ acctMask() }}</em> }</span>
+        <b class="v bank">{{ bankName() }}</b>
+        <span class="s">{{ acctOwner() ? acctOwner() + '’s account' : 'owner not set' }}</span>
+      </div>
+
+      <div class="stat out">
+        <span class="k">Money out</span><b class="v">{{ inrFull(b.spend_inr) }}</b>
+        <span class="s">{{ counts().debit }} rows</span>
+      </div>
+      <div class="stat in">
+        <span class="k">Money in</span><b class="v">{{ inrFull(b.income_inr) }}</b>
+        <span class="s">{{ counts().credit }} rows</span>
+      </div>
+      <div class="stat">
+        <span class="k">Net</span><b class="v" [class.pos]="b.net_inr >= 0" [class.neg]="!(b.net_inr >= 0)">{{ inrFull(b.net_inr) }}</b>
+        <span class="s">this statement</span>
+      </div>
+      <div class="stat ready">
+        <span class="k">Ready to approve</span>
+        <b class="v"><span class="rc">{{ readyCount() }}</span><em class="rt">/ {{ counts().all }}</em></b>
+        <span class="s">
+          {{ readyLabel() }}@if (blockers()) { · {{ blockers() }} to fix }
+        </span>
+      </div>
+    </section>
+
+    <!-- ═══════════ 4 · the whole book Claude sent — always-on summary ═══════════ -->
+    <section class="book-summary">
+      <div class="bk-lead">
+        <span class="bk-k">The whole book</span>
+        <b class="bk-n">{{ counts().all }}<em>transaction{{ counts().all === 1 ? '' : 's' }}</em></b>
+      </div>
+      <div class="bk-num out"><span class="bk-key">Spend</span><b>{{ inrFull(bookSpend()) }}</b><span class="bk-s">{{ counts().debit }} rows</span></div>
+      <div class="bk-num in"><span class="bk-key">Income</span><b>{{ inrFull(bookIncome()) }}</b><span class="bk-s">{{ counts().credit }} rows</span></div>
+      <div class="bk-num"><span class="bk-key">Net</span><b [class.pos]="bookIncome() - bookSpend() >= 0">{{ inrFull(bookIncome() - bookSpend()) }}</b><span class="bk-s">on your cash</span></div>
+      <div class="bk-list">
+        <span class="bk-key">Top categories</span>
+        <span class="bk-chips">
+          @for (c of bookTopCats(); track c.key) { <em><i [style.background]="c.color"></i>{{ c.label }} <b>{{ inr(c.value) }}</b></em> }
+          @empty { <em class="bk-none">none yet</em> }
+        </span>
+      </div>
+      <div class="bk-list">
+        <span class="bk-key">Whose</span>
+        <span class="bk-chips">
+          @for (o of bookTopOwners(); track o.key) { <em><i [style.background]="o.color"></i>{{ o.label }} <b>{{ o.count }}</b></em> }
+          @empty { <em class="bk-none">nobody set</em> }
+        </span>
+      </div>
+    </section>
+
+    <!-- ═══════════ 5 · one clean control row: search + filters ═══════════ -->
+    <section class="ib-tools">
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="search" placeholder="Search a transaction, category or person…"
+               [ngModel]="search()" (ngModelChange)="search.set($event)">
+        @if (search()) { <button class="search-x" (click)="search.set('')">✕</button> }
+      </div>
+
+      <div class="more-wrap">
+        <button class="more" [class.on]="moreOpen() || filtersOn()" (click)="moreOpen.set(!moreOpen())">
+          Filters @if (filterBadge()) { <i class="dot">{{ filterBadge() }}</i> }
+        </button>
+        @if (moreOpen()) {
+          <div class="more-back" (click)="moreOpen.set(false)"></div>
+          <div class="more-pop wide" (click)="$event.stopPropagation()">
+            <!-- what to show -->
+            <div class="fgrp">
+              <span class="fgrp-t">Show</span>
+              <div class="seg3">
+                <button [class.on]="flow() === 'all'" (click)="setFlow('all')">All <em>{{ counts().all }}</em></button>
+                <button [class.on]="flow() === 'debit'" (click)="setFlow('debit')">Spend <em>{{ counts().debit }}</em></button>
+                <button [class.on]="flow() === 'credit'" (click)="setFlow('credit')">Income <em>{{ counts().credit }}</em></button>
+              </div>
+            </div>
+            <label class="f"><span>Category</span>
+              <select [ngModel]="cat()" (ngModelChange)="cat.set($event)">
+                <option value="">All categories</option>
+                @for (c of catOptions(); track c.category) { <option [value]="c.category">{{ c.category }} ({{ c.count }})</option> }
+              </select></label>
+            <label class="f"><span>Whose</span>
+              <select [ngModel]="owner()" (ngModelChange)="owner.set($event)">
+                <option value="">Anyone</option>
+                @for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }
+              </select></label>
+            <div class="f2">
+              <label class="f"><span>From</span><input type="date" [ngModel]="from()" (ngModelChange)="from.set($event)"></label>
+              <label class="f"><span>To</span><input type="date" [ngModel]="to()" (ngModelChange)="to.set($event)"></label>
+            </div>
+            <label class="f"><span>Minimum ₹</span>
+              <input type="number" placeholder="0" [ngModel]="minAmt()" (ngModelChange)="minAmt.set($event === '' ? null : +$event)"></label>
+
+            @if (flagFilters().length) {
+              <div class="fgrp">
+                <span class="fgrp-t">Only show</span>
+                @for (c of flagFilters(); track c.flag) {
+                  <label class="chk"><input type="checkbox" [checked]="hasFlag(c.flag)"
+                         (change)="toggleFlag(c.flag)"> {{ c.label }} <em>{{ c.count }}</em></label>
+                }
+              </div>
+            }
+            <div class="fgrp">
+              <span class="fgrp-t">View</span>
+              <label class="chk"><input type="checkbox" [ngModel]="group()" (ngModelChange)="group.set($event)"> Group by category</label>
+              <label class="chk"><input type="checkbox" [ngModel]="showDone()" (ngModelChange)="showDone.set($event)"> Show done <em>{{ counts().done }}</em></label>
+            </div>
+
+            <!-- bulk actions on the ticked rows live here now -->
+            <div class="fgrp acts">
+              <span class="fgrp-t">Do to the {{ selectedRows().length }} ticked</span>
+              <div class="acts-row">
+                <select [disabled]="!selectedRows().length" title="Set the category on every ticked row"
+                        (change)="bulkCategory($any($event.target).value); $any($event.target).value=''">
+                  <option value="">Set category…</option>
+                  @for (c of categories(); track c) { <option [value]="c">{{ c }}</option> }
+                </select>
+                <select [disabled]="!selectedRows().length" title="Set who every ticked row belongs to"
+                        (change)="bulkOwner($any($event.target).value); $any($event.target).value=''">
+                  <option value="">Set owner…</option>
+                  @for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }
+                </select>
+              </div>
+              <div class="acts-row">
+                <button class="act-btn" [class.on]="newCatOpen()" (click)="openNewCat()"
+                        title="Add a category to your app-wide list">＋ New category</button>
+                <button class="act-btn danger" [disabled]="!selectedRows().length || busy()"
+                        (click)="rejectSelected()" title="Leave these out of your ledger">Skip ticked</button>
+              </div>
+              @if (newCatOpen()) {
+                <div class="nc-inline">
+                  <input #ncInput placeholder="e.g. School fees" [ngModel]="newCatName()"
+                         (ngModelChange)="newCatName.set($event)" (keydown.enter)="createCategory()">
+                  @if (selectedRows().length) {
+                    <label class="nc-chk"><input type="checkbox" [ngModel]="newCatApply()"
+                           (ngModelChange)="newCatApply.set($event)">
+                      Also set it on the {{ selectedRows().length }} ticked</label>
+                  }
+                  @if (newCatErr()) { <span class="nc-err">{{ newCatErr() }}</span> }
+                  <div class="nc-foot">
+                    <button class="link" (click)="newCatOpen.set(false)">Cancel</button>
+                    <button class="btn sm primary" [disabled]="!newCatName().trim() || !!addingCat()"
+                            (click)="createCategory()">{{ addingCat() ? 'Adding…' : 'Add category' }}</button>
+                  </div>
+                </div>
+              }
+            </div>
+
+            <div class="more-foot">
+              <button class="link" (click)="clearFilters(); moreOpen.set(false)">Clear all</button>
+              <button class="btn sm" (click)="moreOpen.set(false)">Done</button>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- ═══════════ 5b · filtered-subset hero — only when a filter is on ═══════════ -->
+    @if (filtersOn() && view().length) {
+      <section class="subset-hero">
+        <div class="sh-lead">
+          <span class="sh-k">Filtered</span>
+          <b class="sh-n">{{ view().length }}<em>of {{ counts().all }}</em></b>
+        </div>
+        <div class="sh-num out"><span class="sh-key">Spend</span><b>{{ inrFull(viewSpend()) }}</b></div>
+        <div class="sh-num in"><span class="sh-key">Income</span><b>{{ inrFull(viewIncome()) }}</b></div>
+        <div class="sh-num"><span class="sh-key">Net</span><b [class.pos]="viewIncome() - viewSpend() >= 0">{{ inrFull(viewIncome() - viewSpend()) }}</b></div>
+        <div class="sh-num"><span class="sh-key">Categories</span><b>{{ viewCatCount() }}</b><span class="sh-s">in view</span></div>
+        <button class="sh-clear" (click)="clearFilters()">Clear</button>
+      </section>
+    }
+
+    @if (selectedRows().length && selBlocked()) {
+      <div class="ib-note warn">{{ selBlocked() }} ticked row{{ selBlocked() === 1 ? '' : 's' }} still missing a date, amount or category — they’ll be skipped.</div>
+    }
+
+    <!-- ═══════════ 7 · the table ═══════════ -->
+    <section class="ib-main">
+      <div class="tablewrap">
+        @if (!view().length) {
+          <div class="none">
+            No rows match these filters.
+            @if (filtersOn()) { <button class="link" (click)="clearFilters()">Clear filters</button> }
+          </div>
+        } @else if (group()) {
+          @for (g of groups(); track g.category) {
+            <div class="grp" [class.open]="isGroupOpen(g.category)">
+              <div class="grp-head">
+                <input type="checkbox" [checked]="groupTicked(g.rows)" (change)="tickGroup(g.rows, $any($event.target).checked)">
+                <button class="grp-name" (click)="toggleGroup(g.category)">
+                  <span class="chev">{{ isGroupOpen(g.category) ? '▾' : '▸' }}</span>{{ g.category }}
+                  <em>{{ g.count }}</em>
+                </button>
+                <span class="grp-amt">
+                  @if (g.spend) { <b class="out">{{ inrFull(g.spend) }}</b> }
+                  @if (g.income) { <b class="in">+{{ inrFull(g.income) }}</b> }
+                </span>
+              </div>
+              @if (isGroupOpen(g.category)) {
+                <ng-container [ngTemplateOutlet]="tbl" [ngTemplateOutletContext]="{ rows: g.rows, head: false }"></ng-container>
+              }
+            </div>
+          }
+        } @else {
+          <ng-container [ngTemplateOutlet]="tbl" [ngTemplateOutletContext]="{ rows: view(), head: true }"></ng-container>
+        }
+      </div>
+    </section>
+
+    <!-- ═══════════ 8 · action bar ═══════════ -->
+    <footer class="ib-foot">
+      <div class="foot-l">
+        @if (result(); as res) {
+          <span class="ok">✓ Added {{ res.expenses_created }} expense{{ res.expenses_created === 1 ? '' : 's' }}
+            ({{ inrFull(res.expenses_total_inr) }})@if (res.income_created) { and {{ res.income_created }} income ({{ inrFull(res.income_total_inr) }}) }.
+            @if (res.skipped.length) { <b>{{ res.skipped.length }} skipped</b> — {{ res.skipped[0].why }}. }
+          </span>
+        } @else if (!selectedRows().length) {
+          <button class="link mute" (click)="discard()">Remove this push</button>
+        }
+      </div>
+      <div class="foot-r">
+        <button class="btn ghost" (click)="closed.emit()">Close</button>
+        <button class="btn primary" [disabled]="!canApprove()" (click)="approve()">
+          {{ busy() ? 'Adding…' : 'Approve ' + selectedRows().length + ' → my expenses' }}
+        </button>
+      </div>
+    </footer>
+  }
+</div>
+
+
+<!-- ═══════════ the row table ═══════════ -->
+<ng-template #tbl let-rows="rows" let-head="head">
+  <table class="rows">
+    @if (head) {
+      <thead>
+        <tr>
+          <th class="c">
+            <label class="allbox" [title]="allShownTicked() ? 'Untick every row shown' : 'Tick every row shown'">
+              <input type="checkbox" [checked]="allShownTicked()" (change)="tickShown($any($event.target).checked)">
+              <span>All</span>
+            </label>
+          </th>
+          <th class="dt s" (click)="sortBy('date')">Date <i>{{ arrow('date') }}</i></th>
+          <th class="ds s" (click)="sortBy('name')">Transaction <i>{{ arrow('name') }}</i></th>
+          <th class="ct s" (click)="sortBy('category')">Category <i>{{ arrow('category') }}</i></th>
+          <th class="ow s" (click)="sortBy('owner')">Whose <i>{{ arrow('owner') }}</i></th>
+          <th class="am s" (click)="sortBy('amount')">Amount <i>{{ arrow('amount') }}</i></th>
+          <th class="ac"></th>
+        </tr>
+      </thead>
+    }
+    <tbody>
+      @for (r of rows; track r.id) {
+        <tr [class.on]="isSel(r)" [class.flag]="r.issues.length" [class.dup]="r.duplicate"
+            [class.done]="r.status !== 'pending'" [class.credit]="r.direction === 'credit'"
+            [attr.title]="r.duplicate ? 'Looks like one you already have: ' + (r.duplicate_of || '') : null">
+          <td class="c"><input type="checkbox" [checked]="isSel(r)" (change)="toggleSel(r)" [disabled]="r.status !== 'pending'"></td>
+
+          <td class="dt">
+            @if (isEditing(r, 'date') || r.issues.includes('date')) {
+              <input class="inp date" type="date" [ngModel]="r.date" (ngModelChange)="setDate(r, $event)"
+                     (blur)="editCellClose()" [attr.autofocus]="isEditing(r, 'date') ? '' : null">
+            } @else {
+              <button class="cell" (click)="editCellOpen(r, 'date')" title="Click to change">{{ fmtDay(r.date) }}</button>
+            }
+          </td>
+
+          <td class="ds">
+            <input class="inp name" [ngModel]="r.name" (ngModelChange)="setName(r, $event)" [disabled]="r.status !== 'pending'">
+            @if (rowNote(r); as note) { <span class="meta" [class.warn]="!!r.issues.length">{{ note }}</span> }
+          </td>
+
+          <td class="ct">
+            <select class="inp cat" [class.empty]="!r.category" [ngModel]="r.category"
+                    (ngModelChange)="setCategory(r, $event)" [disabled]="r.status !== 'pending'">
+              <option value="">— pick —</option>
+              @if (r.category && !r.category_known) { <option [value]="r.category">{{ r.category }}</option> }
+              @for (c of catsFor(r.direction); track c) { <option [value]="c">{{ c }}</option> }
+            </select>
+          </td>
+
+          <td class="ow">
+            <select class="inp own" [class.unsure]="!r.owner" [ngModel]="r.owner"
+                    (ngModelChange)="setOwner(r, $event)" [disabled]="r.status !== 'pending'">
+              <option value="">— whose? —</option>
+              @for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }
+            </select>
+          </td>
+
+          <td class="am">
+            <div class="amtwrap">
+              <button class="dir" [class.credit]="r.direction === 'credit'" (click)="flip(r)"
+                      [disabled]="r.status !== 'pending'"
+                      [title]="r.direction === 'debit' ? 'Money out — tap to make it income' : 'Money in — tap to make it a spend'">
+                {{ r.direction === 'debit' ? '−' : '+' }}
+              </button>
+              @if (isEditing(r, 'amount') || r.issues.includes('amount')) {
+                <input class="inp amt" type="number" [ngModel]="r.amount" (ngModelChange)="setAmount(r, $event)"
+                       (blur)="editCellClose()" [disabled]="r.status !== 'pending'"
+                       [attr.autofocus]="isEditing(r, 'amount') ? '' : null">
+              } @else {
+                <button class="cell amt" (click)="editCellOpen(r, 'amount')" title="Click to change">{{ fmtAmount(r) }}</button>
+              }
+            </div>
+          </td>
+
+          <td class="ac">
+            @if (r.status === 'pending') { <button class="skip" (click)="rejectRow(r)" title="Skip this row">✕</button> }
+            @else if (r.status === 'rejected') { <button class="skip undo" (click)="restoreRow(r)" title="Bring it back">↺</button> }
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</ng-template>

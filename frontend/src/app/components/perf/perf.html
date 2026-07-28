@@ -1,0 +1,133 @@
+<div class="pf-panel">
+  <div class="pf-head">
+    <div class="pf-title">
+      <h3>Performance vs Nifty
+        <button class="pf-i" (click)="showInfo.set(true)" title="How is this calculated?">i</button>
+        <button class="pf-i rb" [class.spin]="refreshing()" [disabled]="refreshing()"
+                (click)="refresh()" title="Recompute from your current holdings (after adding capital / trades)">↻</button>
+      </h3>
+      @if (portfolioReturn() !== null) {
+        <span class="pf-ret">
+          <span class="pf-leg port">● You {{ pct(portfolioReturn()) }}</span>
+          <span class="pf-leg nif">● Nifty {{ pct(niftyReturn()) }}</span>
+        </span>
+      }
+    </div>
+    <div class="seg sm">
+      <button [class.on]="period() === '1mo'" (click)="setPeriod('1mo')">1M</button>
+      <button [class.on]="period() === '6mo'" (click)="setPeriod('6mo')">6M</button>
+      <button [class.on]="period() === '1y'" (click)="setPeriod('1y')">1Y</button>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="pf-state">Loading historical prices…</div>
+  } @else if (chart(); as c) {
+    @if (tip(); as t) {
+      <div class="pf-tipbar">
+        <span class="pf-tip-d">{{ t.date }}</span>
+        <span class="pf-tip-vals"><b class="port">You {{ pct(t.pr) }}</b><b class="nif">Nifty {{ pct(t.nr) }}</b><span class="pf-tip-v">{{ inr(t.value) }}</span></span>
+        <button class="pf-inspect" (click)="openInspect(t.iso)" title="See the exact stocks & prices used for this day">Inspect</button>
+      </div>
+    }
+    <div class="pf-chart">
+      <svg [attr.viewBox]="'0 0 ' + c.W + ' ' + c.H" class="pf-svg">
+        @for (g of c.grid; track g.label) {
+          <line [attr.x1]="c.padL - 2" [attr.y1]="g.y" [attr.x2]="c.W - c.padR" [attr.y2]="g.y" class="pf-grid"></line>
+          <text [attr.x]="c.padL - 6" [attr.y]="g.y + 3" text-anchor="end" class="pf-yl">{{ g.label }}</text>
+        }
+        @if (c.zeroY !== null) { <line [attr.x1]="c.padL - 2" [attr.y1]="c.zeroY" [attr.x2]="c.W - c.padR" [attr.y2]="c.zeroY" class="pf-zero"></line> }
+        <path [attr.d]="c.nLine" class="pf-nline"></path>
+        <path [attr.d]="c.pLine" class="pf-pline"></path>
+        @for (t of c.xticks; track t.label) { <text [attr.x]="t.x" [attr.y]="c.H - 8" text-anchor="middle" class="pf-xl">{{ t.label }}</text> }
+        @if (tip(); as t) {
+          <line [attr.x1]="t.x" [attr.y1]="14" [attr.x2]="t.x" [attr.y2]="c.H - 26" class="pf-cursor"></line>
+          <circle [attr.cx]="t.x" [attr.cy]="t.y" r="3.6" class="pf-dot"></circle>
+        }
+        <!-- transparent hit targets for hover -->
+        @for (p of c.pPts; track $index) {
+          <rect [attr.x]="p.x - (c.innerW / c.n / 2)" y="0" [attr.width]="c.innerW / c.n" [attr.height]="c.H"
+                fill="transparent" class="pf-hit" (mouseenter)="hover.set($index)" (click)="openInspect(p.date)"></rect>
+        }
+      </svg>
+    </div>
+    <div class="pf-note">
+      Covers <b>{{ (data()!.coverage_value_pct * 100) | number:'1.0-0' }}%</b> of your value · {{ data()?.coverage }}/{{ data()?.symbols }} stocks
+      @if (data()!.missing_count) { · <button class="pf-link" (click)="showInfo.set(true)">{{ data()!.missing_count }} excluded</button> }
+    </div>
+  } @else {
+    <div class="pf-state">Not enough history yet — connect or refresh an account.</div>
+  }
+
+  @if (showInfo() && data(); as d) {
+    <div class="pf-modal-back" (click)="showInfo.set(false)">
+      <div class="pf-modal" (click)="$event.stopPropagation()">
+        <div class="pf-m-head"><h3>How this chart is built</h3><button class="x" (click)="showInfo.set(false)">✕</button></div>
+        <div class="pf-m-body">
+          <ol class="pf-steps">
+            <li>We take <b>your current holdings</b> and value them on every past trading day using <b>historical daily closing prices</b> (free market data). USD holdings use today's ₹ rate.</li>
+            <li>Your portfolio and the <b>Nifty-50</b> are both re-based to <b>0% at the start</b> of the period, so the lines compare <i>growth</i>, not size.</li>
+            <li>It's a <b>hypothetical</b>: it assumes you held today's exact holdings for the whole period (it doesn't know past buys/sells).</li>
+          </ol>
+
+          <div class="pf-cov">
+            <div class="pf-cov-bar"><div class="pf-cov-fill" [style.width.%]="d.coverage_value_pct * 100"></div></div>
+            <div class="pf-cov-stat">
+              <span>Line represents <b>{{ inr(d.covered_value) }}</b> of <b>{{ inr(d.total_value) }}</b>
+              ({{ (d.coverage_value_pct * 100) | number:'1.0-1' }}% of your portfolio)</span>
+            </div>
+          </div>
+
+          @if (d.missing.length) {
+            <div class="pf-miss">
+              <div class="pf-miss-h">{{ d.missing_count }} stock(s) had no price history — excluded from the line ({{ inr(d.missing_value) }}):</div>
+              <div class="pf-miss-list">
+                @for (m of d.missing; track m.symbol) {
+                  <div class="pf-miss-row"><span>{{ m.symbol }}</span><span>{{ inr(m.value) }}</span></div>
+                }
+              </div>
+            </div>
+          } @else {
+            <div class="pf-allgood">✓ Every holding had price history — the line covers your full portfolio.</div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (inspectOpen()) {
+    <div class="pf-modal-back" (click)="inspectOpen.set(false)">
+      <div class="pf-modal wide" (click)="$event.stopPropagation()">
+        <div class="pf-m-head">
+          <h3>Holdings used on {{ inspectLabel() }}</h3>
+          <button class="x" (click)="inspectOpen.set(false)">✕</button>
+        </div>
+
+        @if (inspectLoading()) {
+          <div class="pf-state">Loading prices for that day…</div>
+        } @else if (inspectData(); as d) {
+          <div class="pf-ins-bar">
+            <input class="pf-ins-search" type="text" placeholder="Filter stock…" [ngModel]="inspectSearch()" (ngModelChange)="inspectSearch.set($event)">
+            <span class="pf-ins-total">{{ d.count }} stocks · <b>{{ inr(d.total) }}</b></span>
+          </div>
+          <div class="pf-ins-list">
+            <div class="pf-ins-head"><span>Stock</span><span class="num">Qty</span><span class="num">Price (that day)</span><span class="num">Value</span></div>
+            @for (r of inspectRows(); track r.symbol + r.exchange) {
+              <div class="pf-ins-row">
+                <span class="pi-sym">{{ r.symbol }} <small>{{ r.exchange }}</small></span>
+                <span class="num">{{ r.qty }}</span>
+                <span class="num">{{ r.currency === 'INR' ? '₹' : '$' }}{{ r.close }}</span>
+                <span class="num">{{ inr(r.value) }}</span>
+              </div>
+            } @empty { <div class="pf-state">No match.</div> }
+          </div>
+          @if (d.missing_count) {
+            <div class="pf-ins-miss">Not priced that day ({{ d.missing_count }}): {{ d.missing.join(', ') }}</div>
+          }
+        } @else {
+          <div class="pf-state">Couldn't load that day's prices.</div>
+        }
+      </div>
+    </div>
+  }
+</div>

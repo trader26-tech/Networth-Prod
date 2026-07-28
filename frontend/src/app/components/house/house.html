@@ -1,0 +1,374 @@
+<div class="house">
+
+  @if (notice()) { <div class="toast">{{ notice() }} <button (click)="notice.set(null)">✕</button></div> }
+
+  <!-- ═══ header ═══════════════════════════════════════════════════════════ -->
+  <div class="land-head">
+    <div>
+      <h1>Bay Villa — Funding &amp; Loan Plan</h1>
+      <p class="sub">{{ plan().villaName }} · {{ plan().saleableSqft | number }} sqft · handover {{ plan().handoverEta }}. The loan fills
+        whatever your committed assets can't cover <b>by each due date</b> — commit more or earlier money and it shrinks.</p>
+    </div>
+    <div class="actions">
+      <span class="save" [class.on]="saveState() !== 'idle'">
+        @switch (saveState()) { @case ('saving') { Saving… } @case ('saved') { ✓ Saved } @default { {{ durable() ? 'Auto-saves' : 'Saved locally' }} } }
+      </span>
+      <button class="btn ghost" (click)="resetPlan()">Reset</button>
+    </div>
+  </div>
+
+  <!-- ═══ store-in-supabase banner (until the app_cache table exists) ═════ -->
+  @if (!durable()) {
+    <div class="mig">
+      <div class="mig-top">
+        <span class="mig-i">⚙︎</span>
+        <div>
+          <b>Store this plan in Supabase</b>
+          <p>Right now it saves only in this browser. Run this one-time table in <b>Supabase → SQL Editor → Run</b>, then hit retry —
+            it persists across devices &amp; Railway deploys (the shared <code>app_cache</code> table also powers F&amp;O statements, tradebooks &amp; more).</p>
+        </div>
+      </div>
+      <pre class="mig-sql">{{ APP_CACHE_SQL }}</pre>
+      <div class="mig-actions">
+        <button class="btn" (click)="copySql()">Copy SQL</button>
+        <button class="btn prim" (click)="recheckDurable()">I've run it — retry</button>
+      </div>
+    </div>
+  }
+
+  <!-- ═══ HERO ═════════════════════════════════════════════════════════════ -->
+  <div class="hero bond-hero">
+    <div class="hero-main">
+      <span class="hero-label">Total loan you'll take</span>
+      <span class="hero-value">{{ inr(totalLoan()) }}</span>
+      <span class="hero-exact">
+        of {{ inr(totalCost()) }} all-in cost ·
+        @if (analysis().finalLoan > 0) { {{ inr(analysis().finalLoan) }} still owed after all sales }
+        @else { fully repaid by your sales — no long-term loan }
+      </span>
+
+      <div class="hero-tags">
+        <div class="tag"><span class="t-k">All-in cost</span><span class="t-v">{{ inr(totalCost()) }}</span></div>
+        <div class="tag"><span class="t-k">Committed assets</span><span class="t-v pos">{{ inr(assetsCommitted()) }} <small>/ {{ inr(assetsTotal()) }}</small></span></div>
+        <div class="tag has-tip" data-tip="Gain portion of your committed sales/maturities (proceeds − cost basis). This is the taxable gain, before §54 relief.">
+          <span class="t-k">Capital gains</span><span class="t-v gain">{{ inr(capitalGains()) }}</span></div>
+        <div class="tag has-tip" data-tip="Total borrowed across the whole plan (sum of every draw). Most is a short bridge repaid as your sales land.">
+          <span class="t-k">Total loan</span><span class="t-v loan">{{ inr(totalLoan()) }}</span></div>
+        <div class="tag"><span class="t-k">Owed after sales</span><span class="t-v">{{ inr(analysis().finalLoan) }}</span></div>
+        <div class="tag has-tip" data-tip="Cash still in hand after every payment is made and the loan is cleared — what's left over from your committed assets.">
+          <span class="t-k">Left over at end</span><span class="t-v pos">{{ inr(analysis().leftoverCash) }}</span></div>
+        <div class="tag"><span class="t-k">Paid so far</span><span class="t-v">{{ inr(paidToDate()) }}</span></div>
+      </div>
+    </div>
+
+    <!-- payables treemap — each payment sized by ₹, split assets vs loan -->
+    <div class="hero-side">
+      <div class="tmap-wrap">
+        <div class="tmap-cap">Payables · each tile sized by ₹ · hover for detail</div>
+        <div class="tmap">
+          @for (t of payablesTreemap(); track t.label) {
+            <div class="tmap-tile" [style.left.%]="t.left" [style.top.%]="t.top" [style.width.%]="t.width" [style.height.%]="t.height"
+                 [style.background]="tileBg(t.loanFrac)"
+                 (mouseenter)="treeHover.set(t)" (mouseleave)="treeHover.set(null)">
+              @if (t.big) { <span class="tt-name">{{ t.label }}</span><span class="tt-amt">{{ inr(t.amount) }}</span> }
+            </div>
+          }
+        </div>
+        <!-- hover detail / legend -->
+        @if (treeHover(); as t) {
+          <div class="tmap-detail">
+            <b class="td-name">{{ t.label }}</b>
+            <span class="td-amt">{{ inr(t.amount) }}</span>
+            <span class="td-split"><i class="asset"></i>assets {{ inr(t.amount * (1 - t.loanFrac)) }} · <i class="loan"></i>loan {{ inr(t.amount * t.loanFrac) }} ({{ t.loanFrac*100 | number:'1.0-0' }}%)</span>
+          </div>
+        } @else {
+          <div class="tmap-legend">
+            <span><i class="asset"></i>Assets</span><span><i class="loan"></i>Loan</span>
+            <span class="tl-hint">hover a tile →</span>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CONTROLS — the toggle ════════════════════════════════════════════ -->
+  <div class="controls">
+    <div class="seg">
+      <button [class.on]="view() === 'timeline'" (click)="view.set('timeline')">Timeline <small>payments &amp; loan</small></button>
+      <button [class.on]="view() === 'sources'" (click)="view.set('sources')">Sources <small>what you have</small></button>
+    </div>
+    <div class="ctrl-right">
+      @if (view() === 'timeline') {
+        <span class="have">Total loan <b class="loan">{{ inr(totalLoan()) }}</b></span>
+        <button class="btn mini prim" (click)="openPicker()">＋ Add asset</button>
+        <button class="btn mini" (click)="addStage()">＋ Add payment</button>
+      } @else {
+        <span class="have">Using <b class="pos">{{ inr(assetsCommitted()) }}</b> of {{ inr(assetsTotal()) }}</span>
+        <button class="btn mini" (click)="commitAll(true)">Use all</button>
+        <button class="btn mini ghost" (click)="commitAll(false)">Use none</button>
+        <button class="btn mini prim" (click)="openPicker()">＋ From my assets</button>
+      }
+    </div>
+  </div>
+
+  <!-- ─── SOURCES (neat list) ─────────────────────────────────────────────── -->
+  @if (view() === 'sources') {
+    <p class="view-sub">Turn a source <b>on</b> to put it in the pool, and set <b>when it's ready</b> — the timeline auto-funds each
+      payment from whatever money has arrived by its date, and only borrows for the rest.</p>
+
+    <div class="src-list">
+      <div class="sl-head">
+        <span class="c-use">Use</span>
+        <span class="c-name">Source</span>
+        <span class="c-amt">Amount</span>
+        <span class="c-ready">Ready by</span>
+        <span class="c-stat">Status</span>
+        <span class="c-edit"></span>
+      </div>
+
+      @for (s of plan().sources; track s.id; let i = $index) {
+        <div class="sl-row" [class.off]="!s.committed">
+          <span class="c-use">
+            <label class="mini-switch" [title]="s.committed ? 'Using for the house' : 'Not used — this much stays on loan'">
+              <input type="checkbox" [checked]="s.committed" (change)="toggleCommit(i)">
+              <span class="track"><span class="knob"></span></span>
+            </label>
+          </span>
+          <span class="c-name"><i class="kd" [style.background]="kindColor(s.kind)"></i><b>{{ s.name }}</b>
+            @if (hasGain(s)) { <span class="gain-badge" title="Capital gain = proceeds − cost basis">gain {{ inr(gainOf(s)) }}</span> }
+          </span>
+          <span class="c-amt">{{ inr(s.amount) }}</span>
+          <span class="c-ready">
+            <label class="ready-date"><input type="date" [ngModel]="s.arrangeBy" (ngModelChange)="setSource(i, 'arrangeBy', $event)"></label>
+          </span>
+          <span class="c-stat"><span class="pill" [class.on]="s.committed">{{ s.committed ? 'in pool' : 'on loan' }}</span></span>
+          <span class="c-edit"><button class="edit-btn" (click)="toggleEditSource(s.id)" [class.on]="editingSource(s.id)" title="Edit details">✎</button></span>
+        </div>
+
+        @if (editingSource(s.id)) {
+          <!-- expanded labeled edit form -->
+          <div class="sl-edit">
+            <div class="fld"><label>Name</label><input class="in" [ngModel]="s.name" (ngModelChange)="setSource(i, 'name', $event)"></div>
+            <div class="fld"><label>Owner</label><input class="in" [ngModel]="s.owner" (ngModelChange)="setSource(i, 'owner', $event)" placeholder="—"></div>
+            <div class="fld"><label>Proceeds (₹) — what lands</label><input class="in" type="number" [ngModel]="s.amount" (ngModelChange)="setSource(i, 'amount', $event || 0)"></div>
+            <div class="fld"><label>Type</label>
+              <select class="in" [ngModel]="s.kind" (ngModelChange)="setSource(i, 'kind', $event)">
+                <option value="cash">Cash</option><option value="maturity">Maturity</option>
+                <option value="sale-done">Sale (done)</option><option value="sale">Sale (planned)</option>
+                <option value="income">Income</option><option value="other">Other</option>
+              </select></div>
+            <div class="fld"><label>Cost basis / capital (₹)</label>
+              <input class="in" type="number" [ngModel]="s.cost" (ngModelChange)="setSource(i, 'cost', $event || null)" placeholder="what you paid — leave blank if none">
+              @if (hasGain(s)) { <span class="fld-hint">capital gain = <b class="gain">{{ inr(gainOf(s)) }}</b></span> }
+            </div>
+            <div class="fld"><label>Ready by</label><input class="in" type="date" [ngModel]="s.arrangeBy" (ngModelChange)="setSource(i, 'arrangeBy', $event)"></div>
+            <div class="fld"><label>Timing note</label><input class="in" [ngModel]="s.eta" (ngModelChange)="setSource(i, 'eta', $event)" placeholder="e.g. In hand now"></div>
+            <div class="fld wide"><label>Note</label><textarea class="in" rows="2" [ngModel]="s.note" (ngModelChange)="setSource(i, 'note', $event)"></textarea></div>
+            <div class="fld-actions">
+              <button class="btn mini del" (click)="removeSource(i)">Delete source</button>
+              <button class="btn mini done" (click)="toggleEditSource(s.id)">Done</button>
+            </div>
+          </div>
+        }
+      }
+
+      <div class="sl-add">
+        <button class="btn ghost" (click)="addBlankSource()">＋ Add a blank source</button>
+        <button class="btn prim" (click)="openPicker()">＋ Add from my assets</button>
+      </div>
+    </div>
+  }
+
+  <!-- ─── TIMELINE ────────────────────────────────────────────────────────── -->
+  @if (view() === 'timeline') {
+    @if (analysis().finalLoan > 0) {
+      <div class="tl-summary" [class.bad]="!analysis().amort.feasible">
+        @if (analysis().amort.feasible) {
+          Total loan <b class="loan">{{ inr(totalLoan()) }}</b>. After every sale, <b>{{ inr(analysis().finalLoan) }}</b> remains —
+          clears in <b>{{ analysis().amort.months }} months</b> ({{ fmtMonth(analysis().amort.payoffDate) }}) from {{ inrFull(plan().monthlyRepay) }}/mo salary,
+          interest ≈ <b>{{ inr(analysis().amort.interest) }}</b>.
+        } @else {
+          ⚠ Residual <b>{{ inr(analysis().finalLoan) }}</b> won't clear at {{ inrFull(plan().monthlyRepay) }}/mo — commit another asset or raise the monthly repayment.
+        }
+        <span class="tl-inputs">
+          rate <input class="in-inline" type="number" [ngModel]="plan().loanRate" (ngModelChange)="setPlan('loanRate', $event || 0)">%
+          · repay ₹<input class="in-inline w" type="number" [ngModel]="plan().monthlyRepay" (ngModelChange)="setPlan('monthlyRepay', $event || 0)">/mo
+        </span>
+      </div>
+    } @else {
+      <div class="tl-summary ok">
+        ✓ The total <b class="loan">{{ inr(totalLoan()) }}</b> loan is a pure bridge — fully repaid by your sales by
+        <b>{{ fmtMonth(analysis().lastDate) }}</b>, no long-term loan.
+      </div>
+    }
+
+    <div class="tl">
+      @for (e of analysis().events; track (e.kind === 'out' ? 'p:' + e.stageId : 'i:' + e.sourceId)) {
+        @if (e.kind === 'out') {
+          <!-- ══ PAYMENT TILE — payment on top, funding below ══ -->
+          <div class="pay-tile" [class.paid]="e.paid" [class.drawn]="e.draw > 0">
+            <span class="pt-node" [class.deadline]="e.dueKind === 'deadline'"></span>
+
+            @if (!editingStage(e.stageId!)) {
+              <!-- top: the payment -->
+              <div class="pt-top">
+                <span class="pt-date" [class.deadline]="e.dueKind === 'deadline'">{{ dueLabel(srcStage(e.stageId!)) }}</span>
+                @if (e.dueKind === 'deadline') { <span class="chip red">deadline</span> }
+                <button class="paid-dot" [class.on]="e.paid" (click)="togglePaid(mIndexById(e.stageId!))" [title]="e.paid ? 'Paid — click to unmark' : 'Mark paid'">✓</button>
+                <span class="pt-name">{{ e.label }}</span>
+                @if (e.pct !== '—') { <span class="pt-pct">{{ e.pct }}</span> }
+                @if (e.draw > 0) { <span class="draw-tag">🏦 borrows {{ inr(e.draw) }}</span> }
+                <span class="pt-amt">{{ inr(e.amount) }}</span>
+                <button class="edit-btn" (click)="toggleEditStage(e.stageId!)" title="Edit payment">✎</button>
+              </div>
+
+              <!-- bottom: how it's funded (hover for the split) -->
+              <div class="pt-fund has-tip" [attr.data-tip]="'Assets ' + inr(e.amount - e.draw) + ' · Loan ' + inr(e.draw) + (e.draw > 0 ? '  (borrowed here)' : '')">
+                <div class="pt-bar">
+                  @for (leg of e.legs; track leg.sourceId) {
+                    <span class="pb-seg" [class.loan]="leg.sourceId === 'loan'" [style.flex]="leg.amount" [style.background]="legColor(leg.sourceId)"
+                          [title]="srcName(leg.sourceId) + ' ' + inr(leg.amount)"></span>
+                  }
+                </div>
+                <div class="pt-meta">
+                  <span class="pt-split">
+                    <b class="asset">assets {{ inr(e.amount - e.draw) }}</b>
+                    <b class="loan">loan {{ inr(e.draw) }}</b>
+                  </span>
+                  <span class="pt-legs">
+                    @for (leg of e.legs; track leg.sourceId) {
+                      <span class="leg" [class.loan]="leg.sourceId === 'loan'"><i [style.background]="legColor(leg.sourceId)"></i>{{ srcName(leg.sourceId) }} {{ inr(leg.amount) }}</span>
+                    }
+                  </span>
+                  <button class="loan-toggle" [class.on]="e.preferLoan" (click)="togglePreferLoan(mIndexById(e.stageId!)); $event.stopPropagation()"
+                          [title]="e.preferLoan ? 'Parked on the loan' : 'Park this whole payment on the loan'">🏦 Fill by loan</button>
+                  <span class="pt-after">
+                    <span class="pt-bal" [class.zero]="e.balance === 0">loan <b>{{ inr(e.balance) }}</b></span>
+                    <span class="pt-cash">cash in hand <b>{{ inr(e.cashInHand) }}</b></span>
+                  </span>
+                </div>
+              </div>
+            } @else {
+              <div class="pt-edit">
+                <input class="in grow" [ngModel]="srcStage(e.stageId!).label" (ngModelChange)="setStage(mIndexById(e.stageId!), 'label', $event)" placeholder="Stage">
+                <label class="in-date">📅<input type="date" [ngModel]="srcStage(e.stageId!).dueDate" (ngModelChange)="setStage(mIndexById(e.stageId!), 'dueDate', $event)"></label>
+                <select class="in" [ngModel]="srcStage(e.stageId!).dueKind" (ngModelChange)="setStage(mIndexById(e.stageId!), 'dueKind', $event)">
+                  <option value="fixed">fixed</option><option value="deadline">deadline</option><option value="estimate">estimate</option>
+                </select>
+                <label class="in-amt">₹<input type="number" [ngModel]="srcStage(e.stageId!).amount" (ngModelChange)="setStage(mIndexById(e.stageId!), 'amount', $event || 0)"></label>
+                <span class="row-tools">
+                  <button (click)="moveStage(mIndexById(e.stageId!), -1)">↑</button>
+                  <button (click)="moveStage(mIndexById(e.stageId!), 1)">↓</button>
+                  <button class="del" (click)="removeStage(mIndexById(e.stageId!))">🗑</button>
+                  <button class="done" (click)="toggleEditStage(e.stageId!)">Done</button>
+                </span>
+              </div>
+            }
+          </div>
+        } @else {
+          <!-- ══ MONEY-IN — slim line ══ -->
+          <div class="cash-in" [class.repays]="e.repay > 0">
+            <span class="ci-node" [style.background]="kindColor(e.srcKind)"></span>
+            <span class="ci-date">{{ fmtDate(e.date) }}</span>
+            <span class="ci-txt">{{ e.label.replace('Sell: ','') }} in <b class="ci-amt">＋{{ inr(e.amount) }}</b>
+              @if (srcById(e.sourceId!) && hasGain(srcById(e.sourceId!)!)) { <span class="ci-gain">incl. gain {{ inr(gainOf(srcById(e.sourceId!)!)) }}</span> }
+            </span>
+            @if (e.repay > 0) { <span class="ci-repay">repays loan −{{ inr(e.repay) }}</span> }
+            <span class="ci-after">
+              <span class="ci-bal" [class.zero]="e.balance === 0">loan {{ inr(e.balance) }}</span>
+              <span class="ci-cash">cash {{ inr(e.cashInHand) }}</span>
+            </span>
+          </div>
+        }
+      }
+
+      @if (analysis().finalLoan > 0 && analysis().amort.feasible) {
+        <div class="cash-in repays">
+          <span class="ci-node" style="background:#16a085"></span>
+          <span class="ci-date">{{ fmtMonth(analysis().amort.payoffDate) }}</span>
+          <span class="ci-txt">Salary clears the residual over {{ analysis().amort.months }} months <b class="ci-amt">＋{{ inr(analysis().finalLoan) }}</b></span>
+          <span class="ci-repay">loan fully repaid</span>
+          <span class="ci-bal zero">loan {{ inr(0) }}</span>
+        </div>
+      }
+
+      <!-- the bottom line: what's left after everything -->
+      <div class="tl-end">
+        <span class="te-node">🏁</span>
+        <div class="te-body">
+          <span class="te-lbl">After the last payment &amp; the loan is cleared</span>
+          <span class="te-vals">
+            <span class="te-item"><i>Left over cash</i><b class="pos">{{ inr(analysis().leftoverCash) }}</b></span>
+            <span class="te-item"><i>Loan still owed</i><b [class.pos]="analysis().finalLoan === 0">{{ inr(analysis().finalLoan) }}</b></span>
+            <span class="te-item"><i>Total loan taken</i><b class="loan">{{ inr(totalLoan()) }}</b></span>
+            <span class="te-item"><i>Loan repaid by sales</i><b>{{ inr(analysis().totalRepaid) }}</b></span>
+          </span>
+        </div>
+      </div>
+
+      <!-- inline add: put more money in, or add a payment -->
+      <div class="tl-add">
+        <span class="ta-lbl">Add to the plan</span>
+        <button class="btn prim" (click)="openPicker()">＋ Add asset / income</button>
+        <button class="btn" (click)="addBlankSource(); view.set('sources')">＋ Blank source</button>
+        <button class="btn" (click)="addStage()">＋ Payment stage</button>
+      </div>
+    </div>
+  }
+
+  <!-- ═══ cost sheet ═══════════════════════════════════════════════════════ -->
+  <button class="costs-toggle" (click)="showCosts.set(!showCosts())">{{ showCosts() ? '▾' : '▸' }} Builder cost sheet</button>
+  @if (showCosts()) {
+    <table class="costs">
+      <tbody>
+        @for (r of costRows; track r.label) {
+          <tr [class.total]="r.sub"><td>{{ r.label }}</td><td class="r">{{ inrFull(r.amount) }}</td></tr>
+        }
+      </tbody>
+    </table>
+  }
+
+  <p class="foot">FY2025-26 rules · property prices are researched estimates · §54 shelters house-for-house gains · verify tax with your CA.</p>
+
+  <!-- ═══ asset picker modal ═══════════════════════════════════════════════ -->
+  @if (showPicker()) {
+    <div class="pk-ov" (click)="showPicker.set(false)">
+      <div class="pk" (click)="$event.stopPropagation()">
+        <div class="pk-h"><h3>Add from your assets</h3><button (click)="showPicker.set(false)">✕</button></div>
+        <input class="pk-s" placeholder="Search name, owner or class…" [ngModel]="pickerQuery()" (ngModelChange)="pickerQuery.set($event)">
+
+        <!-- class filter chips -->
+        <div class="pk-filters">
+          <button class="pkf" [class.on]="pickerClass() === ''" (click)="pickerClass.set('')">All <span>{{ pickerCount() }}</span></button>
+          @for (c of assetClasses(); track c.key) {
+            <button class="pkf" [class.on]="pickerClass() === c.key" (click)="pickerClass.set(c.key)">
+              <i [style.background]="classColor(c.key)"></i>{{ c.label }} <span>{{ c.count }}</span>
+            </button>
+          }
+        </div>
+
+        <div class="pk-l">
+          @if (assetsLoading()) { <div class="pk-e">Loading…</div> }
+          @else if (!filteredAssets().length) { <div class="pk-e">No assets in this filter.</div> }
+          @for (a of filteredAssets(); track a.asset_class + a.name + a.owner) {
+            <div class="pk-r" [class.added]="assetAdded(a)">
+              <i class="pk-dot" [style.background]="classColor(a.asset_class)"></i>
+              <div class="pk-i">
+                <span class="pk-n">{{ a.name }}</span>
+                <span class="pk-m"><span class="pk-owner">👤 {{ a.owner || '—' }}</span> · {{ a.class_label }} · sells in {{ a.liquidity_label }}</span>
+              </div>
+              <div class="pk-right">
+                <span class="pk-v">{{ inr(a.realisable || a.value) }}</span>
+                @if (assetGain(a) !== null) {
+                  <span class="pk-gain" [class.neg]="assetGain(a)! < 0">{{ assetGain(a)! >= 0 ? 'gain' : 'loss' }} {{ inr(abs(assetGain(a)!)) }}</span>
+                } @else { <span class="pk-gain none">no cost basis</span> }
+              </div>
+              @if (assetAdded(a)) { <span class="pk-ok">✓ Added</span> } @else { <button class="pk-add" (click)="addAsset(a)">＋ Add</button> }
+            </div>
+          }
+        </div>
+        <p class="pk-f">Adds it as a committed source at its realisable value, with its owner &amp; capital gain (proceeds − cost). Set its <b>ready-by</b> date after.</p>
+      </div>
+    </div>
+  }
+</div>

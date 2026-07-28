@@ -1,0 +1,868 @@
+<div class="land-head">
+  <div>
+    <h1>Stocks</h1>
+    <!-- live "value actually refreshed" indicator — the dot pulses only when a
+         NEW value lands, so you can tell real updates from mere polling -->
+    @if (lastChanged()) {
+      <div class="upd-row">
+        <span class="upd" [class.fresh]="justRefreshed()" title="Pulses green when the prices actually change, not just when we poll.">
+          <span class="upd-dot"></span>{{ updatedText() }}
+        </span>
+        <span class="upd-src" title="Price source">via {{ summary()?.price_source || 'yahoo' }}</span>
+      </div>
+    }
+  </div>
+  <div class="actions">
+    <!-- Tickertape-style account picker: select to filter, manage inline -->
+    <div class="acct-picker">
+      <button class="picker-btn" (click)="pickerOpen.set(!pickerOpen())" [class.active]="!isAllAcc()">
+        <span class="pi">▤</span>
+        <span class="pl">{{ accSelLabel() }}</span>
+        <span class="cv" [class.open]="pickerOpen()">▾</span>
+      </button>
+
+      @if (pickerOpen()) {
+        <div class="picker-back" (click)="pickerOpen.set(false)"></div>
+        <div class="picker-pop">
+          <div class="pp-head">
+            <h4>Connected accounts</h4>
+            <p>{{ accounts().length }} broker account{{ accounts().length === 1 ? '' : 's' }} · tick the ones to view</p>
+          </div>
+
+          <div class="pp-list">
+            <button class="pp-row pick" [class.sel]="isAllAcc()" (click)="selectAll()">
+              <span class="pp-check" [class.on]="isAllAcc()"></span>
+              <span class="pp-ic all">▤</span>
+              <span class="pp-main"><span class="pp-name">All broker accounts</span></span>
+            </button>
+
+            @for (a of accounts(); track a.id) {
+              @if (editingAcct() === a.id) {
+                <div class="pp-row editing">
+                  <span class="pp-ic" [class]="'bk-' + a.broker">{{ brokerShort(a.broker) }}</span>
+                  <div class="pp-edit">
+                    <input class="pe-in" placeholder="Account label" [ngModel]="editDraft().account_label" (ngModelChange)="setEdit('account_label', $event)">
+                    <input class="pe-in" list="eq-persons" placeholder="Person" [ngModel]="editDraft().person" (ngModelChange)="setEdit('person', $event)" (keyup.enter)="saveEdit()" (keyup.escape)="editingAcct.set(null)">
+                    @if (a.broker === 'kite') {
+                      <div class="pe-keyhead">Kite Connect app — <b class="ok">key {{ a.api_key_hint || '(none)' }}</b></div>
+                      <input class="pe-in" placeholder="API key (paste this person’s F&O key to log in the same way)" [ngModel]="editDraft().api_key" (ngModelChange)="setEdit('api_key', $event)">
+                      <input class="pe-in" type="password" placeholder="API secret (blank = keep the stored one)" [ngModel]="editDraft().api_secret" (ngModelChange)="setEdit('api_secret', $event)" (keyup.enter)="saveEdit()">
+                      <div class="pe-hint">Use the <b>same key + secret as this person’s F&amp;O account</b> so Stocks logs in the same way (and one login covers both). Changing the key clears the session — you’ll log in again.</div>
+                    }
+                    <div class="pe-acts">
+                      <button class="btn sm primary" (click)="saveEdit()" [disabled]="!editDraft().person.trim() || !editDraft().account_label.trim() || savingEdit()">{{ savingEdit() ? '…' : 'Save' }}</button>
+                      <button class="btn sm ghost" (click)="editingAcct.set(null)">Cancel</button>
+                      @if (a.status === 'connected') {
+                        <button class="btn sm danger ghost pe-logoff" [disabled]="loggingOffId() === a.id" (click)="logOff(a)"
+                                title="Clear this Kite session (and any linked Stocks/F&O account) so you can log in again">{{ loggingOffId() === a.id ? '…' : '⏻ Log off' }}</button>
+                      }
+                    </div>
+                  </div>
+                </div>
+              } @else {
+                <div class="pp-row" [class.sel]="accountSel().has(a.id)">
+                  <button class="pp-pick" (click)="toggleAcc(a.id)">
+                    <span class="pp-check" [class.on]="accountSel().has(a.id)"></span>
+                    <span class="pp-ic" [class]="'bk-' + a.broker">{{ brokerShort(a.broker) }}</span>
+                    <span class="pp-main">
+                      <span class="pp-name">{{ a.account_label }}</span>
+                      <span class="pp-person" [class.unset]="!a.person">👤 {{ a.person || 'No person — assign' }}</span>
+                    </span>
+                  </button>
+                  <span class="pp-acts">
+                    @if (a.kind === 'imported') {
+                      <button class="pa" (click)="openUpload(a)" title="Re-upload holdings">⬆</button>
+                    } @else if (a.status === 'connected') {
+                      <button class="pa" (click)="refresh(a)" [disabled]="refreshingId() === a.id" title="Refresh holdings">{{ refreshingId() === a.id ? '…' : '↻' }}</button>
+                    } @else {
+                      <button class="pa warn" (click)="login(a)" [disabled]="loggingInId() === a.id" title="Log in to Kite (session expired)">{{ loggingInId() === a.id ? '…' : '⊕' }}</button>
+                    }
+                    <button class="pa" (click)="openRowEdit(a)" title="Rename / link person">✎</button>
+                    <button class="pa del" (click)="remove(a)" title="Remove account">🗑</button>
+                  </span>
+                </div>
+              }
+            }
+          </div>
+
+          <button class="pp-add" (click)="openAdd()">＋ Add account</button>
+        </div>
+      }
+    </div>
+  </div>
+</div>
+<datalist id="eq-persons">@for (p of personOptions(); track p) { <option [value]="p"></option> }</datalist>
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head"><span class="ni">⚙︎</span>
+      <div><strong>One-time setup — create the stock tables</strong>
+        <p>Paste this into <b>Supabase → SQL Editor → Run</b>, then hit retry.</p>
+        <pre class="sql">{{ migrationSql }}</pre>
+      </div>
+    </div>
+    <div class="notice-actions">
+      <button class="btn" (click)="copySql()">{{ copied() ? '✓ Copied' : 'Copy SQL' }}</button>
+      <button class="btn primary" (click)="load()">I've run it — retry</button>
+    </div>
+  </div>
+}
+
+@if (error()) { <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div> }
+@if (loading()) { <div class="state">Loading…</div> }
+
+@if (!loading() && !needsMigration() && summary(); as s) {
+  <!-- Black KPI bar -->
+  @if (viewTotals(); as vt) {
+    <div class="kbar">
+      <div class="kb" title="Total invested = Σ (quantity × your average buy price), converted to ₹ at today's FX for USD holdings."><span class="kb-k">Investment</span><span class="kb-v">{{ inr(vt.invested) }}</span></div>
+      <div class="kb" title="Current market value = Σ (quantity × live price), in ₹. Updates live during market hours."><span class="kb-k">{{ isAllAcc() ? 'Net worth' : 'Value' }}</span><span class="kb-v" [class.kb-flash]="justRefreshed()">{{ inr(vt.value) }} @if (market.isOpen()) { <span class="kb-live">LIVE</span> }</span></div>
+      <div class="kb" title="Unrealised profit/loss = Net worth − Investment."><span class="kb-k">P/L</span><span class="kb-v" [class.pos]="vt.pnl >= 0" [class.neg]="vt.pnl < 0">{{ inr(vt.pnl) }}</span></div>
+      <div class="kb" title="Return = P/L ÷ Investment."><span class="kb-k">P/L %</span><span class="kb-v" [class.pos]="(vt.pnl_pct ?? 0) >= 0" [class.neg]="(vt.pnl_pct ?? 0) < 0">{{ pct(vt.pnl_pct) }} {{ (vt.pnl_pct ?? 0) >= 0 ? '▲' : '▼' }}</span></div>
+      <div class="kb" title="Today's change = Σ quantity × (live price − yesterday's closing price), in ₹. After market close it's the last completed session."><span class="kb-k">Day's gain</span><span class="kb-v" [class.pos]="vt.day_change >= 0" [class.neg]="vt.day_change < 0">{{ inr(vt.day_change) }}</span></div>
+      <div class="kb" title="Day's gain ÷ yesterday's closing value of these holdings."><span class="kb-k">Day's gain %</span><span class="kb-v" [class.pos]="vt.day_change_pct >= 0" [class.neg]="vt.day_change_pct < 0">{{ pct(vt.day_change_pct) }} {{ vt.day_change_pct >= 0 ? '▲' : '▼' }}</span></div>
+      <div class="kb" title="Number of distinct stocks held (merged across all your accounts)."><span class="kb-k">Holdings</span><span class="kb-v">{{ vt.holdings }}</span></div>
+    </div>
+  }
+
+  <!-- Per-person cards (click for full detail) -->
+  @if (scopedPersons().length > 1) {
+    <div class="pcards">
+      @for (p of scopedPersons(); track p.person) {
+        <button class="pcard" (click)="openPersonDetail(p.person)" title="See {{ p.person }}'s accounts">
+          <div class="pc-h">
+            <span class="pc-name">{{ p.person }}</span>
+            <span class="pc-day" [class.pos]="p.day_change >= 0" [class.neg]="p.day_change < 0">{{ p.day_change >= 0 ? '▲' : '▼' }} {{ pct(p.day_change_pct) }}</span>
+          </div>
+          <div class="pc-val">{{ inr(p.value) }}</div>
+          <div class="pc-row">
+            <span class="pc-inv">Invested {{ inr(p.invested) }}</span>
+            <span class="pc-pnl" [class.pos]="p.pnl >= 0" [class.neg]="p.pnl < 0">{{ inr(p.pnl) }} <small>{{ pct(p.pnl_pct) }}</small></span>
+          </div>
+
+          <!-- LTCG harvesting: booked long-term gain vs the ₹1.25 L tax-free room -->
+          @if (harvestForPerson(p.person); as hv) {
+            <div class="pc-harvest" [class.filed]="hv.filed" [class.maxed]="hv.remaining <= 0">
+              @if (hv.filed) {
+                <div class="pch-bar"><i [style.width.%]="(hv.booked / LTCG_ALLOWANCE) * 100"></i></div>
+                <div class="pch-row">
+                  <span class="pch-l">LTCG booked <b>{{ inr(hv.booked) }}</b></span>
+                  <span class="pch-r" [class.done]="hv.remaining <= 0">
+                    @if (hv.remaining > 0) { <b>{{ inr(hv.remaining) }}</b> left to book } @else { ✓ ₹1.25 L used }
+                  </span>
+                </div>
+                <!-- STCG: gain booked and the tax accrued so far this FY -->
+                <div class="pch-row st">
+                  <span class="pch-l">STCG <b>{{ inr(hv.stBooked) }}</b></span>
+                  <span class="pch-tax" [class.owe]="hv.totalTax > 0" title="Tax so far this FY (STCG 20% + LTCG 12.5% over ₹1.25 L)">
+                    tax <b>{{ inr(hv.totalTax) }}</b>
+                  </span>
+                </div>
+              } @else {
+                <span class="pch-none">Tap to add a Tax P&amp;L → see LTCG room &amp; tax</span>
+              }
+            </div>
+          }
+
+          <span class="pc-more">View detail →</span>
+        </button>
+      }
+    </div>
+  }
+
+  <!-- Allocation pie + movers (left) · Dividends (right) -->
+  <div class="panels">
+    <div class="left-col">
+      <!-- Portfolio vs Nifty backtest -->
+      <app-perf class="perf-host" [accountIds]="selectedIdsArr()"></app-perf>
+
+      <!-- Today's movers (compact 2 + 2) -->
+      <div class="panel movers">
+        <div class="panel-h"><h3>Today's movers</h3></div>
+        <div class="mv-cols">
+          <div class="mv-group">
+            <div class="mv-label up">▲ Gainers</div>
+            @for (g of topGainers(); track g.symbol) {
+              <div class="mv-row"><span class="mv-sym">{{ g.symbol }}</span><span class="mv-pct pos">{{ pct(g.day_change_pct) }}</span><span class="mv-amt pos">{{ inr(g.day_change) }}</span></div>
+            } @empty { <div class="mv-empty">—</div> }
+          </div>
+          <div class="mv-group">
+            <div class="mv-label down">▼ Losers</div>
+            @for (l of topLosers(); track l.symbol) {
+              <div class="mv-row"><span class="mv-sym">{{ l.symbol }}</span><span class="mv-pct neg">{{ pct(l.day_change_pct) }}</span><span class="mv-amt neg">{{ inr(l.day_change) }}</span></div>
+            } @empty { <div class="mv-empty">—</div> }
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <app-dividends class="panel dv-host" [stocks]="summary()?.stocks || []" [holdings]="summary()?.holdings_detail || []" [selectedAccountIds]="selectedIdsArr()" [usdInr]="summary()?.usd_inr || 85" (viewInHoldings)="onDivMonth($event)"></app-dividends>
+  </div>
+
+  @if (!accounts().length) {
+    <div class="empty-hint">No accounts yet — open the <b>All accounts ▾</b> menu (top-right) and tap <b>＋ Add account</b> to connect Zerodha or import a holdings file.</div>
+  }
+
+  <!-- Holdings (filterable · truncated) -->
+  @if (s.holding_count || !isAllAcc()) {
+    <div class="sec-head" id="holdings-top" #holdingsTop>
+      <h2>Holdings</h2><span class="sh-sub">{{ filteredStocks().length }} stock{{ filteredStocks().length === 1 ? '' : 's' }} · live ({{ s.price_source }}) @if (!isAllAcc()) { · {{ accSelLabel() }} }</span>
+    </div>
+
+    <!-- market indices hero — Nifty / Sensex / S&P 500 / Nasdaq with day-change -->
+    @if (indices().length) {
+      <div class="mkt-hero">
+        @for (ix of indices(); track ix.id) {
+          <div class="mkt-item" [class.pos]="ix.change >= 0" [class.neg]="ix.change < 0">
+            <span class="mkt-name">{{ ix.label }}</span>
+            <span class="mkt-last">{{ ix.last | number:'1.2-2' }}</span>
+            <span class="mkt-chg">{{ ix.change >= 0 ? '▲' : '▼' }} {{ ix.change >= 0 ? '+' : '' }}{{ ix.change | number:'1.2-2' }}
+              <b>({{ ix.change_pct >= 0 ? '+' : '' }}{{ ix.change_pct | number:'1.2-2' }}%)</b></span>
+          </div>
+        }
+      </div>
+    }
+
+    <div class="hold-bar">
+      <input class="h-search" type="text" placeholder="🔍 Search stock…" [ngModel]="holdSearch()" (ngModelChange)="holdSearch.set($event)">
+
+      <div class="filter-wrap">
+        <button class="filter-btn" [class.on]="activeFilterCount() > 0" (click)="showFilter.set(!showFilter())" title="Filter holdings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+          Filter @if (activeFilterCount() > 0) { <span class="fb-badge">{{ activeFilterCount() }}</span> }
+        </button>
+
+        @if (showFilter()) {
+          <div class="fp-backdrop" (click)="showFilter.set(false)"></div>
+          <div class="filter-pop" role="dialog">
+            <div class="fp-cols">
+              <!-- column 1: filter type -->
+              <div class="fp-cats">
+                @for (c of filterCats(); track c.key) {
+                  <button [class.on]="filterCat() === c.key" (click)="filterCat.set(c.key)">
+                    <span class="fp-cat-l">
+                      <svg class="fp-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        @switch (c.key) {
+                          @case ('status') { <path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/> }
+                          @case ('dividends') { <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/> }
+                          @case ('needsprice') { <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/> }
+                          @case ('broker') { <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/> }
+                        }
+                      </svg>
+                      <span>{{ c.label }}</span>
+                    </span>
+                    @if (c.active()) { <span class="fp-dot" title="active"></span> }
+                  </button>
+                }
+              </div>
+              <!-- column 2: how to filter -->
+              <div class="fp-opts">
+                @switch (filterCat()) {
+                  @case ('status') {
+                    <p class="fp-hint">Pick any — matches stocks in <b>any</b> chosen state.</p>
+                    <label class="fp-check"><input type="checkbox" [checked]="statusOn('profit')" (change)="toggleStatus('profit')"><span>In profit</span></label>
+                    <label class="fp-check"><input type="checkbox" [checked]="statusOn('loss')" (change)="toggleStatus('loss')"><span>In loss</span></label>
+                    <label class="fp-check"><input type="checkbox" [checked]="statusOn('up')" (change)="toggleStatus('up')"><span>Up today</span></label>
+                    <label class="fp-check"><input type="checkbox" [checked]="statusOn('down')" (change)="toggleStatus('down')"><span>Down today</span></label>
+                  }
+                  @case ('dividends') {
+                    <p class="fp-hint">Stocks paying a dividend in a chosen month:</p>
+                    <div class="fp-mrow">
+                      <select [ngModel]="divFilterMonth()" (ngModelChange)="setDivMonth(divFilterYear() || divYears()[0], $event)">
+                        <option [ngValue]="0">Month</option>
+                        @for (m of [1,2,3,4,5,6,7,8,9,10,11,12]; track m) { <option [ngValue]="m">{{ monthNames[m] }}</option> }
+                      </select>
+                      <select [ngModel]="divFilterYear()" (ngModelChange)="setDivMonth($event, divFilterMonth())">
+                        <option [ngValue]="0">Year</option>
+                        @for (y of divYears(); track y) { <option [ngValue]="y">{{ y }}</option> }
+                      </select>
+                    </div>
+                    @if (divMonthActive()) {
+                      <div class="fp-mnote">{{ divPayersInMonth()?.size || 0 }} payer(s) in {{ monthNames[divFilterMonth()] }} {{ divFilterYear() }}
+                        <button class="fp-mini" (click)="clearDivMonth()">clear</button></div>
+                    }
+                    <label class="fp-check"><input type="checkbox" [checked]="divOnly()" (change)="divOnly.set(!divOnly())"><span>Only dividend stocks</span></label>
+                  }
+                  @case ('needsprice') {
+                    <p class="fp-hint">Stocks with no live price (and your manual ones) — type the LTP inline.</p>
+                    <label class="fp-check"><input type="checkbox" [checked]="needsPrice()" (change)="toggleNeedsPrice()"><span>Only holdings needing a price</span></label>
+                  }
+                  @case ('broker') {
+                    <label class="fp-radio"><input type="radio" name="bk" [checked]="!holdBroker()" (change)="holdBroker.set('')"><span>All brokers</span></label>
+                    @for (b of brokerOptions(); track b) {
+                      <label class="fp-radio"><input type="radio" name="bk" [checked]="holdBroker()===b" (change)="holdBroker.set(b)"><span>{{ brokerName(b) }}</span></label>
+                    }
+                  }
+                }
+              </div>
+            </div>
+            <div class="fp-foot">
+              <button class="fp-clear" [disabled]="!holdFiltered()" (click)="clearHoldFilters()">Clear all</button>
+              <button class="fp-done" (click)="showFilter.set(false)">Done</button>
+            </div>
+          </div>
+        }
+      </div>
+
+      @if (holdFiltered()) { <button class="h-clear" (click)="clearHoldFilters()">✕ Clear</button> }
+    </div>
+
+    <!-- filtered-holdings summary hero — only while a filter is active -->
+    @if (holdFiltered()) {
+      @let fs = filterStats();
+      <div class="hold-hero">
+        <div class="hh-item">
+          <span class="hh-k">Holdings</span>
+          <span class="hh-v">{{ fs.count }}@if (fs.unpriced > 0) { <i class="hh-sub">{{ fs.unpriced }} unpriced</i> }</span>
+        </div>
+        <div class="hh-item">
+          <span class="hh-k">Invested</span>
+          <span class="hh-v">{{ inr(fs.invested) }}</span>
+        </div>
+        <div class="hh-item">
+          <span class="hh-k">Current value</span>
+          <span class="hh-v">{{ inr(fs.value) }}</span>
+        </div>
+        <div class="hh-item">
+          <span class="hh-k">Overall P&amp;L</span>
+          <span class="hh-v" [class.pos]="fs.pnl >= 0" [class.neg]="fs.pnl < 0">{{ inr(fs.pnl) }}</span>
+        </div>
+        <div class="hh-item">
+          <span class="hh-k">Return</span>
+          <span class="hh-v" [class.pos]="(fs.pnlPct ?? 0) >= 0" [class.neg]="(fs.pnlPct ?? 0) < 0">{{ pct(fs.pnlPct) }}</span>
+        </div>
+        <div class="hh-item">
+          <span class="hh-k">Dividend / yr</span>
+          <span class="hh-v">{{ inr(fs.div) }}@if (fs.divYield != null) { <i class="hh-sub">{{ pct(fs.divYield) }} yield</i> }</span>
+        </div>
+      </div>
+    }
+
+    <div class="table-wrap">
+      <table class="htable">
+        <thead><tr>
+          <th class="srt" (click)="toggleSort('symbol')">Stock{{ sortArrow('symbol') }}</th>
+          <th class="num srt" (click)="toggleSort('quantity')">Qty{{ sortArrow('quantity') }}</th>
+          <th class="num">Avg</th><th class="num">LTP</th>
+          <th class="num srt" (click)="toggleSort('day_change')">Day{{ sortArrow('day_change') }}</th>
+          <th class="num srt" (click)="toggleSort('day_change_pct')">Day %{{ sortArrow('day_change_pct') }}</th>
+          <th class="num srt" (click)="toggleSort('value')">Value{{ sortArrow('value') }}</th>
+          <th class="num srt" (click)="toggleSort('pnl')">P&L{{ sortArrow('pnl') }}</th>
+          <th class="num srt" (click)="toggleSort('pnl_pct')">P&L %{{ sortArrow('pnl_pct') }}</th>
+          <th class="num srt" (click)="toggleSort('record')">Record date{{ sortArrow('record') }}</th>
+          <th class="num srt" (click)="toggleSort('div_ps')" title="Per-share amount of the most recently declared dividend">Div / sh{{ sortArrow('div_ps') }}</th>
+          <th class="num srt" (click)="toggleSort('div')">Div / yr{{ sortArrow('div') }}</th>
+        </tr></thead>
+        <tbody>
+          @for (h of displayStocks(); track h.symbol) {
+            <tr class="hrow" [class.open]="isExpanded(h.symbol)" (click)="toggleExpand(h.symbol)">
+              <td class="sym">
+                <span class="chev" [class.open]="isExpanded(h.symbol)">▸</span>
+                <button type="button" class="logo" [class.linked]="hasScreener(h)"
+                        [style.background]="logoColor(h.symbol)" (click)="onLogoClick($event, h)"
+                        [title]="hasScreener(h) ? 'Open ' + h.symbol + ' on Screener.in ↗' : 'Expand the row to add a Screener link'">
+                  {{ initials(h.symbol) }}
+                  @if (logoUrl(h.isin); as url) { <img class="logo-img" [src]="url" (error)="onLogoErr($event)" alt="" loading="lazy"> }
+                </button>
+                <span class="sym-txt"><b>{{ h.symbol }}</b><small>{{ h.name || h.exchange }}@if (h.accounts > 1) { · {{ h.accounts }} a/c }</small></span>
+              </td>
+              <td class="num">{{ h.quantity | number:'1.0-0' }}</td>
+              <td class="num">{{ px(h, h.avg_price) }}</td>
+              <td class="num">
+                @if (h.priced && !h.price_manual && manualFor(h.symbol) == null) {
+                  {{ px(h, h.last_price) }}
+                } @else {
+                  <span class="px-inline" title="Type today's price — saved & used in your valuation. Edit anytime." (click)="$event.stopPropagation()">
+                    <i>{{ isUsdRow(h) ? '$' : '₹' }}</i>
+                    <input type="number" min="0" step="0.05" class="px-in" [ngModel]="manualFor(h.symbol)"
+                           (ngModelChange)="setManualLocal(h.symbol, $event)" (keyup.enter)="saveManual(h.symbol); $any($event.target).blur()"
+                           (blur)="saveManual(h.symbol)" placeholder="price">
+                    @if (h.price_manual || manualFor(h.symbol) != null) { <span class="px-m" title="Manual price — click to edit">M</span> }
+                  </span>
+                }
+              </td>
+              <td class="num" [class.pos]="h.day_change >= 0" [class.neg]="h.day_change < 0" [class.usd-hov]="isUsdRow(h)" (mouseenter)="showTip($event, usdTip(h, h.day_change))" (mouseleave)="hideTip()">{{ inr(h.day_change) }}</td>
+              <td class="num" [class.pos]="h.day_change_pct >= 0" [class.neg]="h.day_change_pct < 0">{{ pct(h.day_change_pct) }}</td>
+              <td class="num" [class.usd-hov]="isUsdRow(h)" (mouseenter)="showTip($event, usdTip(h, h.value))" (mouseleave)="hideTip()">{{ inr(h.value) }}</td>
+              <td class="num" [class.pos]="h.pnl >= 0" [class.neg]="h.pnl < 0" [class.usd-hov]="isUsdRow(h)" (mouseenter)="showTip($event, usdTip(h, h.pnl))" (mouseleave)="hideTip()">{{ inr(h.pnl) }}</td>
+              <td class="num" [class.pos]="(h.pnl_pct ?? 0) >= 0" [class.neg]="(h.pnl_pct ?? 0) < 0">{{ pct(h.pnl_pct) }}</td>
+              <td class="num rec-date">
+                @if (hasDiv(h.symbol)) { {{ recordDate(h.symbol) }} }
+              </td>
+              <td class="num divsh-cell">
+                @if (lastDivPerShare(h.symbol); as ps) {
+                  <span class="dv-amt">{{ curSym(lastDivCurrency(h.symbol)) }}{{ ps | number:'1.0-2' }}</span>
+                }
+              </td>
+              <td class="num div-cell">
+                @if (hasDiv(h.symbol)) {
+                  <span class="dv-amt">@if (isUsdRow(h)) { ${{ annualDividendNative(h.symbol) | number:'1.0-2' }} } @else { {{ divFmt(annualDividend(h.symbol)) }} }</span>
+                  @if (divCalc(h.symbol, h.value).yieldPct !== null) {
+                    <small class="dv-yld">{{ pct(divCalc(h.symbol, h.value).yieldPct) }}</small>
+                  }
+                } @else {
+                  <span class="dv-add">＋ add</span>
+                }
+              </td>
+            </tr>
+
+            @if (isExpanded(h.symbol)) {
+              @let d = divCalc(h.symbol, h.value);
+              <tr class="div-row">
+                <td colspan="12">
+                  <div class="div-panel" (click)="$event.stopPropagation()">
+                    <!-- two tabs only: Upcoming (to log) · Logged (history) -->
+                    <div class="dv-tabs">
+                      <button class="dv-tab" [class.on]="divTab()==='upcoming'" (click)="divTab.set('upcoming')">Upcoming @if (upcomingFor(h.symbol).length) { <span class="dv-tc">{{ upcomingFor(h.symbol).length }}</span> }</button>
+                      <button class="dv-tab" [class.on]="divTab()==='logged'" (click)="divTab.set('logged')">Logged @if (loggedFor(h.symbol).length) { <span class="dv-tc">{{ loggedFor(h.symbol).length }}</span> }</button>
+                      <span class="dv-sym">{{ h.symbol }} · {{ h.quantity | number:'1.0-0' }} sh · {{ h.accounts || 1 }} a/c</span>
+                    </div>
+
+                    <!-- ── UPCOMING: one compact row per payout, expand → per-account split ── -->
+                    @if (divTab()==='upcoming') {
+                      @for (g of upcomingGroups(h.symbol); track g.key) {
+                        <div class="dg" [class.open]="isGroupOpen(g.key)">
+                          <button type="button" class="dg-row" (click)="toggleGroup(g.key)">
+                            <span class="dg-chev">▸</span>
+                            <span class="dg-date">{{ fmtDivDate(g.date) }}</span>
+                            <span class="dg-meta">{{ groupUpShares(g,h) | number:'1.0-0' }} sh · {{ groupUpAccounts(g,h) }} a/c</span>
+                            <span class="dg-sp"></span>
+                            <span class="dg-recv" [class.done]="groupUpReceivedCount(g,h) === groupUpAccounts(g,h)">{{ groupUpReceivedCount(g,h) }}/{{ groupUpAccounts(g,h) }}</span>
+                            <b class="dg-amt">{{ divFmt(groupUpExpected(g,h)) }}</b>
+                          </button>
+                          @if (isGroupOpen(g.key)) {
+                            <div class="dg-body">
+                              <!-- Yet to receive — set the rate, then tick as each account's money lands -->
+                              @for (l of groupPending(g,h); track l.dv.id + '|' + l.acc.id) {
+                                <div class="dgl">
+                                  <div class="dgl-acct"><b>{{ l.acc.label }}</b><em>{{ l.acc.person }} · {{ l.acc.shares | number:'1.0-0' }} sh</em></div>
+                                  <label class="dgl-rate"><i>{{ curSym(l.dv.currency) }}</i><input type="number" min="0" step="0.01" placeholder="0.00" [value]="reconPsView(l.dv,l.acc.id)" (change)="setReconPs(l.dv,l.acc.id,$any($event.target).value)"><em>/sh</em></label>
+                                  <label class="dgl-tot" title="Total received for this account — edit to set the rate"><i>{{ curSym(l.dv.currency) }}</i><input type="number" min="0" step="1" placeholder="0" [value]="reconTotalView(l.dv,l.acc)" (change)="setReconTotal(l.dv,l.acc,$any($event.target).value)"></label>
+                                  <button type="button" class="dgl-tick" [disabled]="!reconPsView(l.dv,l.acc.id)" (click)="setReconReceived(l.dv,l.acc.id,true)" [title]="reconPsView(l.dv,l.acc.id) ? 'Mark received — moves to Received' : 'Enter a rate first'">✓</button>
+                                </div>
+                              }
+                              @if (!groupPending(g,h).length) { <div class="dg-allin">✓ All accounts received — add it below.</div> }
+
+                              <!-- Received — collapsed; tap to review or undo -->
+                              @if (groupReceived(g,h).length) {
+                                <div class="dg-recvd" [class.open]="recvdOpen(g.key)">
+                                  <button type="button" class="dg-recvd-h" (click)="toggleRecvd(g.key)">
+                                    <span class="dg-recvd-chev">▸</span>
+                                    <span class="dg-recvd-t">Received</span>
+                                    <span class="dg-recvd-n">{{ groupReceived(g,h).length }}</span>
+                                    <span class="dg-sp"></span>
+                                    <b>{{ divFmt(groupUpReceivedTotal(g,h)) }}</b>
+                                  </button>
+                                  @if (recvdOpen(g.key)) {
+                                    @for (l of groupReceived(g,h); track l.dv.id + '|' + l.acc.id) {
+                                      <div class="dgl done">
+                                        <div class="dgl-acct"><b>{{ l.acc.label }}</b><em>{{ l.acc.person }} · {{ l.acc.shares | number:'1.0-0' }} sh</em></div>
+                                        <span class="dgl-recvamt">{{ curSym(l.dv.currency) }}{{ reconPsView(l.dv,l.acc.id) }}<em>/sh</em> · <b>{{ divFmt(reconTotal(l.dv,l.acc)) }}</b></span>
+                                        <button type="button" class="dgl-undo" (click)="setReconReceived(l.dv,l.acc.id,false)" title="Move back to yet-to-receive">↩</button>
+                                      </div>
+                                    }
+                                  }
+                                </div>
+                              }
+
+                              <div class="dg-foot">
+                                <input class="dg-date-edit" type="date" [value]="g.dvs[0].date" (change)="editGroupDate(g,$any($event.target).value)" title="Ex-date for this payout">
+                                <span class="dg-foot-sum"><b>{{ groupUpReceivedCount(g,h) }}</b>/{{ groupUpAccounts(g,h) }} received · <b>{{ divFmt(groupUpReceivedTotal(g,h)) }}</b></span>
+                                <button class="dg-del" (click)="removeGroup(g)" title="Delete this payout">🗑</button>
+                                <button class="dg-log" [disabled]="!groupUpReceivedCount(g,h)" (click)="logGroup(g,h)" title="Move the received accounts to Logged">✓ Add as received</button>
+                              </div>
+                              @if (!groupUpReceivedCount(g,h)) { <div class="dg-hint">Tick each account as its dividend lands.</div> }
+                            </div>
+                          }
+                        </div>
+                      }
+                      @if (!upcomingGroups(h.symbol).length) { <div class="dv-empty">No upcoming dividends — add an expected one below.</div> }
+
+                      <!-- add an expected payout (rate pre-filled from the last one) -->
+                      <div class="dv-add">
+                        <span class="dv-add-l">＋ Expected</span>
+                        <input class="dv-date" type="date" [ngModel]="divDraft().date" (ngModelChange)="setDivDraft('date',$event)">
+                        <span class="dv-rate"><i>{{ curSym(h.currency) }}</i><input type="number" min="0" step="0.01" placeholder="/ share" [ngModel]="divDraft().per_share" (ngModelChange)="setDivDraft('per_share',$event)"><em>/sh</em></span>
+                        <span class="dv-tot">× {{ h.quantity | number:'1.0-0' }} = <b>{{ divFmt((divDraft().per_share||0) * h.quantity) }}</b></span>
+                        <button class="dv-add-btn" (click)="addExpected(h)">Add</button>
+                        @if (divErr()) { <span class="dv-err">{{ divErr() }}</span> }
+                      </div>
+                    }
+
+                    <!-- ── LOGGED: blended summary + collapsed rows (click to open & edit) ── -->
+                    @if (divTab()==='logged') {
+                      <div class="dv-sum">
+                        <div><span>Total received</span><b class="ok">{{ divFmt(loggedTotal(h.symbol)) }}</b></div>
+                        <div><span>Avg rate</span><b>{{ curSym(h.currency) }}{{ loggedAvgPs(h.symbol) | number:'1.0-2' }}<small>/sh</small></b></div>
+                        <div><span>Payouts</span><b>{{ loggedFor(h.symbol).length }}</b></div>
+                      </div>
+                      <div class="dv-log-list">
+                        @for (g of loggedGroups(h.symbol); track g.key) {
+                          <div class="dg" [class.open]="isGroupOpen('L'+g.key)">
+                            <button type="button" class="dg-row" (click)="toggleGroup('L'+g.key)">
+                              <span class="dg-chev">▸</span>
+                              <span class="dg-date">{{ fmtDivDate(g.date) }}</span>
+                              <span class="dg-meta">{{ groupShares(g) | number:'1.0-0' }} sh · {{ g.dvs.length }} a/c</span>
+                              <span class="dg-sp"></span>
+                              <b class="dg-amt ok">{{ divFmt(groupLoggedTotal(g)) }}</b>
+                            </button>
+                            @if (isGroupOpen('L'+g.key)) {
+                              <div class="dg-body">
+                                @for (dv of g.dvs; track dv.id) {
+                                  <div class="dgl logged">
+                                    <div class="dgl-acct"><b>{{ divAcctLabel(dv) || (dv.person || 'All accounts') }}</b><em>{{ dv.shares | number:'1.0-0' }} sh</em></div>
+                                    <label class="dgl-rate"><i>{{ curSym(dv.currency) }}</i><input type="number" min="0" step="0.01" [value]="dv.per_share" (change)="editDiv(dv,'per_share',$any($event.target).value)"><em>/sh</em></label>
+                                    @if (isUsd(dv.currency)) {
+                                      <b class="dgl-tot">{{ divFmt(dv.amount) }}</b>
+                                    } @else {
+                                      <label class="dgl-tot" title="Total received — edit to set the rate"><i>{{ curSym(dv.currency) }}</i><input type="number" min="0" step="1" [value]="loggedTotalView(dv)" (change)="setLoggedTotal(dv,$any($event.target).value)"></label>
+                                    }
+                                    <div class="dgl-act">
+                                      <button class="dgl-up" (click)="markUpcoming(dv)" title="Move back to Upcoming">↩</button>
+                                      <button class="dgl-del" (click)="removeDiv(dv)" title="Delete">🗑</button>
+                                    </div>
+                                  </div>
+                                }
+                                <div class="dg-foot logged">
+                                  <input class="dg-date-edit" type="date" [value]="g.dvs[0].date" (change)="editGroupDate(g,$any($event.target).value)" title="Paid date">
+                                  <span class="dg-foot-sum">{{ g.dvs.length }} account{{ g.dvs.length===1?'':'s' }} · <b class="ok">{{ divFmt(groupLoggedTotal(g)) }}</b></span>
+                                </div>
+                              </div>
+                            }
+                          </div>
+                        }
+                        @if (!loggedGroups(h.symbol).length) { <div class="dv-empty">Nothing logged yet — log a dividend from the Upcoming tab.</div> }
+                      </div>
+                    }
+
+                    <!-- tiny footer: screener link + note -->
+                    <div class="dp-foot">
+                      @if (hasScreener(h)) {
+                        <a class="dp-scr-link" [href]="h.screener_url" target="_blank" rel="noopener">🔗 Screener ↗</a>
+                        <button class="dp-scr-x" (click)="clearScreener(h)" title="Remove link">unlink</button>
+                      } @else {
+                        <span class="dp-scr-add">
+                          <input class="dp-scr-in" type="url" [ngModel]="screenerDraft()" (ngModelChange)="screenerDraft.set($event)" (keyup.enter)="saveScreener(h)" placeholder="Screener.in link…">
+                          <button class="dp-scr-save" (click)="saveScreener(h)" [disabled]="savingScreener() || !screenerDraft().trim()">Link</button>
+                        </span>
+                      }
+                      <span class="dp-note">Shared with the calendar · saved</span>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+      @if (hoverTip(); as t) {
+        <div class="usd-float" [style.left.px]="t.x" [style.top.px]="t.y">{{ t.text }}<i>USD</i></div>
+      }
+      @if (!filteredStocks().length) {
+        <div class="empty-hint pad">
+          @if (holdFiltered()) { No stocks match these filters — <button class="h-clear inline" (click)="clearHoldFilters()">clear</button> }
+          @else { This account has no holdings yet — refresh or re-upload it from the account menu. }
+        </div>
+      }
+      @if (filteredStocks().length > 5) {
+        <div class="view-more-row">
+          @if (displayStocks().length < filteredStocks().length) {
+            <button class="view-more" (click)="showMoreHoldings()">
+              Show {{ nextHoldTier() >= filteredStocks().length ? 'all ' + filteredStocks().length : (nextHoldTier() + ' of ' + filteredStocks().length) }} <span class="vm-ic">▾</span>
+            </button>
+          }
+          @if (showAllHoldings()) {
+            <button class="view-more ghost" (click)="collapseHoldings(holdingsTop)">Show less <span class="vm-ic">▴</span></button>
+          }
+        </div>
+      }
+    </div>
+  } @else if (accounts().length) {
+    <div class="empty-hint">No holdings yet — connect/refresh an account to pull its holdings.</div>
+  }
+
+  <p class="foot-note">Holdings come from Kite Connect Personal (free, official, read-only). Live prices are from a free market feed. Access tokens expire daily — log in an account again after you trade to refresh it.</p>
+
+  <!-- floating collapse button — appears only while the full list is expanded, so
+       you can collapse from anywhere without scrolling to the top or bottom -->
+  @if (showAllHoldings() && filteredStocks().length > 5) {
+    <button class="fab-collapse" (click)="collapseHoldings()" title="Collapse the holdings table">
+      <span class="fab-ic">▴</span>
+      <span class="fab-tx">Collapse</span>
+    </button>
+  }
+}
+
+<!-- Per-person detail modal -->
+@if (personDetail(); as name) {
+  <div class="modal-back" (click)="personDetail.set(null)">
+    <div class="modal wide-modal" (click)="$event.stopPropagation()">
+      <div class="modal-head">
+        <h3>{{ name }} @if (personTotals(); as pt) { <small class="pd-sub">{{ inr(pt.value) }} · <span [class.pos]="pt.pnl >= 0" [class.neg]="pt.pnl < 0">{{ inr(pt.pnl) }} ({{ pct(pt.pnl_pct) }})</span></small> }</h3>
+        <button class="x" (click)="personDetail.set(null)">✕</button>
+      </div>
+      <div class="prev-table">
+        <table>
+          <thead><tr><th>Account</th><th class="num">Invested</th><th class="num">Current</th><th class="num">P/L</th><th class="num">Day's gain</th></tr></thead>
+          <tbody>
+            @for (a of personAccounts(); track a.id) {
+              <tr>
+                <td class="pt-name"><b>{{ a.account_label }}</b><small>{{ brokerName(a.broker) }} · {{ a.holdings }} holdings</small></td>
+                <td class="num">{{ inr(a.invested) }}</td>
+                <td class="num">{{ inr(a.value) }}</td>
+                <td class="num" [class.pos]="a.pnl >= 0" [class.neg]="a.pnl < 0">{{ inr(a.pnl) }} <small>{{ pct(a.pnl_pct) }}</small></td>
+                <td class="num" [class.pos]="a.day_change >= 0" [class.neg]="a.day_change < 0">{{ inr(a.day_change) }} <small>{{ pct(a.day_change_pct) }}</small></td>
+              </tr>
+            }
+          </tbody>
+          @if (personTotals(); as pt) {
+            <tfoot><tr>
+              <td>Total</td>
+              <td class="num">{{ inr(pt.invested) }}</td>
+              <td class="num">{{ inr(pt.value) }}</td>
+              <td class="num" [class.pos]="pt.pnl >= 0" [class.neg]="pt.pnl < 0">{{ inr(pt.pnl) }} <small>{{ pct(pt.pnl_pct) }}</small></td>
+              <td class="num" [class.pos]="pt.day_change >= 0" [class.neg]="pt.day_change < 0">{{ inr(pt.day_change) }}</td>
+            </tr></tfoot>
+          }
+        </table>
+      </div>
+
+      <!-- ── LTCG harvesting: booked long-term gain vs the ₹1.25 L tax-free room ── -->
+      <div class="pd-harvest">
+        <div class="pdh-title">
+          <b>Tax-free LTCG harvesting</b>
+          <small>Every financial year, ₹1,25,000 of long-term capital gains is tax-free. Upload each account's Zerodha <b>Tax P&amp;L</b> — we read the long-term gain already booked, and the financial year is taken from the file itself.</small>
+        </div>
+
+        <!-- person-level room for the display FY (allowance is per person, not per account) -->
+        @if (personHarvest(); as ph) {
+          <div class="pdh-hero" [class.maxed]="ph.remaining <= 0">
+            <div class="pdh-h-lead">
+              <span class="pdh-h-k">Left to book tax-free @if (ph.filed) { · FY {{ ph.fy }} }</span>
+              <span class="pdh-h-v">{{ inr(ph.remaining) }}</span>
+              <span class="pdh-h-s">of {{ inr(LTCG_ALLOWANCE) }} allowance</span>
+            </div>
+            <div class="pdh-h-bar"><i [style.width.%]="ph.pct * 100"></i></div>
+            <div class="pdh-h-nums">
+              <span>LTCG booked <b>{{ inr(ph.booked) }}</b></span>
+              @if (ph.filed) { <span>{{ ph.filed }} of {{ ph.accounts }} account{{ ph.accounts === 1 ? '' : 's' }} filed</span> }
+              @else { <span>Upload a Tax P&amp;L below to fill this in</span> }
+            </div>
+
+            <!-- tax already accrued this FY across their accounts -->
+            @if (ph.filed) {
+              <div class="pdh-h-tax">
+                <div class="pdh-tx"><span>STCG booked</span><b>{{ inr(ph.stBooked) }}</b></div>
+                <div class="pdh-tx"><span>STCG tax · 20%</span><b [class.owe]="ph.stTax > 0">{{ inr(ph.stTax) }}</b></div>
+                <div class="pdh-tx"><span>LTCG tax · 12.5%</span><b [class.owe]="ph.ltTax > 0">{{ inr(ph.ltTax) }}</b></div>
+                <div class="pdh-tx big"><span>Tax so far this FY</span><b [class.owe]="ph.totalTax > 0">{{ inr(ph.totalTax) }}</b></div>
+              </div>
+            }
+          </div>
+        }
+
+        <!-- one card per broker account, each holding a LIST of filed years -->
+        <div class="pdh-accts">
+          @for (a of personAccounts(); track a.id) {
+            <div class="pdh-acc" [class.open]="harvestUpAcc() === a.id">
+              <div class="pdh-acc-head">
+                <div class="pdh-acc-id">
+                  <b>{{ a.account_label }}</b>
+                  <small>{{ brokerName(a.broker) }}@if (harvestYears(a.id).length) { · {{ harvestYears(a.id).length }} year{{ harvestYears(a.id).length === 1 ? '' : 's' }} filed }</small>
+                </div>
+                <button class="pdh-acc-btn" (click)="openHarvestUpload(a.id)">
+                  {{ harvestUpAcc() === a.id ? 'Close' : (harvestYears(a.id).length ? '＋ Add a year' : 'Add Tax P&L') }}
+                </button>
+              </div>
+
+              <!-- every filed year for this account -->
+              @if (harvestYears(a.id).length) {
+                <div class="pdh-years">
+                  @for (rec of harvestYears(a.id); track rec.id) {
+                    <div class="pdh-year">
+                      <span class="pdh-yr-fy">FY {{ rec.fy_label }}</span>
+                      <span class="pdh-metric lt">
+                        <em>LTCG left</em>
+                        <b [class.done]="rec.lt_remaining <= 0">@if (rec.lt_remaining > 0) { {{ inr(rec.lt_remaining) }} } @else { ✓ maxed }</b>
+                      </span>
+                      <span class="pdh-metric st" [class.zero]="!rec.st_booked" title="Short-term gain @ 20%">
+                        <em>STCG {{ inr(rec.st_booked) }}</em>
+                        <b>{{ inr(rec.st_tax) }} tax</b>
+                      </span>
+                      <span class="pdh-metric tax" [class.owed]="rec.total_tax > 0" title="STCG @ 20% + LTCG @ 12.5% over ₹1.25 L">
+                        <em>Tax so far</em>
+                        <b>{{ inr(rec.total_tax) }}</b>
+                      </span>
+                      <span class="pdh-yr-file" [title]="rec.file_name">📄 {{ rec.file_name || 'filed' }}</span>
+                      <button class="pdh-remove" (click)="removeHarvest(a.id, rec.fy_label)" title="Remove FY {{ rec.fy_label }}">✕</button>
+                    </div>
+                  }
+                </div>
+              } @else if (harvestUpAcc() !== a.id) {
+                <div class="pdh-acc-empty">No Tax P&amp;L filed yet — add one per financial year.</div>
+              }
+
+              <!-- inline uploader -->
+              @if (harvestUpAcc() === a.id) {
+                <div class="pdh-up">
+                  @if (!harvestPreview()) {
+                    <label class="pdh-drop" [class.busy]="harvestBusy()">
+                      <input type="file" hidden accept=".xlsx" (change)="onHarvestFile(a.id, $event)">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>
+                      <span>{{ harvestBusy() ? 'Reading…' : 'Upload ' + a.account_label + '\'s Tax P&L (.xlsx)' }}</span>
+                    </label>
+                    <p class="pdh-hint">Zerodha Console → Reports → <b>Tax P&amp;L</b> → download as Excel. The financial year is read from the file. (The plain “P&amp;L” export won’t work — it has no long/short-term split.)</p>
+                  }
+                  @if (harvestErr()) { <div class="pdh-err">{{ harvestErr() }}</div> }
+
+                  @if (harvestPreview(); as pv) {
+                    <div class="pdh-preview">
+                      <div class="pdh-pv-fy">Financial year <b>{{ pv.harvest.fy_label }}</b> <span>· read from the file · covers {{ pv.parsed.period_from }} → {{ pv.parsed.period_to }}</span></div>
+                      @if (yearAlreadyFiled(a.id, pv.harvest.fy_label)) {
+                        <div class="pdh-pv-note">⟳ FY {{ pv.harvest.fy_label }} is already filed for this account — saving will replace it.</div>
+                      }
+                      <!-- long-term: harvesting room -->
+                      <div class="pdh-pv-grid">
+                        <div class="pdh-pv-cell"><span>Long-term booked</span><b>{{ inr(pv.harvest.lt_booked) }}</b></div>
+                        <div class="pdh-pv-cell hi"><span>Tax-free room left</span><b>{{ inr(pv.harvest.lt_remaining) }}</b></div>
+                        <div class="pdh-pv-cell"><span>LTCG tax <i>@ 12.5%</i></span><b [class.owe]="pv.harvest.lt_tax > 0">{{ inr(pv.harvest.lt_tax) }}</b></div>
+                        <div class="pdh-pv-cell"><span>on gain over ₹1.25 L</span><b class="sm">{{ inr(pv.harvest.lt_taxable) }}</b></div>
+                      </div>
+                      <!-- short-term: taxed in full -->
+                      <div class="pdh-pv-grid st">
+                        <div class="pdh-pv-cell"><span>Short-term booked</span><b>{{ inr(pv.harvest.st_booked) }}</b></div>
+                        <div class="pdh-pv-cell owe-cell"><span>STCG tax <i>@ 20%</i></span><b [class.owe]="pv.harvest.st_tax > 0">{{ inr(pv.harvest.st_tax) }}</b></div>
+                        <div class="pdh-pv-cell span2 total"><span>Total equity CG tax so far this FY</span><b [class.owe]="pv.harvest.total_tax > 0">{{ inr(pv.harvest.total_tax) }}</b></div>
+                      </div>
+                      <div class="pdh-pv-foot">
+                        <span class="pdh-pv-file">📄 {{ pv.file_name }}</span>
+                        <div>
+                          <button class="pdh-btn ghost" (click)="openHarvestUpload(a.id)">Cancel</button>
+                          <button class="pdh-btn go" [disabled]="harvestBusy()" (click)="confirmHarvest(a.id)">
+                            {{ harvestBusy() ? 'Saving…' : 'Save FY ' + pv.harvest.fy_label }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Add account modal -->
+@if (showAdd()) {
+  <div class="modal-back">
+    <div class="modal">
+      <div class="modal-head"><h3>Connect a broker account</h3><button class="x" (click)="showAdd.set(false)">✕</button></div>
+      <div class="broker-pick">
+        <button [class.on]="draft().broker === 'kite'" (click)="setField('broker', 'kite')">Zerodha (Kite — live)</button>
+        <button [class.on]="draft().broker === 'import'" (click)="setField('broker', 'import')">Import file (ICICI / IBKR / Motilal)</button>
+      </div>
+
+      @if (draft().broker === 'import') {
+        <p class="modal-note">Upload a holdings export — no login needed, <b>bonds excluded</b>. Supported: <b>ICICI Direct</b> (.xls), <b>IBKR</b> (.csv), <b>Motilal Oswal</b> (.xlsx), <b>Zebu</b> (.xlsx). You'll pick the file on the next step.</p>
+        <div class="form-grid">
+          <label class="f"><span>Person</span><input type="text" [ngModel]="draft().person" (ngModelChange)="setField('person', $event)" placeholder="e.g. Ranjeev"></label>
+          <label class="f"><span>Account label</span><input type="text" [ngModel]="draft().account_label" (ngModelChange)="setField('account_label', $event)" placeholder="e.g. ICICI · main"></label>
+          <label class="f wide"><span>Broker / file format</span>
+            <select [ngModel]="draft().import_broker" (ngModelChange)="setField('import_broker', $event)">
+              <option value="icici">ICICI Direct — holdings .xls</option>
+              <option value="ibkr">IBKR — Activity Statement .csv</option>
+              <option value="motilal">Motilal Oswal — Equity .xlsx</option>
+              <option value="zebu">Zebu — Summary .xlsx</option>
+            </select></label>
+        </div>
+      } @else {
+        <p class="modal-note">Create a free <b>Kite Connect Personal</b> app at <b>developers.kite.trade</b> (one per account), then paste its API key & secret. You'll log in on Zerodha next.</p>
+        <div class="form-grid">
+          <label class="f"><span>Person</span><input type="text" [ngModel]="draft().person" (ngModelChange)="setField('person', $event)" placeholder="e.g. Ranjeev"></label>
+          <label class="f"><span>Account label</span><input type="text" [ngModel]="draft().account_label" (ngModelChange)="setField('account_label', $event)" placeholder="e.g. Zerodha · main"></label>
+          <label class="f wide"><span>API key</span><input type="text" [ngModel]="draft().api_key" (ngModelChange)="setField('api_key', $event)" placeholder="Kite app API key"></label>
+          <label class="f wide"><span>API secret</span><input type="password" [ngModel]="draft().api_secret" (ngModelChange)="setField('api_secret', $event)" placeholder="Kite app API secret"></label>
+        </div>
+      }
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="showAdd.set(false)">Cancel</button>
+        <button class="btn primary" (click)="submitAdd()" [disabled]="!canAdd() || adding()">{{ adding() ? 'Saving…' : (draft().broker === 'import' ? 'Create & choose file' : 'Next: log in') }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Connect / re-login modal -->
+@if (connectModal(); as m) {
+  <div class="modal-back">
+    <div class="modal">
+      <div class="modal-head"><h3>Log in — {{ m.label }}</h3><button class="x" (click)="cancelConnect()">✕</button></div>
+      <p class="modal-note">Open the login link, sign in on Kite (use an <b>Incognito window</b> if a different family member is signed in), and this page <b>connects automatically</b> when you're done.</p>
+      <ol class="steps">
+        <li>
+          <button class="btn primary" (click)="openLogin()">Open Kite login ↗</button>
+          <button class="btn" (click)="copyLoginLink()">{{ linkCopied() ? '✓ Copied' : '⧉ Copy link' }}</button>
+          — or copy the link and open it in Incognito.
+        </li>
+        <li><b>Optional fallback:</b> if it didn't auto-connect, copy the <code>request_token=…</code> from the redirected URL and paste it below.</li>
+      </ol>
+      <label class="f wide"><span>request_token <small>(fallback only)</small></span>
+        <input type="text" [ngModel]="requestToken()" (ngModelChange)="requestToken.set($event)" placeholder="paste request_token here">
+      </label>
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="cancelConnect()">Cancel</button>
+        <button class="btn primary" (click)="doConnect()" [disabled]="!requestToken().trim() || connecting()">{{ connecting() ? 'Connecting…' : 'Connect' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Import holdings modal (upload → preview → confirm) -->
+@if (uploadFor(); as u) {
+  <div class="modal-back">
+    <div class="modal wide-modal">
+      <div class="modal-head"><h3>Import holdings — {{ u.label }}</h3><button class="x" (click)="cancelUpload()">✕</button></div>
+      <p class="modal-note">Pick the exported file. We'll show exactly what gets added — confirming <b>replaces</b> this account's holdings (anything you've sold is removed).</p>
+      <label class="upload-zone">
+        <input type="file" hidden (change)="onFile($event)" accept=".xls,.xlsx,.csv">
+        <span class="uz-name">{{ selectedFile?.name || 'Choose file (.xls / .xlsx / .csv)…' }}</span>
+        <span class="uz-btn">Browse</span>
+      </label>
+
+      @if (previewing()) { <div class="state">Reading file…</div> }
+
+      @if (previewRows(); as rows) {
+        <div class="prev-meta">
+          <b>{{ previewMeta()?.count }}</b> holdings · {{ previewMeta()?.matched }} matched for live pricing
+          @if ((previewMeta()?.count || 0) > (previewMeta()?.matched || 0)) {
+            <span class="warn">· {{ (previewMeta()!.count - previewMeta()!.matched) }} will use the file's price (unlisted/renamed)</span>
+          }
+        </div>
+        <div class="prev-table">
+          <table>
+            <thead><tr><th>Stock</th><th class="num">Qty</th><th class="num">Avg</th><th class="num">Price</th><th class="num">Value</th></tr></thead>
+            <tbody>
+              @for (h of rows; track $index) {
+                <tr>
+                  <td class="pt-name"><b>{{ h.symbol || h.name }}</b>@if (h.name && h.symbol) { <small>{{ h.name }}</small> }@if (!h.symbol) { <span class="chip">file price</span> }</td>
+                  <td class="num">{{ h.quantity }}</td>
+                  <td class="num">{{ h.currency === 'INR' ? '₹' : '$' }}{{ h.avg_price }}</td>
+                  <td class="num">{{ h.currency === 'INR' ? '₹' : '$' }}{{ h.import_price || '—' }}</td>
+                  <td class="num">{{ h.currency === 'INR' ? '₹' : '$' }}{{ (h.quantity * (h.import_price || h.avg_price)) | number:'1.0-0' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="cancelUpload()">Cancel</button>
+        <button class="btn primary" (click)="confirmImport()" [disabled]="!previewRows() || importingFile()">{{ importingFile() ? 'Importing…' : 'Confirm — replace holdings' }}</button>
+      </div>
+    </div>
+  </div>
+}
+

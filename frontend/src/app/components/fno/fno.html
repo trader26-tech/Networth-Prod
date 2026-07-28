@@ -1,0 +1,1383 @@
+<div class="fno-page">
+
+  <!-- ── toasts ────────────────────────────────────────────────────────── -->
+  @if (error()) { <div class="fno-toast bad">{{ error() }}</div> }
+  @if (notice()) { <div class="fno-toast ok">{{ notice() }}</div> }
+
+  @if (needsMigration()) {
+    <div class="card fno-migrate">
+      <b>One-time setup needed.</b> Create the F&O tables in Supabase — open
+      <code>SUPABASE.md</code> → “F&O tab” and run that SQL once in the Supabase SQL editor, then reload.
+    </div>
+  }
+
+  <!-- ── page header (title + description) · account picker (like Stocks) ── -->
+  <div class="fno-head">
+    <div class="fh-title">
+      <h1>Trading</h1>
+      <p class="fh-sub">Live Zerodha F&O — strategy P&L &amp; trades.</p>
+    </div>
+    <div class="acct-picker">
+      <button class="picker-btn" [class.active]="pickerOpen() || !isAllSel()" (click)="pickerOpen.set(!pickerOpen())">
+        <span class="pi">▤</span>
+        <span class="pl">{{ accSelLabel() }}</span>
+        <span class="cv" [class.open]="pickerOpen()">▾</span>
+      </button>
+
+      @if (pickerOpen()) {
+        <div class="picker-back" (click)="pickerOpen.set(false)"></div>
+        <div class="picker-pop">
+          <div class="pp-head">
+            <h4>Connected accounts</h4>
+            <p>{{ accounts().length }} Zerodha account{{ accounts().length === 1 ? '' : 's' }} · tick the ones to show</p>
+          </div>
+
+          <div class="pp-list">
+            @if (accounts().length > 1) {
+              <button class="pp-row all" [class.sel]="isAllSel()" (click)="selectAll()">
+                <span class="pp-check" [class.on]="isAllSel()"></span>
+                <span class="pp-ic all">▤</span>
+                <span class="pp-name">All accounts</span>
+              </button>
+            }
+            @for (a of accounts(); track a.id) {
+              @if (editingAcct() === a.id) {
+                <div class="pp-row editing">
+                  <span class="pp-ic z">Z</span>
+                  <div class="pp-edit">
+                    <input class="pe-in" placeholder="Account label" [ngModel]="editDraft().account_label" (ngModelChange)="setEditField('account_label', $event)">
+                    <input class="pe-in" list="fno-persons" placeholder="Pin to person" [ngModel]="editDraft().person" (ngModelChange)="setEditField('person', $event)" (keyup.enter)="saveEdit()" (keyup.escape)="editingAcct.set(null)">
+                    <input class="pe-in" list="fno-strategies" placeholder="Strategy for this account (e.g. sentinel, ram)" [ngModel]="editDraft().strategy" (ngModelChange)="setEditField('strategy', $event)" (keyup.enter)="saveEdit()" (keyup.escape)="editingAcct.set(null)">
+                    <div class="pe-hint">Every non-crude trade from this account is tagged this strategy. Crude oil always stays “crude”. Leave blank to auto-detect.</div>
+
+                    <!-- This account's OWN Kite Connect app key — the login link is built from it -->
+                    <div class="pe-keyhead">
+                      Kite Connect app —
+                      @if (a.uses_env_app) { <b class="warn">using the shared app · enter this account’s own key ↓</b> }
+                      @else { <b class="ok">own key {{ a.api_key_hint }}</b> }
+                    </div>
+                    <input class="pe-in" placeholder="API key (this account’s own Kite app)" [ngModel]="editDraft().apiKey" (ngModelChange)="setEditField('apiKey', $event)">
+                    <div class="pe-secret">
+                      <input class="pe-in" [type]="showSecret() ? 'text' : 'password'" placeholder="API secret" [ngModel]="editDraft().apiSecret" (ngModelChange)="setEditField('apiSecret', $event)" (keyup.enter)="saveEdit()">
+                      <button type="button" class="pe-eye" (click)="showSecret.set(!showSecret())" [attr.data-tip]="showSecret() ? 'Hide secret' : 'Show secret'">{{ showSecret() ? '🙈' : '👁' }}</button>
+                    </div>
+                    <div class="pe-hint">Your saved key + secret are shown above — <b>copy them into this person’s Stocks account</b> so Stocks logs in the same way. Each Zerodha account needs its <b>own</b> Kite app (fixes “user not enabled for the app”). Leave blank to keep the stored key.</div>
+
+                    <button type="button" class="pe-feed" [class.on]="editDraft().priceFeed" (click)="toggleEditFeed()">
+                      <span class="pe-feed-sw"><span class="pe-feed-knob"></span></span>
+                      <span class="pe-feed-txt"><b>⚡ Live price feed</b><small>Paid API — prices every account. One at a time.</small></span>
+                    </button>
+                    <div class="pe-acts">
+                      <button class="btn sm" [disabled]="!editDraft().account_label.trim() || savingEdit()" (click)="saveEdit()">{{ savingEdit() ? '…' : 'Save' }}</button>
+                      <button class="btn sm ghost" (click)="editingAcct.set(null)">Cancel</button>
+                      @if (a.connected) {
+                        <button class="btn sm danger ghost pe-logoff" [disabled]="busyAcc() === a.id" (click)="logOff(a)"
+                                data-tip="Clear this Kite session (and any linked Stocks/F&O account) so you can log in again">{{ busyAcc() === a.id ? '…' : '⏻ Log off' }}</button>
+                      }
+                    </div>
+                  </div>
+                </div>
+              } @else {
+                <div class="pp-row" [class.sel]="!isAllSel() && isShown(a.id)">
+                  <button class="pp-check-btn" (click)="toggleAcc(a.id)"
+                          [attr.data-tip]="isShown(a.id) ? 'Hide from dashboard' : 'Show in dashboard'">
+                    <span class="pp-check" [class.on]="isShown(a.id)"></span>
+                  </button>
+                  <span class="pp-ic-wrap">
+                    <span class="pp-ic z">Z</span>
+                    @if (a.price_feed) {
+                      <span class="pp-ic-feed" data-tip="Paid API — live price feed for all accounts">⚡</span>
+                    }
+                  </span>
+                  <div class="pp-main">
+                    <span class="pp-name">{{ a.account_label }}</span>
+                    <span class="pp-person" [class.unset]="!a.person" (click)="openRowEdit(a)">
+                      <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg>
+                      {{ a.person || 'Pin to a person' }}
+                    </span>
+                    <span class="pp-meta">
+                      <span class="pp-dot" [ngClass]="statusCls(a)"></span>{{ statusText(a) }}
+                      · {{ a.tradebook?.count ? (a.tradebook!.count + ' fills') : 'no tradebook' }}
+                    </span>
+                    <span class="pp-key" [class.paid]="a.is_paid_app" [attr.data-tip]="a.is_paid_app ? 'Runs on the paid Kite Connect app (market data + live feed)' : 'Runs on this account’s own free Kite Connect app'">
+                      @if (a.is_paid_app) { ⚡ Paid app } @else { Free app }
+                      · key {{ a.api_key_hint || '—' }}
+                    </span>
+                  </div>
+                  <span class="pp-acts">
+                    <!-- Same buttons as the Stocks page: refresh when connected,
+                         one-click login (popup OAuth, no manual paste) when not. -->
+                    @if (a.connected) {
+                      <button class="pa" [disabled]="busyAcc() === a.id" (click)="syncTrades(a)" data-tip="Refresh — pull the latest fills">{{ busyAcc() === a.id ? '…' : '↻' }}</button>
+                    } @else {
+                      <button class="pa warn" [disabled]="busyAcc() === a.id" (click)="login(a)" data-tip="Log in to Kite">{{ busyAcc() === a.id ? '…' : '⊕' }}</button>
+                    }
+                    <button class="pa" [class.on]="tbExpanded() === a.id || a.tradebook?.count" (click)="toggleTradebook(a)" data-tip="Tradebook — imported trade history">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H19a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M8 3v18"/><path d="M12 7.5h4M12 11h4"/></svg>
+                    </button>
+                    <button class="pa" (click)="openRowEdit(a)" data-tip="Edit account · price feed">✎</button>
+                    <button class="pa del" (click)="removeAccount(a)" data-tip="Remove account">🗑</button>
+                  </span>
+                </div>
+
+                @if (tbExpanded() === a.id) {
+                  <div class="tb-panel">
+                    <div class="tb-panel-h">
+                      Tradebooks
+                      <span class="tb-hint">Kite exports max 1 year at a time — add one per period, overlaps are safe</span>
+                    </div>
+
+                    @if (tbLoading()) {
+                      <div class="tb-empty">Loading coverage…</div>
+                    } @else if (tbTimeline(); as tl) {
+                      <!-- overall coverage summary -->
+                      <div class="tb-cov">
+                        <div class="tb-cov-l">
+                          <span class="tb-cov-lbl">History covered</span>
+                          <span class="tb-cov-range">{{ fmtDateMed(tl.from) }} <span class="tb-cov-arr">→</span> {{ fmtDateMed(tl.to) }}</span>
+                        </div>
+                        <div class="tb-cov-r">
+                          <span class="tb-cov-days">{{ tl.coveredDays }}<small>days</small></span>
+                          <span class="tb-cov-sub">{{ tbData()?.coverage?.fills || 0 }} fills · {{ tl.entries.length }} book{{ tl.entries.length === 1 ? '' : 's' }}</span>
+                        </div>
+                      </div>
+                      @if (tl.hasGap || tl.hasOverlap) {
+                        <div class="tb-flags">
+                          @if (tl.hasGap) { <span class="tb-flag gap">⚠ gap in coverage — add a book for the missing dates</span> }
+                          @if (tl.hasOverlap) { <span class="tb-flag ovl">↺ overlap — safe, duplicate fills are ignored</span> }
+                        </div>
+                      }
+
+                      <!-- vertical timeline: oldest → newest, one node per book -->
+                      <div class="tb-vtl">
+                        @for (e of tl.entries; track e.rec.id) {
+                          @if (e.link; as lk) {
+                            <div class="tb-link" [class.gap]="lk.type === 'gap'" [class.ovl]="lk.type === 'overlap'">
+                              <span class="tb-link-line"></span>
+                              @if (lk.type === 'gap') { <span class="tb-link-tag gap">{{ lk.days }}-day gap</span> }
+                              @else if (lk.type === 'overlap') { <span class="tb-link-tag ovl">{{ lk.days }}-day overlap</span> }
+                              @else { <span class="tb-link-tag join">continuous</span> }
+                            </div>
+                          }
+                          <div class="tb-node">
+                            <span class="tb-dot" [style.background]="e.color"></span>
+                            <div class="tb-card">
+                              <div class="tb-card-h">
+                                <b>{{ e.rec.name }}</b>
+                                @if (e.rec.legacy) { <span class="tb-tag">earlier import</span> }
+                                <button class="tb-x" [disabled]="busyAcc() === a.id" (click)="deleteOneTradebook(a, e.rec)" data-tip="Remove this tradebook">✕</button>
+                              </div>
+                              <div class="tb-dates">
+                                <span class="tb-d"><small>Start</small><b>{{ fmtDateMed(e.rec.date_from) }}</b></span>
+                                <span class="tb-d-arr">→</span>
+                                <span class="tb-d"><small>End</small><b>{{ fmtDateMed(e.rec.date_to) }}</b></span>
+                                <span class="tb-d-span">{{ e.days }} days · {{ e.rec.count }} fills</span>
+                              </div>
+                            </div>
+                          </div>
+                        }
+                      </div>
+                    } @else {
+                      <div class="tb-empty">No tradebooks yet — Kite returns only today’s fills. Add this account’s Console export (F&O, and Commodity for crude).</div>
+                    }
+
+                    <div class="tb-acts">
+                      <label class="btn sm file-btn full" [class.disabled]="busyAcc() === a.id">
+                        {{ busyAcc() === a.id ? 'Importing…' : '＋ Add tradebook' }}
+                        <input type="file" accept=".csv,.xlsx,.xls" (change)="importFile(a, $event)">
+                      </label>
+                      @if (tbTimeline()) {
+                        <button class="btn sm danger ghost" [disabled]="busyAcc() === a.id" (click)="deleteTradebookNow(a)" data-tip="Clear every tradebook">Clear all</button>
+                      }
+                    </div>
+
+                    <!-- P&L statements = Zerodha's authoritative booked P&L (fills can
+                         be incomplete). Multiple periods; each is authoritative for the
+                         days it covers. Overlapping uploads replace, never double-count. -->
+                    <div class="tb-stmt">
+                      <div class="tb-panel-h">
+                        P&L statements
+                        <span class="tb-hint">Console → Reports → P&L → Download (Excel) · authoritative booked · add one per period</span>
+                      </div>
+
+                      @if (tbData()?.statements?.length && tbData()?.statement_coverage; as cov) {
+                        <div class="ts-cov">
+                          <div class="ts-cov-l">
+                            <span class="ts-cov-lbl">Booked · covered</span>
+                            <span class="ts-cov-range">{{ fmtDateMed(cov.date_from) }} <span class="ts-cov-arr">→</span> {{ fmtDateMed(cov.date_to) }}</span>
+                          </div>
+                          <div class="ts-cov-r">
+                            <span class="ts-cov-real" [class.pos]="cov.realized >= 0" [class.neg]="cov.realized < 0">{{ inrS(cov.realized) }}</span>
+                            <span class="ts-cov-sub">charges {{ inrS(-cov.charges) }} · {{ cov.count }} statement{{ cov.count === 1 ? '' : 's' }}</span>
+                          </div>
+                        </div>
+
+                        <div class="tb-vtl">
+                          @for (st of tbData()!.statements!; track st.id; let i = $index) {
+                            @if (i > 0) {
+                              <div class="tb-link"><span class="tb-link-line"></span><span class="tb-link-tag join">statement</span></div>
+                            }
+                            <div class="tb-node">
+                              <span class="tb-dot" style="background:#2e9e4f"></span>
+                              <div class="tb-card">
+                                <div class="tb-card-h">
+                                  <b>{{ st.name }}</b>
+                                  <span class="tb-tag">✓ authoritative</span>
+                                  <button class="tb-x" [disabled]="busyAcc() === a.id" (click)="deleteOneStatement(a, st)" data-tip="Remove this statement">✕</button>
+                                </div>
+                                <div class="tb-dates">
+                                  <span class="tb-d"><small>From</small><b>{{ fmtDateMed(st.date_from) }}</b></span>
+                                  <span class="tb-d-arr">→</span>
+                                  <span class="tb-d"><small>To</small><b>{{ fmtDateMed(st.date_to) }}</b></span>
+                                  <span class="tb-d-span">{{ st.symbols }} symbols</span>
+                                </div>
+                                <div class="ts-nums">
+                                  <span>realised <b [class.pos]="st.realized >= 0" [class.neg]="st.realized < 0">{{ inrS(st.realized) }}</b></span>
+                                  <span>unrealised <b [class.pos]="st.unrealized >= 0" [class.neg]="st.unrealized < 0">{{ inrS(st.unrealized) }}</b></span>
+                                  <span class="ts-mut">charges {{ inrS(-st.charges) }}</span>
+                                </div>
+                              </div>
+                            </div>
+                          }
+                        </div>
+                      } @else {
+                        <div class="tb-empty">No P&L statement yet — add Zerodha's authoritative booked P&L. Fills can be incomplete; the statement matches Console exactly.</div>
+                      }
+
+                      <div class="tb-acts">
+                        <label class="btn sm file-btn full" [class.disabled]="busyAcc() === a.id">
+                          {{ busyAcc() === a.id ? 'Importing…' : '＋ Add P&L statement' }}
+                          <input type="file" accept=".xlsx,.xls" (change)="importStatement(a, $event)">
+                        </label>
+                        @if (tbData()?.statements?.length) {
+                          <button class="btn sm danger ghost" [disabled]="busyAcc() === a.id" (click)="deleteStatement(a)" data-tip="Clear every statement">Clear all</button>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                }
+              }
+            }
+            @if (!accounts().length) { <div class="pp-empty">No accounts yet — add one below.</div> }
+          </div>
+
+          <div class="pp-foot">
+            <button class="pp-link" (click)="toggleLog(); pickerOpen.set(false)">Login log</button>
+            <button class="pp-add" (click)="openAdd()">＋ Add account</button>
+          </div>
+        </div>
+      }
+    </div>
+  </div>
+  <datalist id="fno-persons">@for (p of personOptions(); track p) { <option [value]="p"></option> }</datalist>
+  <datalist id="fno-strategies">@for (st of strategyOptions(); track st) { <option [value]="st"></option> }</datalist>
+
+  <!-- ── hero KPI bar (styled like the Stocks page) ────────────────────── -->
+  <div class="fno-kbar">
+    <!-- Total P&L = booked − charges + other + carried-forward unrealized · hover for the math -->
+    <div class="fkb has-pop">
+      <span class="fkb-k">Total P&L <span class="fkb-i">ⓘ</span></span>
+      <span class="fkb-v uline" [class.pos]="totalPnl() > 0" [class.neg]="totalPnl() < 0">{{ inrS(totalPnl()) }}</span>
+      <div class="fkb-pop">
+        <div class="pop-h">Total P&L — realised, net of all charges, plus open</div>
+        <div class="pop-row"><span>Booked (gross)</span><b [class.pos]="kpi().overall > 0" [class.neg]="kpi().overall < 0">{{ inrS(kpi().overall) }}</b></div>
+        @if (totalCharges() > 0) {
+          <div class="pop-row"><span>Brokerage + taxes</span><b class="neg">−{{ inr(totalCharges()) }}</b></div>
+        }
+        @if (totalOther() !== 0) {
+          <div class="pop-row"><span>Other credits/debits</span><b [class.pos]="totalOther() > 0" [class.neg]="totalOther() < 0">{{ inrS(totalOther()) }}</b></div>
+        }
+        <div class="pop-row"><span>Open (unrealized)</span><b [class.pos]="openUnrealized() > 0" [class.neg]="openUnrealized() < 0">{{ inrS(openUnrealized()) }}</b></div>
+        <div class="pop-div"></div>
+        <div class="pop-row big"><span>Total P&L</span><b [class.pos]="totalPnl() > 0" [class.neg]="totalPnl() < 0">{{ inrS(totalPnl()) }}</b></div>
+        @if (totalCharges() === 0) { <div class="pop-note">Import each account's Kite P&L statement to fold in brokerage + taxes.</div> }
+      </div>
+    </div>
+
+    <!-- (Booked + Unrealized live in the Total P&L hover — kept out of the row for a cleaner KPI) -->
+
+    <!-- Day P&L → that day's P&L; label carries the date -->
+    <div class="fkb">
+      <span class="fkb-k">{{ kpi().pnlLabel }}</span>
+      <span class="fkb-v" [class.pos]="kpi().dayPnl > 0" [class.neg]="kpi().dayPnl < 0">{{ inrS(kpi().dayPnl) }}</span>
+    </div>
+
+    <!-- CAGR (realized on pledged capital; hover → incl. unrealized) -->
+    <div class="fkb has-pop">
+      <span class="fkb-k">CAGR</span>
+      <span class="fkb-v uline" [class.pos]="(kpi().cagr ?? 0) > 0" [class.neg]="(kpi().cagr ?? 0) < 0">
+        {{ kpi().cagrText }} @if (kpi().cagr) { <span class="arw">{{ (kpi().cagr ?? 0) >= 0 ? '▲' : '▼' }}</span> }
+      </span>
+      <div class="fkb-pop">
+        <div class="pop-h">CAGR — annualised return on pledged capital</div>
+        @if (cagr(); as c) {
+          <div class="pop-row"><span>Realized net P&L</span><b [class.pos]="overallPnl()>0" [class.neg]="overallPnl()<0">{{ inrS(overallPnl()) }}</b></div>
+          <div class="pop-row"><span>Total return</span><b [class.pos]="c.total_return>0" [class.neg]="c.total_return<0">{{ pct(c.total_return) }}</b></div>
+          <div class="pop-row"><span>Period</span><b>{{ c.days }} days</b></div>
+          <div class="pop-row big"><span>Realized CAGR</span><b [class.pos]="(c.cagr??0)>0" [class.neg]="(c.cagr??0)<0">{{ cagrText() }}</b></div>
+          @if (cagrUnreal(); as u) {
+            <div class="pop-div"></div>
+            <div class="pop-row"><span>+ Unrealized (live)</span><b [class.pos]="u.unreal>0" [class.neg]="u.unreal<0">{{ inrS(u.unreal) }}</b></div>
+            <div class="pop-row"><span>Incl. unrealized P&L</span><b [class.pos]="u.total>0" [class.neg]="u.total<0">{{ inrS(u.total) }}</b></div>
+            <div class="pop-row big"><span>CAGR incl. unrealized</span><b [class.pos]="(u.cagr??0)>0" [class.neg]="(u.cagr??0)<0">{{ cagrUnrealText() }}</b></div>
+          }
+        } @else {
+          <div class="pop-note">Set the pledged capital (on the Pledged tile) to compute CAGR.</div>
+        }
+      </div>
+    </div>
+
+    <!-- Pledged capital (the CAGR base; hover → edit / refresh) -->
+    <div class="fkb has-pop">
+      <span class="fkb-k">Pledged</span>
+      <span class="fkb-v uline">{{ pledged()?.value ? inr(pledged()!.value) : '—' }}</span>
+      <div class="fkb-pop" (click)="$event.stopPropagation()">
+        <div class="pop-h">Pledged capital — CAGR denominator</div>
+        <div class="pop-row big"><span>Pledged value</span><b>{{ pledged()?.value ? inr(pledged()!.value) : '—' }}</b></div>
+        <div class="pop-sub">
+          @if (pledged()?.source === 'kite') { auto from Kite · market value of pledged holdings @if (pledged()?.updated_at) { · {{ fmtDt(pledged()!.updated_at) }} } }
+          @else if (pledged()?.source === 'manual') { manually set }
+          @else { not available yet — connect an account or set it below }
+        </div>
+        @if (!editPledged()) {
+          <div class="pop-actions">
+            <button class="btn ghost sm" (click)="openPledgedEdit()">Edit</button>
+            <button class="btn ghost sm" [disabled]="pledgedBusy()" (click)="refreshPledgedNow()">
+              {{ pledgedBusy() ? '…' : 'Refresh from Kite' }}</button>
+          </div>
+        } @else {
+          <div class="pop-edit">
+            <input type="number" class="pop-input" placeholder="Pledged ₹"
+                   [ngModel]="pledgedDraft()" (ngModelChange)="pledgedDraft.set($event)">
+            <button class="btn sm" [disabled]="pledgedBusy()" (click)="savePledged()">Save</button>
+            <button class="btn ghost sm" (click)="editPledged.set(false)">Cancel</button>
+          </div>
+          <div class="pop-sub">Leave blank & save to revert to the live Kite value.</div>
+        }
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── single-screen board — left: chart + calendar · right: strategies · open · trades ── -->
+  <!-- ── account-holder cards — click one to view only that holder ── -->
+  @if (accounts().length) {
+    <div class="fno-holders">
+      @for (c of accountCards(); track c.id) {
+        <button class="fhc" [class.on]="!isAllSel() && c.shown" (click)="toggleAcc(c.id)">
+          <div class="fhc-h">
+            <span class="fhc-name">
+              <span class="fhc-tick" [class.on]="!isAllSel() && c.shown"></span>{{ c.person || c.label }}
+            </span>
+            <span class="fhc-more">{{ (!isAllSel() && c.shown) ? 'Selected ✓' : '+ Add' }}</span>
+          </div>
+          <!-- Big Total P&L headline. Below: a small columnar block — headers on
+               one row, values beneath (Net · Charges · Open). Hidden on phones,
+               where only the Total P&L shows. -->
+          <div class="fhc-big has-pop">
+            <span class="fhc-bigv" [class.pos]="c.total >= 0" [class.neg]="c.total < 0">{{ inrS(c.total) }}</span>
+            <span class="fhc-biglbl">total P&L <span class="fkb-i">ⓘ</span></span>
+            <div class="fkb-pop fhc-pop">
+              <div class="pop-h">{{ c.person || c.label }} — total P&L, net of charges</div>
+              <div class="pop-row"><span>Booked (gross)</span><b [class.pos]="c.booked > 0" [class.neg]="c.booked < 0">{{ inrS(c.booked) }}</b></div>
+              @if (c.hasCharges) {
+                <div class="pop-row"><span>Brokerage + taxes</span><b class="neg">−{{ inr(c.charges) }}</b></div>
+                @if (c.other !== 0) { <div class="pop-row"><span>Other credits/debits</span><b [class.pos]="c.other > 0" [class.neg]="c.other < 0">{{ inrS(c.other) }}</b></div> }
+              }
+              <div class="pop-row"><span>Open (unrealized)</span><b [class.pos]="c.unreal > 0" [class.neg]="c.unreal < 0">{{ inrS(c.unreal) }}</b></div>
+              <div class="pop-div"></div>
+              <div class="pop-row big"><span>Total P&L</span><b [class.pos]="c.total > 0" [class.neg]="c.total < 0">{{ inrS(c.total) }}</b></div>
+              @if (!c.hasCharges) { <div class="pop-note">Import this account's Kite P&L statement to fold in brokerage + taxes.</div> }
+            </div>
+          </div>
+          <div class="fhc-stats">
+            <span class="fhc-k" title="Booked P&L, net of brokerage + taxes">Net</span>
+            <span class="fhc-k" title="Brokerage + taxes from the imported P&L statement">Charges</span>
+            <span class="fhc-k" title="Unrealized P&L on open positions, marked to market">Open</span>
+            <span class="fhc-v" [class.pos]="c.netBooked >= 0" [class.neg]="c.netBooked < 0" [title]="inrFull(c.netBooked)">{{ kShort(c.netBooked) }}</span>
+            <span class="fhc-v cost" [title]="c.hasCharges ? inrFull(-c.charges) : 'Import this account’s P&L statement to see charges'">{{ c.hasCharges ? '−' + kShort(c.charges) : '—' }}</span>
+            <span class="fhc-v" [class.pos]="c.unreal >= 0" [class.neg]="c.unreal < 0" [title]="inrFull(c.unreal)">{{ kShort(c.unreal) }}</span>
+          </div>
+          <div class="fhc-foot"><span class="fhc-sub">{{ c.days }} day{{ c.days === 1 ? '' : 's' }}</span></div>
+        </button>
+      }
+    </div>
+  }
+
+  <div class="fno-board">
+
+  <!-- P&L chart (today) · top-left of the board -->
+  <div class="card fno-chart-card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">
+          P&L Chart
+          @if (selectedDay() && selectedDay() !== todayKey) {
+            <span class="day-chip">{{ fmtDayLong(selectedDay()) }}
+              <button class="chip-x" (click)="clearDay()" title="Back to ranges">✕</button></span>
+          }
+        </div>
+        <div class="card-sub">
+          @if (selectedDay() && selectedDay() !== todayKey) {
+            @if (cg().empty) { that day’s closing P&L }
+            @else { that day’s stored 1-minute P&L }
+          }
+          @else if (chartMode() === 'intraday') {
+            {{ chartDayLabel() }}<span class="sub-dot">·</span>{{ todayLive() ? 'live' : 'market closed' }}
+          }
+          @else { cumulative P&L, day by day }
+        </div>
+      </div>
+      <div class="chart-tabs">
+        <!-- market-aware Today: one pill → today · last hour. Live = green dot;
+             market shut = a lock + the reason on hover. No sub-menu. -->
+        <button class="today-pill" [class.live]="todayLive()" [class.locked]="!todayLive()"
+                [class.on]="onToday()" (click)="onTodayClick()"
+                [title]="todayLive() ? 'Today · last hour' : todayReason()">
+          @if (todayLive()) { <span class="live-dot on"></span> }
+          Today
+          @if (!todayLive()) {
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          }
+        </button>
+        <div class="chart-filter">
+          <button class="cf-btn" [class.active]="filterOpen()" (click)="filterOpen.set(!filterOpen())">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="18" x2="14" y2="18"/></svg>
+            <span class="cf-lbl">{{ rangeLabel() }}</span>
+            <span class="cv" [class.open]="filterOpen()">▾</span>
+          </button>
+          @if (filterOpen()) {
+            <div class="cf-back" (click)="filterOpen.set(false)"></div>
+            <div class="cf-pop">
+              <div class="cf-sec">Time range</div>
+              <div class="cf-grid">
+                @for (r of ranges; track r.key) {
+                  <button [class.on]="range() === r.key && !selectedDay()" (click)="setRange(r.key); filterOpen.set(false)">{{ r.label }}</button>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-holder">
+      @if (cg().empty) {
+        @if (selectedDay() && selectedDay() !== todayKey) {
+          <!-- completed day: minute data is pruned after 3 AM, so show just that
+               day's closing P&L (and per-strategy split) — hide the timeline -->
+          @if (selectedDayData(); as sd) {
+            <div class="day-summary">
+              <div class="ds-head">{{ fmtDayLong(selectedDay()) }} · closing P&L</div>
+              <div class="ds-total" [class.pos]="sd.total > 0" [class.neg]="sd.total < 0">{{ inrS(sd.total) }}</div>
+              @if (dayStrats(sd).length) {
+                <div class="ds-strats">
+                  @for (s of dayStrats(sd); track s.key) {
+                    <span class="tag" [ngClass]="s.key">{{ shortLabel(s.key) }}
+                      <b [class.pos]="s.total > 0" [class.neg]="s.total < 0">{{ inrS(s.total) }}</b></span>
+                  }
+                </div>
+              }
+              <div class="ds-note">Minute-by-minute detail is kept only for the live day.</div>
+            </div>
+          } @else {
+            <div class="chart-empty">No P&L recorded for {{ fmtDate(selectedDay()) }}.</div>
+          }
+        } @else if (chartMode() === 'intraday') {
+          @if (hasOpenPos() && !feedOffline() && openPos()!.priced_count > 0) {
+            <!-- no booked trades today, but the live open book has a real mark-to-market -->
+            <div class="chart-live-unreal" [class.pos]="openUnrealized() > 0" [class.neg]="openUnrealized() < 0">
+              <div class="clu-lbl">Live open P&L · marked to market <span class="live-dot on"></span></div>
+              <div class="clu-val">{{ inrS(openUnrealized()) }}</div>
+              <div class="clu-sub">{{ openPos()!.priced_count }} live position{{ openPos()!.priced_count === 1 ? '' : 's' }} · {{ inr(openInvested()) }} cost@if (openReturnPct() != null) { · <b [class.pos]="openReturnPct()! > 0" [class.neg]="openReturnPct()! < 0">{{ pct(openReturnPct()) }}</b> } · unrealized, not booked</div>
+              <button class="btn ghost sm clu-refresh" (click)="loadOpenPositions()" [disabled]="openPosLoading()">{{ openPosLoading() ? 'Refreshing…' : '↻ Refresh mark' }}</button>
+            </div>
+          } @else {
+            <div class="chart-empty">
+              @if (feedOffline()) {
+                Today’s live prices need a Kite session — yours has expired. Log in to
+                <b>{{ priceFeedAccount()?.person || priceFeedAccount()?.account_label || 'your account' }}</b>
+                to mark your open positions to market.
+              } @else {
+                Nothing open right now. The intraday chart draws live P&L while positions are open.
+              }
+            </div>
+          }
+        } @else {
+          <div class="chart-empty">No history in this range yet.</div>
+        }
+      } @else {
+        <div class="chart-frame">
+          <div class="plot-row">
+          <div class="chart-canvas" #chartCanvas
+               (pointermove)="onPointerMove($event)"
+               (pointerleave)="hoverI.set(null)">
+
+            <!-- grid lines + y labels -->
+            @for (gl of cg().grid; track gl.topPct) {
+              <div class="gridln" [style.top.%]="gl.topPct"><span class="ylab">{{ gl.label }}</span></div>
+            }
+            <div class="zeroln" [style.top.%]="cg().zeroPct"></div>
+
+            <!-- the curve: one SVG <path>, constant-width stroke, gradient split
+                 at ₹0 (green above · red below) + soft area fade -->
+            <svg class="pnl-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="fnoLineGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="100">
+                  <stop offset="0" stop-color="#16a085"/>
+                  <stop [attr.offset]="cg().zeroFrac" stop-color="#16a085"/>
+                  <stop [attr.offset]="cg().zeroFrac" stop-color="#e53935"/>
+                  <stop offset="1" stop-color="#e53935"/>
+                </linearGradient>
+                <linearGradient id="fnoAreaGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="100">
+                  <stop offset="0" stop-color="#16a085" stop-opacity="0.20"/>
+                  <stop [attr.offset]="cg().zeroFrac" stop-color="#16a085" stop-opacity="0"/>
+                  <stop [attr.offset]="cg().zeroFrac" stop-color="#e53935" stop-opacity="0"/>
+                  <stop offset="1" stop-color="#e53935" stop-opacity="0.20"/>
+                </linearGradient>
+              </defs>
+              <path [attr.d]="cg().areaPath" fill="url(#fnoAreaGrad)" stroke="none"/>
+              <!-- dotted bridge = no trade was live, P&L held its value -->
+              @if (cg().dashPath) {
+                <path [attr.d]="cg().dashPath" fill="none" stroke="url(#fnoLineGrad)" stroke-width="1.6"
+                      stroke-dasharray="1 2.4" vector-effect="non-scaling-stroke"
+                      stroke-linejoin="round" stroke-linecap="round" opacity="0.7"/>
+              }
+              <path [attr.d]="cg().linePath" fill="none" stroke="url(#fnoLineGrad)" stroke-width="2.2"
+                    vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+
+            <!-- hover crosshair -->
+            @if (hoverPt(); as hp) {
+              <div class="hoverln" [style.left.%]="hp.xPct"></div>
+              <div class="dotc" [class.neg-bg]="hp.v < 0" [style.left.%]="hp.xPct" [style.top.%]="hp.yPct"></div>
+            }
+
+            <!-- live pulse on the newest point -->
+            @if (cg().last; as lp) {
+              @if (liveOn() && tradesActive() && chartMode() === 'intraday' && (!selectedDay() || selectedDay() === todayKey)) {
+                <div class="dotc" [class.neg-bg]="!lp.pos" [style.left.%]="lp.xPct" [style.top.%]="lp.yPct"></div>
+                <div class="ring" [class.neg-ring]="!lp.pos" [style.left.%]="lp.xPct" [style.top.%]="lp.yPct"></div>
+              }
+            }
+
+            @if (hoverPt(); as hp) {
+              <div class="chart-tip" [style.left.%]="hp.xPct" [class.flip]="hp.xPct > 72">
+                <span class="tip-t">{{ chartMode() === 'intraday' ? hp.label : (hp.full || hp.label) }}</span>
+                <span class="tip-v" [class.pos]="hp.v >= 0" [class.neg]="hp.v < 0">{{ inrFull(hp.v) }}</span>
+                @if (chartMode() === 'intraday') { <span class="tip-cap">today’s P&L</span> }
+                @if (hoverOpenPnl() !== null) {
+                  <span class="tip-d">open <b [class.pos]="hoverOpenPnl()! >= 0" [class.neg]="hoverOpenPnl()! < 0">{{ inrFull(hoverOpenPnl()!) }}</b></span>
+                }
+                @if (hp.day !== undefined) {
+                  <span class="tip-d">day <b [class.pos]="hp.day! >= 0" [class.neg]="hp.day! < 0">{{ inrFull(hp.day!) }}</b></span>
+                }
+                @if (hp.by_account?.length) {
+                  <div class="tip-accts">
+                    @for (a of hp.by_account; track a.account_id) {
+                      <div class="tip-acct">
+                        <span class="ta-name">{{ a.person || a.label }}</span>
+                        <b [class.pos]="a.total >= 0" [class.neg]="a.total < 0">{{ inrFull(a.total) }}</b>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+          <!-- value gutter — only in the zoomed Last-hour view; the price pill
+               sits here, clear of the line. Full day uses the whole width. -->
+          <div class="val-gutter" [style.width.px]="valGutter()">
+            @if (valGutter()) {
+              @if (cg().last; as lp) {
+                <div class="val-pill" [class.loss]="!lp.pos" [style.top.%]="lp.yPct">{{ inrS(lastVal()) }}</div>
+              }
+            }
+          </div>
+          </div><!-- /plot-row -->
+
+          <!-- x axis labels -->
+          <div class="xaxis" [style.right.px]="valGutter()">
+            @for (t of cg().xticks; track t.leftPct) {
+              <span class="xlab" [style.left.%]="t.leftPct">
+                <span class="xl-d">{{ t.label }}</span>
+                @if (t.year) { <span class="xl-y">{{ t.year }}</span> }
+              </span>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
+    @if (chartStats().length) {
+      <div class="chart-stats">
+        @for (s of chartStats(); track s.label) {
+          <span class="cs" [class.has-tip]="s.tip" [title]="s.tip || null"><span class="cs-l">{{ s.label }}</span><b [ngClass]="s.cls || ''">{{ s.value }}</b></span>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- Open Positions · full right column — the complete live book -->
+  <div class="card fno-livecol">
+
+    <!-- open positions (default view) — trade history is tucked behind Expand -->
+    <section class="rc-sec rc-open openpos-card">
+      <div class="rc-head">
+        <div>
+          <div class="card-title">Open Positions @if (liveOn()) { <span class="live-dot on" title="live prices"></span> }</div>
+        </div>
+        <div class="rc-open-right">
+          <!-- P&L summary now lives in the payoff KPI bar below — no duplicate chip here -->
+          <button class="th-open-btn" (click)="showTrades.set(true)" title="See every F&O trade taken">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+            Trade history <span class="thb-count">{{ tradeCounts()['all'] }}</span>
+          </button>
+          <button class="btn ghost sm op-refresh" (click)="loadOpenPositions()" [disabled]="openPosLoading()" title="Refresh live prices">{{ openPosLoading() ? '…' : '↻' }}</button>
+        </div>
+      </div>
+      @if (hasOpenPos()) {
+        <!-- ── Payoff diagram (P&L at expiry) ─────────────────────────────── -->
+        @if (hasPayoff() && payoff(); as pf) {
+          <div class="payoff" [class.is-full]="pfFull()">
+            <div class="pf-top">
+              <div class="pf-titlewrap">
+                <span class="pf-title">P&amp;L at expiry</span>
+                <span class="pf-scope">
+                  <b>{{ pf.root }}</b> · {{ pf.legs.length }} leg{{ pf.legs.length === 1 ? '' : 's' }}@if (pf.dte != null) { · <b>{{ pf.dte }}</b>d left }@if (activeSelCount()) { · <span class="pf-hint">{{ activeSelCount() }} isolated</span> }
+                </span>
+              </div>
+              <div class="pf-toolbar">
+              <!-- what-if active indicator (also a shortcut into fullscreen to edit) -->
+              @if (draftLegs().length) {
+                <button class="pf-wchip" (click)="togglePfFull()" title="What-if positions are folded into this chart — open full screen to edit">
+                  ⚡ {{ draftLegs().length }} what-if
+                </button>
+              }
+              <!-- fullscreen toggle — the chart is the star, give it the whole screen -->
+              <button class="pf-fs-btn" (click)="togglePfFull()"
+                      [title]="pfFull() ? 'Exit full screen (Esc)' : 'Full screen'">
+                @if (!pfFull()) {
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
+                } @else {
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v4a1 1 0 0 1-1 1H4M15 4v4a1 1 0 0 0 1 1h4M9 20v-4a1 1 0 0 0-1-1H4M15 20v-4a1 1 0 0 1 1-1h4"/></svg>
+                }
+              </button>
+              <!-- one "All ▾" control: show every trade, then choose inside -->
+              <div class="pf-pick">
+                <button class="pf-pick-btn" [class.on]="pfMenuOpen()" (click)="togglePfMenu()" title="Choose what to chart">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                  <span class="pfp-lbl">{{ isAllScope() ? 'All' : (activeSelCount() ? (activeSelCount() + ' legs') : pf.root) }}</span>
+                  <svg class="pfp-caret" [class.up]="pfMenuOpen()" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                @if (pfMenuOpen()) {
+                  <div class="pf-pick-back" (click)="closePfMenu()"></div>
+                  <div class="pf-pick-menu">
+                    <div class="pfm-sec">Show</div>
+                    <button class="pfm-row" [class.on]="isAllScope()" (click)="pickAllRoots()">
+                      <span class="pfm-r-main"><b>All trades</b><em>largest · {{ allRoots()[0]?.root }}</em></span>
+                      @if (isAllScope()) { <span class="pfm-tick">✓</span> }
+                    </button>
+                    @for (r of allRoots(); track r.root) {
+                      <button class="pfm-row" [class.on]="!isAllScope() && activePayoffRoot() === r.root" (click)="pickRoot(r.root)">
+                        <span class="pfm-r-main">
+                          <span class="pfm-r-hd">{{ r.root }}<em>{{ r.count }} leg{{ r.count === 1 ? '' : 's' }}</em></span>
+                          <span class="pfm-accs">
+                            @for (a of accountsForRoot(r.root); track a) { <span class="pfm-acc">{{ a }}</span> }
+                          </span>
+                        </span>
+                        @if (!isAllScope() && activePayoffRoot() === r.root) { <span class="pfm-tick">✓</span> }
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+              </div><!-- /pf-toolbar -->
+            </div>
+
+            <!-- ── hero: ONE clean KPI bar (no dividers). Inline shows the essentials;
+                     full screen reveals every detail, like the Stocks KPI bar. ── -->
+            <div class="pf-kbar">
+              <div class="pf-kb lead">
+                <span class="pf-kb-k">Current P&amp;L @if (liveOn()) { <span class="live-dot on"></span> }</span>
+                <span class="pf-kb-v big" [class.pos]="pf.currentPnl > 0" [class.neg]="pf.currentPnl < 0">{{ inrS(pf.currentPnl) }}</span>
+              </div>
+              <div class="pf-kb">
+                <span class="pf-kb-k">Max profit</span>
+                <span class="pf-kb-v pos">{{ pf.profitUnlimited ? 'Unlimited ▲' : inrS(pf.maxProfit) }}</span>
+              </div>
+              <!-- Max loss and Days left don't need a live market, so they show even
+                   when it's closed — the bar never collapses to just two stats. -->
+              <div class="pf-kb">
+                <span class="pf-kb-k">Max loss</span>
+                <span class="pf-kb-v neg">{{ pf.lossUnlimited ? 'Unlimited ▼' : inrS(pf.maxLoss) }}</span>
+              </div>
+              <!-- Today (intraday) only exists while the market is live; when it's
+                   closed we show Captured in its place so the slot is never empty. -->
+              @if (chartedToday() != null) {
+                <div class="pf-kb">
+                  <span class="pf-kb-k">Today</span>
+                  <span class="pf-kb-v" [class.pos]="chartedToday()! >= 0" [class.neg]="chartedToday()! < 0">{{ chartedToday()! >= 0 ? '▲' : '▼' }} {{ inr(Math.abs(chartedToday()!)) }}</span>
+                </div>
+              } @else if (pf.capturedPct != null) {
+                <div class="pf-kb">
+                  <span class="pf-kb-k">Captured</span>
+                  <span class="pf-kb-v">{{ (pf.capturedPct * 100) | number:'1.0-0' }}%<small> of max</small></span>
+                </div>
+              }
+              <div class="pf-kb">
+                <span class="pf-kb-k">Days left</span>
+                <span class="pf-kb-v">{{ pf.dte != null ? pf.dte : '—' }}<small>d</small></span>
+              </div>
+              @if (pfFull() && chartedToday() != null && pf.capturedPct != null) {
+                <div class="pf-kb">
+                  <span class="pf-kb-k">Captured</span>
+                  <span class="pf-kb-v">{{ (pf.capturedPct * 100) | number:'1.0-0' }}%<small> of max</small></span>
+                </div>
+              }
+            </div>
+
+            <!-- legend -->
+            <div class="pf-meta">
+              <span class="pf-legend">
+                <span class="lg"><i class="lg-swatch exp"></i>At expiry</span>
+                @if (pf.hasToday) { <span class="lg"><i class="lg-swatch now"></i>{{ projDays() === 0 ? 'Today' : ('In ' + projDays() + 'd') }}</span> }
+                @if (pf.hasDraft) { <span class="lg"><i class="lg-swatch base"></i>Before</span> }
+                <span class="lg"><i class="lg-swatch pos"></i>You are here</span>
+              </span>
+            </div>
+
+            <div class="pf-stage">
+            <!-- ── LEFT (fullscreen): the open positions you own ── -->
+            @if (pfFull()) {
+              <aside class="pf-poscol">
+                <div class="pfr-head"><span>Positions</span><span class="pfr-n">{{ chartLegs().length }} charted</span></div>
+                <div class="pfr-list">
+                  <!-- extra legs you added from the chain — shown up top, clearly set apart -->
+                  @if (draftLegs().length) {
+                    <div class="pfr-grp wif">
+                      <span class="pfr-grp-nm">⚡ What&#8209;if · {{ draftLegs().length }}</span>
+                      <button class="pfr-grp-clear" (click)="clearDrafts()">Clear all</button>
+                    </div>
+                    @for (d of draftLegs(); track d.id) {
+                      <div class="pfr-leg wif">
+                        <div class="pfr-l">
+                          <span class="pfr-nm">{{ d.type === 'FUT' ? (d.root + ' FUT') : (d.strike + ' ' + d.type) }}</span>
+                          <span class="pfr-sub">
+                            <span class="side-tag sm" [class.short]="d.qty < 0">{{ d.qty < 0 ? 'SELL' : 'BUY' }}</span>
+                            {{ fmtQty(d.qty) }} @ {{ d.premium | number:'1.0-2' }}
+                          </span>
+                        </div>
+                        <button class="pfr-x big" (click)="removeDraft(d.id)" title="Remove this leg">✕</button>
+                      </div>
+                    }
+                  }
+                  @for (r of bookRoots(); track r.root) {
+                    <div class="pfr-grp" [class.on]="r.active">
+                      <span class="pfr-grp-nm" (click)="pickRoot(r.root)">{{ r.root }}</span>
+                      @if (r.hasSpot) { <span class="pfr-grp-spot">{{ axisPrice(r.spot!) }}</span> }
+                      @if (r.active) { <span class="pfr-grp-tag">charted</span> }
+                    </div>
+                    @for (l of r.legs; track l.account_id + l.tradingsymbol) {
+                      <div class="pfr-leg" [class.off]="!r.active">
+                        <div class="pfr-l">
+                          <span class="pfr-nm">{{ l.opt_type === 'FUT' ? (l.root + ' FUT') : (l.strike + ' ' + l.opt_type) }}</span>
+                          <span class="pfr-sub"><span class="side-tag sm" [class.short]="l.side === 'SHORT'">{{ l.side }}</span> {{ l.qty }} · avg {{ l.avg | number:'1.0-2' }}</span>
+                        </div>
+                        <div class="pfr-r">
+                          <span class="pfr-ltp">@if (l.ltp != null) { {{ l.ltp | number:'1.1-2' }} } @else { <span class="mut">—</span> }</span>
+                          <span class="pfr-mv" [class.pos]="(legValue(l) ?? 0) > 0" [class.neg]="(legValue(l) ?? 0) < 0">@if (legValue(l) != null) { {{ (legValue(l) ?? 0) >= 0 ? '▲' : '▼' }} {{ inrS(legValue(l)!) }} } @else { <span class="mut">carry</span> }</span>
+                        </div>
+                      </div>
+                    }
+                  }
+                </div>
+                <div class="pfr-foot"><span>Net now</span><b [class.pos]="pf.currentPnl >= 0" [class.neg]="pf.currentPnl < 0">{{ inrS(pf.currentPnl) }}</b></div>
+              </aside>
+            }
+
+            <!-- ── MIDDLE: the P&L chart + controls ── -->
+            <div class="pf-midcol">
+
+            @if (payoffGeom(); as g) {
+              <!-- shared slider rows: ONE Today (theta, applies to every underlying) + a price slider per underlying -->
+              <ng-template #pfSliders>
+                @if (maxDte() > 0) {
+                  <div class="pfk-row today">
+                    <span class="pfk-ic" title="Project the whole book forward in time (theta) — applies to every underlying">📅</span>
+                    <span class="pfk-lbl">{{ projDays() === 0 ? 'Today' : ('In ' + projDays() + 'd') }}</span>
+                    <input type="range" class="pfk-slider day" min="0" [max]="maxDte()" step="1"
+                           [value]="projDays()" (input)="setProjDays($any($event.target).value)"
+                           [style.--pct.%]="(projDays() / maxDte()) * 100" title="Days from now (applies to all instruments)">
+                    <span class="pfk-end">{{ maxDte() }}d</span>
+                    <span class="pfk-val" [class.pos]="dockTotal() >= 0" [class.neg]="dockTotal() < 0">{{ inrS(dockTotal()) }}</span>
+                  </div>
+                }
+                @for (r of dockRows(); track r.root) {
+                  <div class="pfk-row" [class.dim]="!r.active">
+                    <span class="pfk-ic">🎯</span>
+                    <span class="pfk-lbl" [class.on]="r.active" (click)="pickRoot(r.root)" title="Chart {{ r.root }}">{{ r.root }}</span>
+                    <input type="range" class="pfk-slider price" [min]="r.xMin" [max]="r.xMax" [step]="rootStep(r)"
+                           [value]="r.price" (input)="onRootScrub(r, $any($event.target).value)"
+                           [style.--pct.%]="r.frac * 100" title="Scrub {{ r.root }} price">
+                    <span class="pfk-mid">{{ axisPrice(r.price) }}</span>
+                    @if (r.active && pfScrub() != null && r.hasSpot) {
+                      <button class="pfk-reset" (click)="resetPfScrub()" title="Back to the live price">↺</button>
+                    }
+                    <span class="pfk-val" [class.pos]="r.pnl >= 0" [class.neg]="r.pnl < 0">{{ inrS(r.pnl) }}</span>
+                  </div>
+                }
+              </ng-template>
+
+              <div class="pf-plotwrap">
+              <div class="pf-chart">
+                <div class="pf-yaxis">
+                  @for (t of g.yticks; track t.top) {
+                    <span class="pf-ytick" [style.top.%]="t.top" [class.zero]="t.label === '₹0'">{{ t.label }}</span>
+                  }
+                </div>
+                <div class="pf-plot">
+                  <div #payoffCanvas class="pf-canvas"
+                       [class.zoomed]="pfZoomed()" [class.hovering]="payoffHover()"
+                       (wheel)="onPayoffWheel($event)"
+                       (pointerdown)="onPayoffDown($event)" (pointermove)="onPayoffPointerMove($event)"
+                       (pointerup)="onPayoffUp()" (pointercancel)="onPayoffUp()"
+                       (mouseleave)="clearPayoffHover()">
+                    <!-- zoom controls — wheel/pinch also work; buttons for touch & discoverability -->
+                    <div class="pf-zoom">
+                      <button class="pfz-btn" (click)="pfZoomIn()" title="Zoom in">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                      </button>
+                      <button class="pfz-btn" (click)="pfZoomOut()" [disabled]="!pfZoomed()" title="Zoom out">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>
+                      </button>
+                      @if (pfZoomed()) {
+                        <button class="pfz-btn reset" (click)="resetPfView()" title="Reset zoom">
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.4 2.6L3 8M3 4v4h4"/></svg>
+                        </button>
+                      }
+                    </div>
+                    <!-- horizontal gridlines -->
+                    @for (t of g.yticks; track t.top) {
+                      <div class="pf-grid" [style.top.%]="t.top" [class.zero]="t.label === '₹0'"></div>
+                    }
+                    <svg class="pf-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="pfFill" x1="0" y1="0" x2="0" y2="100" gradientUnits="userSpaceOnUse">
+                          <stop offset="0" stop-color="#16a34a" stop-opacity="0.30"/>
+                          <stop [attr.offset]="g.zeroPct / 100" stop-color="#16a34a" stop-opacity="0.06"/>
+                          <stop [attr.offset]="g.zeroPct / 100" stop-color="#dc2626" stop-opacity="0.06"/>
+                          <stop offset="1" stop-color="#dc2626" stop-opacity="0.30"/>
+                        </linearGradient>
+                        <clipPath id="pfAbove"><rect x="0" y="0" width="100" [attr.height]="g.zeroPct"/></clipPath>
+                        <clipPath id="pfBelow"><rect x="0" [attr.y]="g.zeroPct" width="100" [attr.height]="100 - g.zeroPct"/></clipPath>
+                      </defs>
+                      <path [attr.d]="g.areaToZero" fill="url(#pfFill)" stroke="none"/>
+                      <!-- ghost "before" line — the book WITHOUT the what-if legs -->
+                      @if (g.baseLine) { <path [attr.d]="g.baseLine" class="pf-base" fill="none" vector-effect="non-scaling-stroke"/> }
+                      <path [attr.d]="g.line" class="pf-line pos" clip-path="url(#pfAbove)" fill="none" vector-effect="non-scaling-stroke"/>
+                      <path [attr.d]="g.line" class="pf-line neg" clip-path="url(#pfBelow)" fill="none" vector-effect="non-scaling-stroke"/>
+                      <!-- projected curve at N days from now (theta) — driven by the day slider -->
+                      @if (g.projLine) { <path [attr.d]="g.projLine" class="pf-today" fill="none" vector-effect="non-scaling-stroke"/> }
+                    </svg>
+
+                    <!-- breakeven verticals -->
+                    @for (b of g.breakevens; track b.x) {
+                      <div class="pf-be" [style.left.%]="b.x"><span class="pf-be-lbl">BE {{ b.label }}</span></div>
+                    }
+                    <!-- current spot marker + "you are here" -->
+                    @if (g.spotX != null) {
+                      <div class="pf-spot" [style.left.%]="g.spotX" [class.left]="g.spotX < 13" [class.right]="g.spotX > 87">
+                        <span class="pf-spot-lbl">Now · {{ axisPrice(pf.spot!) }}</span>
+                      </div>
+                      <div class="pf-curdot" [style.left.%]="g.spotX" [style.top.%]="g.projSpotY ?? g.curPnlY"
+                           [class.pos]="(g.projAtSpot ?? pf.currentPnl) >= 0" [class.neg]="(g.projAtSpot ?? pf.currentPnl) < 0"
+                           [class.right]="g.spotX > 62" [class.left]="g.spotX < 13"
+                           title="your P&L at the live price, on the selected day">
+                        <span class="pf-here">{{ projDays() === 0 ? 'You' : ('In ' + projDays() + 'd') }} · {{ inrS(g.projAtSpot ?? pf.currentPnl) }}</span>
+                      </div>
+                    }
+                    <!-- max profit / loss dots -->
+                    @if (g.maxProfitPt) { <div class="pf-mark win" [style.left.%]="g.maxProfitPt.x" [style.top.%]="g.maxProfitPt.y"></div> }
+                    @if (g.maxLossPt) { <div class="pf-mark lose" [style.left.%]="g.maxLossPt.x" [style.top.%]="g.maxLossPt.y"></div> }
+
+                    <!-- price-scrub marker (driven by the strike slider) -->
+                    @if (g.scrub; as sc) {
+                      <div class="pf-scrub" [style.left.%]="sc.x"></div>
+                      <div class="pf-scrubdot" [class.pos]="sc.pnl >= 0" [class.neg]="sc.pnl < 0"
+                           [class.right]="sc.x > 62" [class.left]="sc.x < 13" [style.left.%]="sc.x" [style.top.%]="sc.y">
+                        <span class="pf-scrub-tag">{{ axisPrice(sc.price) }} · {{ inrS(sc.pnl) }}</span>
+                      </div>
+                    }
+
+                    <!-- hover crosshair + tooltip (pinned to the top so nothing hides it) -->
+                    @if (payoffHover(); as h) {
+                      <div class="pf-cross" [style.left.%]="h.xPct"></div>
+                      <div class="pf-tip" [class.right]="h.xPct > 55" [style.left.%]="h.xPct">
+                        <div class="pft-price">{{ axisPrice(h.price) }}</div>
+                        <div class="pft-pnl" [class.pos]="h.pnl >= 0" [class.neg]="h.pnl < 0">{{ inrS(h.pnl) }}<span> at expiry</span></div>
+                        @if (h.projPnl != null) {
+                          <div class="pft-pnl proj" [class.pos]="h.projPnl >= 0" [class.neg]="h.projPnl < 0">{{ inrS(h.projPnl) }}<span> {{ projDays() === 0 ? 'today' : ('in ' + projDays() + 'd') }}</span></div>
+                        }
+                      </div>
+                    }
+                    <!-- Controls (Today/price sliders, refresh, hide) live ONLY in full
+                         screen — the inline chart stays clean. Full-screen it to scrub. -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- shared price axis at the bottom -->
+              <div class="pf-axisrow">
+                <div class="pf-axisgut"></div>
+                <div class="pf-xaxis">
+                  @for (t of g.xticks; track t.x) {
+                    <span class="pf-xtick" [class.spot]="t.kind === 'spot'" [style.left.%]="t.x">{{ t.label }}</span>
+                  }
+                </div>
+              </div>
+              </div><!-- /pf-plotwrap -->
+
+              <!-- ── controls panel (fullscreen): fills the space below the landscape chart ── -->
+              @if (pfFull()) {
+                <div class="pf-controls">
+                  <div class="pfc-btns">
+                    <button class="pfc-btn" [class.on]="anyProjection()" [disabled]="!anyProjection()" (click)="resetProjection()" title="Back to today &amp; live prices">
+                      ↺ Reset to current
+                    </button>
+                  </div>
+                  <div class="pfc-sliders">
+                    <ng-container [ngTemplateOutlet]="pfSliders"></ng-container>
+                  </div>
+                </div>
+              }
+            }
+            </div><!-- /pf-midcol -->
+
+            <!-- ── RIGHT (fullscreen): the option chain — tap to add, watch the chart change ── -->
+            @if (pfFull()) {
+              <aside class="pf-chaincol">
+                <div class="pfc2-head">
+                  <span class="pfc2-title">Options chain</span>
+                  @if (chainData(); as cd) { <span class="pfc2-spot">{{ activePayoffRoot() }} · {{ axisPrice(cd.spot) }}</span> }
+                </div>
+                <!-- switch instrument (the book's own underlyings) + expiry -->
+                <div class="pfc2-unders">
+                  @for (u of chainUnderlyings(); track u.root) {
+                    <button class="pfc2-u" [class.on]="u.active" (click)="setChainUnderlying(u.root)">{{ u.root }}</button>
+                  }
+                </div>
+                <div class="pfc2-sub">
+                  @if (chainExpiries().length) {
+                    <select class="pfc2-exp" [value]="chainExpiry()" (change)="setChainExpiry($any($event.target).value)">
+                      @for (e of chainExpiries(); track e) { <option [value]="e">{{ e }}</option> }
+                    </select>
+                  } @else if (chainData()?.expiry) {
+                    <span class="pfc2-exp static">Exp {{ chainData()!.expiry }}</span>
+                  }
+                  <button class="pfc2-fut" (click)="addChainFuture()">＋ Future</button>
+                </div>
+                <!-- add-mode: Buy/Sell + Lots used when you tap a strike -->
+                <div class="pfc2-mode">
+                  <div class="pfb-seg side sm">
+                    <button class="buy" [class.on]="draftSide() === 1" (click)="setDraftSide(1)">Buy</button>
+                    <button class="sell" [class.on]="draftSide() === -1" (click)="setDraftSide(-1)">Sell</button>
+                  </div>
+                  <span class="pfc2-lots">Lots
+                    <button (click)="bumpLots(-1)" title="Fewer">−</button><b>{{ draftLots() }}</b><button (click)="bumpLots(1)" title="More">＋</button>
+                  </span>
+                </div>
+                <!-- filters -->
+                <div class="pfc2-filters">
+                  <button class="pfc2-f" (click)="cycleChainBand()" title="Cycle the strike window">{{ chainBandLabel() }}</button>
+                  <div class="pfc2-seg">
+                    <button [class.on]="chainType()==='both'" (click)="setChainType('both')">C+P</button>
+                    <button [class.on]="chainType()==='C'" (click)="setChainType('C')">Calls</button>
+                    <button [class.on]="chainType()==='P'" (click)="setChainType('P')">Puts</button>
+                  </div>
+                </div>
+
+                @if (chainLoading()) {
+                  <div class="pfc2-msg">Loading chain…</div>
+                } @else if (chainError()) {
+                  <div class="pfc2-msg err">{{ chainError() }}</div>
+                } @else if (chainData(); as cd) {
+                  <div class="pfc2-tblhd" [attr.data-t]="chainType()">
+                    @if (chainType() !== 'P') { <span class="c">CALL ₹</span> }
+                    <span class="k">Strike</span>
+                    @if (chainType() !== 'C') { <span class="p">PUT ₹</span> }
+                  </div>
+                  <div class="pfc2-rows">
+                    @for (row of chainRows(); track row.strike) {
+                      <div class="pfc2-row" [class.atm]="row.strike === cd.atm_strike" [attr.data-t]="chainType()">
+                        @if (chainType() !== 'P') { <button class="pfc2-cell call" (click)="addChainLeg(row, 'CE')" [title]="(draftSide()===1?'Buy':'Sell')+' '+row.strike+' call'">{{ row.ce.price | number:'1.1-2' }}</button> }
+                        <span class="pfc2-k">{{ row.strike }}</span>
+                        @if (chainType() !== 'C') { <button class="pfc2-cell put" (click)="addChainLeg(row, 'PE')" [title]="(draftSide()===1?'Buy':'Sell')+' '+row.strike+' put'">{{ row.pe.price | number:'1.1-2' }}</button> }
+                      </div>
+                    }
+                  </div>
+                }
+
+                <!-- added feedback — the full list lives in the Positions column on the left -->
+                @if (draftLegs().length) {
+                  <div class="pfc2-added">
+                    <span class="pfc2-added-n">⚡ {{ draftLegs().length }} what&#8209;if leg{{ draftLegs().length === 1 ? '' : 's' }} added <em>— see them in Positions</em></span>
+                    <button class="pfc2-clear" (click)="clearDrafts()">Clear all</button>
+                  </div>
+                } @else {
+                  <div class="pfc2-note">Tap a call or put — it's added with your Buy/Sell + Lots above and the chart updates instantly.</div>
+                }
+              </aside>
+            }
+            </div><!-- /pf-stage -->
+          </div>
+        }
+        @if (feedOffline()) {
+          <div class="op-note feed-off">
+            <b>⚠ Live prices are stale — Kite session expired.</b>
+            Access tokens expire daily. Log in to
+            <b>{{ priceFeedAccount()?.person || priceFeedAccount()?.account_label || 'your price-feed account' }}</b>
+            to refresh LTPs &amp; unrealized P&amp;L.
+            @if (priceFeedAccount(); as pf) {
+              <button class="btn sm feed-login" [disabled]="busyAcc() === pf.id" (click)="login(pf)">
+                {{ busyAcc() === pf.id ? '…' : 'Log in to Kite' }}
+              </button>
+            }
+          </div>
+        } @else if (openExpiredHidden() > 0) {
+          <div class="op-note">{{ openExpiredHidden() }} expired leg{{ openExpiredHidden() === 1 ? '' : 's' }} hidden — showing only live positions with a market price.@if (openUnpriced() > 0) { {{ openUnpriced() }} live leg{{ openUnpriced() === 1 ? '' : 's' }} couldn’t be priced (illiquid).}</div>
+        } @else if (openUnpriced() > 0) {
+          <div class="op-note">{{ openUnpriced() }} leg{{ openUnpriced() === 1 ? '' : 's' }} couldn’t be priced (illiquid) — shown without a live mark.</div>
+        }
+        @if (selLegs().size) {
+          <div class="bulk-bar">
+            <span class="bb-count">{{ selLegs().size }} selected</span>
+            <span class="bb-arrow">Set strategy →</span>
+            @for (st of strategyOptions(); track st) {
+              <button class="bb-strat" [style.background]="stratColor(st)" [disabled]="bulkBusy()" (click)="bulkSetLegs(st)">{{ stratShort(st) }}</button>
+            }
+            <button class="bb-clear" (click)="clearLegSel()">Clear</button>
+          </div>
+        }
+        <div class="rc-open-scroll">
+          <table class="fno-table">
+            <thead><tr><th class="chk-col"><input type="checkbox" [checked]="allLegsSel()" (change)="toggleAllLegs()" title="Select all"></th><th>Instrument</th><th>Whose</th><th class="r">Side</th><th class="r">Qty</th><th class="r">Avg</th><th class="r">LTP</th><th class="r">Unreal.</th></tr></thead>
+            <tbody>
+              @for (p of openLegs(); track p.account_id + p.tradingsymbol) {
+                <tr [class.unpriced]="p.ltp == null" [class.sel-row]="isLegSel(p)" [class.op-closed]="p.closed">
+                  <td class="chk-col">@if (!p.closed) { <input type="checkbox" [checked]="isLegSel(p)" (change)="toggleLeg(p)"> }</td>
+                  <td><b>{{ p.tradingsymbol }}</b><span class="mut"> · {{ p.account_label }}</span></td>
+                  <!-- whose account this position sits in — person's name, else the
+                       account label; the strategy tag it replaced is still set via the
+                       "Set strategy" bar above when rows are selected -->
+                  <td class="op-whose" [title]="'Strategy: ' + (p.strategy || '—')">
+                    <span class="wh-ava" [style.background]="stratColor(p.strategy)">{{ legInitial(p) }}</span>
+                    <span class="wh-name">{{ legWhose(p) }}</span>
+                  </td>
+                  <td class="r"><span class="side-tag" [class.short]="p.side === 'SHORT'" [class.closed]="p.side === 'CLOSED'">{{ p.side === 'CLOSED' ? 'closed' : p.side }}</span></td>
+                  <td class="r" [class.neg]="p.qty < 0">{{ p.qty }}</td>
+                  <td class="r">@if (p.closed) { <span class="mut">—</span> } @else { {{ p.avg | number:'1.2-2' }} }</td>
+                  <td class="r">@if (p.ltp != null) { {{ p.ltp | number:'1.2-2' }} } @else { <span class="mut">—</span> }</td>
+                  <td class="r" [class.pos]="(legValue(p) ?? 0) > 0" [class.neg]="(legValue(p) ?? 0) < 0"
+                      [title]="openLiveMode() && p.realized ? ('unrealized ' + inrS(p.unrealized ?? 0) + ' + booked today ' + inrS(p.realized)) : ''">
+                    @if (legValue(p) != null) { <b>{{ inrS(legValue(p)!) }}</b> } @else { <span class="mut op-carry">carry&nbsp;fwd</span> }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <div class="rc-empty">Book is flat — no open positions. Carried-forward legs are marked to market here.</div>
+      }
+    </section>
+
+  </div>
+  <!-- P&L calendar · bottom-left, directly below the chart -->
+  <div class="card fno-cal">
+    <div class="cal-head">
+      <div class="card-title">P &amp; L calendar</div>
+      <div class="cal-nav">
+        <div class="cal-monthpick">
+          <button class="nav-btn" (click)="prevMonth()" aria-label="Previous month">‹</button>
+          <button class="cal-month" (click)="thisMonth()" title="Jump to this month">{{ monthLabel() }}</button>
+          <button class="nav-btn" (click)="nextMonth()" aria-label="Next month">›</button>
+        </div>
+        <span class="cal-mtot" [class.pos]="monthTotal() > 0" [class.neg]="monthTotal() < 0">{{ inrS(monthTotal()) }}</span>
+      </div>
+    </div>
+    <div class="cal-wd">@for (w of weekdays; track $index) { <span>{{ w }}</span> }</div>
+    <div class="cal-grid">
+      @for (c of cells(); track $index) {
+        @if (c) {
+          <button class="cal-cell" [ngClass]="[c.tone, c.isToday ? 'today' : '', c.count || c.data ? 'has' : '', c.selected ? 'sel' : '']"
+                  (click)="selectDay(c)"
+                  [title]="c.data ? (c.key + ' · ' + inrS(c.total) + ' · ' + c.count + ' trades') : c.key">
+            <span class="cc-d">{{ c.d }}</span>
+            @if (c.data) { <span class="cc-amt">{{ inrS(c.total) }}</span> }
+          </button>
+        } @else { <span class="cal-cell empty"></span> }
+      }
+    </div>
+    <div class="cal-legend">
+      <span class="lg n4"></span><span class="lg n2"></span><span>loss</span>
+      <span class="lg z"></span>
+      <span>profit</span><span class="lg p2"></span><span class="lg p4"></span>
+    </div>
+  </div>
+  </div><!-- /fno-board -->
+
+  <!-- ── Trade history popup (expanded from Open Positions) ─────────────── -->
+  @if (showTrades()) {
+    <div class="fno-modal-backdrop" (click)="showTrades.set(false)">
+      <div class="fno-modal card th-modal" (click)="$event.stopPropagation()">
+        <div class="th-modal-head">
+          <div>
+            <div class="card-title">
+              Trade History
+              @if (selectedDay()) {
+                <span class="day-chip">{{ fmtDayLong(selectedDay()) }}
+                  <button class="chip-x" (click)="clearDay()" title="Show all days">✕</button></span>
+              }
+            </div>
+            <div class="card-sub">
+              @if (selectedDay()) {
+                {{ filteredTrades().length }} fills that day
+                @if (selectedDayData(); as sd) { · <b [class.pos]="sd.total > 0" [class.neg]="sd.total < 0">{{ inrS(sd.total) }}</b> }
+              } @else {
+                {{ filteredTrades().length }} of {{ tradeCounts()['all'] }} fills · every F&O trade taken
+              }
+            </div>
+          </div>
+          <div class="th-modal-tools">
+            <input class="th-search" placeholder="Filter instrument…"
+                   [ngModel]="tradeQuery()" (ngModelChange)="tradeQuery.set($event)">
+            <button class="btn ghost sm th-close" (click)="showTrades.set(false)" title="Close">✕</button>
+          </div>
+        </div>
+
+        <div class="pills th-pills">
+          @for (pl of tradePills(); track pl.key) {
+            <button class="pill" [class.active]="tradeStrat() === pl.key" (click)="tradeStrat.set(pl.key)">{{ pl.label }} · {{ pl.count }}</button>
+          }
+          <div class="strat-mgr">
+            <button class="pill strat-mgr-btn" [class.active]="stratMgrOpen()" (click)="stratMgrOpen.set(!stratMgrOpen())" title="Add or manage strategies">⚙ Strategies</button>
+            @if (stratMgrOpen()) {
+              <div class="vb-back" (click)="stratMgrOpen.set(false)"></div>
+              <div class="strat-mgr-pop" (click)="$event.stopPropagation()">
+                <div class="smp-h">Strategies<span>tag any trade with one of these</span></div>
+                <div class="smp-list">
+                  @for (c of catalog(); track c.key) {
+                    <div class="smp-row">
+                      <span class="smp-dot" [style.background]="c.color"></span>
+                      <span class="smp-name">{{ c.label }}</span>
+                      @if (['sentinel', 'crude', 'other'].includes(c.key)) {
+                        <span class="smp-lock">built-in</span>
+                      } @else {
+                        <button class="smp-del" [disabled]="stratBusy()" (click)="deleteStrategy(c.key)" title="Remove strategy">✕</button>
+                      }
+                    </div>
+                  }
+                </div>
+                <div class="smp-add">
+                  <input type="color" class="smp-color" [value]="newStratColor()" (input)="newStratColor.set($any($event.target).value)" title="Pick a colour">
+                  <input class="smp-in" placeholder="New strategy name…" [ngModel]="newStratName()" (ngModelChange)="newStratName.set($event)" (keyup.enter)="addNewStrategy()">
+                  <button class="smp-addbtn" [disabled]="!newStratName().trim() || stratBusy()" (click)="addNewStrategy()">＋ Add</button>
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+        @if (selTrades().size) {
+          <div class="bulk-bar">
+            <span class="bb-count">{{ selTrades().size }} selected</span>
+            <span class="bb-arrow">Set strategy →</span>
+            @for (st of strategyOptions(); track st) {
+              <button class="bb-strat" [style.background]="stratColor(st)" [disabled]="bulkBusy()" (click)="bulkSetTrades(st)">{{ stratShort(st) }}</button>
+            }
+            <button class="bb-clear" (click)="clearTradeSel()">Clear</button>
+          </div>
+        }
+
+
+        @if (needsBackfill() && !tradesLoading()) {
+          <div class="backfill">
+            <b>Only {{ tradeCounts()['all'] ? 'today’s' : 'no' }} trades are stored.</b>
+            Zerodha’s API can’t return earlier days — export your tradebook from
+            Console (Reports → Tradebook → F&O, and Commodity for crude) and import it:
+            <label class="btn ghost file-btn sm">
+              Import tradebook
+              <input type="file" accept=".csv,.xlsx,.xls" (change)="importFile(firstConnected(), $event)">
+            </label>
+          </div>
+        }
+
+        @if (tradesLoading()) { <div class="mut">Loading trades…</div> }
+        @else if (filteredTrades().length) {
+          <div class="th-modal-scroll">
+            <table class="fno-table th-table">
+              <thead><tr>
+                <th class="chk-col"><input type="checkbox" [checked]="allTradesSel()" (change)="toggleAllTrades()" title="Select all"></th>
+                <th>{{ selectedDay() ? 'Time' : 'Date' }}</th><th>Instrument</th><th>Side</th>
+                <th class="r">Qty</th><th class="r">Price</th><th class="r">Value</th><th>Account</th><th>Strategy</th>
+              </tr></thead>
+              <tbody>
+                @for (t of filteredTrades(); track t.id) {
+                  <tr [class.sel-row]="isTradeSel(t.id)">
+                    <td class="chk-col"><input type="checkbox" [checked]="isTradeSel(t.id)" (change)="toggleTrade(t.id)"></td>
+                    <td class="mut nowrap">
+                      @if (selectedDay()) { {{ fmtTime(t.fill_ts) }} }
+                      @else { {{ fmtDate(t.trade_date) }} <span class="thin">{{ fmtTime(t.fill_ts) }}</span> }
+                    </td>
+                    <td><b>{{ t.tradingsymbol }}</b><span class="mut"> {{ t.exchange }}</span></td>
+                    <td><span [class]="t.transaction_type === 'BUY' ? 'badge-buy' : 'badge-sell'">{{ t.transaction_type }}</span></td>
+                    <td class="r">{{ t.quantity }}</td>
+                    <td class="r">{{ t.price | number:'1.2-2' }}</td>
+                    <td class="r">{{ inr(t.quantity * t.price) }}</td>
+                    <td class="th-acc" [title]="accLabel(t.account_id)">{{ accWhose(t.account_id) }}</td>
+                    <td>
+                      <select class="strat-sel" (change)="reclassify(t, $event)">
+                        @for (st of strategyOptions(); track st) { <option [value]="st" [selected]="st === t.strategy">{{ stratShort(st) }}</option> }
+                      </select>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else if (tradeCounts()['all'] > 0) {
+          <div class="empty">No trades match this filter.</div>
+        } @else if (selectedDay()) {
+          <div class="empty">No stored fills for this day — its P&L came from the live Kite feed.
+            Import the Console tradebook to fill the detail in.</div>
+        } @else if (!needsBackfill()) {
+          <div class="empty">No trades stored yet.</div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ── Add account modal ─────────────────────────────────────────────── -->
+  @if (showAdd()) {
+    <div class="fno-modal-backdrop" (click)="showAdd.set(false)">
+      <div class="fno-modal sm card" (click)="$event.stopPropagation()">
+        <div class="card-head">
+          <div class="card-title">Add a Zerodha account</div>
+          <button class="btn ghost sm" (click)="showAdd.set(false)">✕</button>
+        </div>
+        <div class="modal-form">
+          <label class="mf"><span>Account label</span>
+            <input placeholder="e.g. Brother — Zerodha" [ngModel]="draft().account_label" (ngModelChange)="setDraft('account_label', $event)"></label>
+          <label class="mf"><span>Pin to person</span>
+            <input list="fno-persons" placeholder="e.g. Ranjeev" [ngModel]="draft().person" (ngModelChange)="setDraft('person', $event)"></label>
+          <div class="mf-note ok">✓ Logs in through your <b>shared paid app</b> — no API key needed. One paid app authorises any number of Zerodha users. You’ll log in on Kite next.</div>
+
+          <button type="button" class="mf-adv" (click)="toggleAddAdvanced()">
+            <span class="cv" [class.open]="showAddAdvanced()">▸</span> This account has its own Kite Connect app
+          </button>
+          @if (showAddAdvanced()) {
+            <label class="mf"><span>API key</span>
+              <input placeholder="its own Kite Connect app key" [ngModel]="draft().api_key" (ngModelChange)="setDraft('api_key', $event)"></label>
+            <label class="mf"><span>API secret</span>
+              <input type="password" placeholder="its own Kite Connect app secret" [ngModel]="draft().api_secret" (ngModelChange)="setDraft('api_secret', $event)"></label>
+            <div class="mf-note warn">⚠ Only fill these if <b>this account’s own Zerodha user</b> created that exact Kite Connect app. A key from any other app fails at Kite with <i>“The user is not enabled for the app.”</i> When unsure, close this and use the shared app.</div>
+          }
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" (click)="showAdd.set(false)">Cancel</button>
+          <button class="btn" [disabled]="saving() || !draft().account_label.trim()" (click)="addAccount()">
+            {{ saving() ? 'Saving…' : 'Save & log in to Kite' }}</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ── Kite login (token) modal ──────────────────────────────────────── -->
+  @if (connectAccObj(); as a) {
+    <div class="fno-modal-backdrop" (click)="cancelConnect()">
+      <div class="fno-modal sm card" (click)="$event.stopPropagation()">
+        <div class="card-head">
+          <div class="card-title">Log in — {{ a.account_label }}</div>
+          <button class="btn ghost sm" (click)="cancelConnect()">✕</button>
+        </div>
+
+        <!-- Step 1 — this account's OWN Kite Connect app key (the login link is built from it) -->
+        <div class="ck-sec">
+          <div class="ck-head">Kite Connect app key —
+            @if (a.uses_env_app) { <b class="warn">not set · using the shared app (won’t work for this account)</b> }
+            @else { <b class="ok">own key {{ a.api_key_hint }} · set ✓</b> }
+          </div>
+          <div class="cp-row"><input class="cp-input" placeholder="API key (this account’s own Kite app)"
+                 [ngModel]="connectKey()" (ngModelChange)="connectKey.set($event)"></div>
+          <div class="cp-row"><input class="cp-input" type="password" placeholder="API secret"
+                 [ngModel]="connectSecret()" (ngModelChange)="connectSecret.set($event)" (keyup.enter)="saveConnectKey(a)"></div>
+          <button class="btn sm ck-save" [disabled]="savingKey() || !connectKey().trim() || !connectSecret().trim()" (click)="saveConnectKey(a)">
+            {{ savingKey() ? 'Saving…' : (a.uses_env_app ? 'Save this account’s key' : 'Update key') }}</button>
+          <div class="cp-note">Each Zerodha account needs its <b>own</b> Kite Connect app (created while logged in as that account) — that’s what fixes “user not enabled for the app”. Leave blank to keep the stored key.</div>
+        </div>
+
+        <div class="cp-warn">
+          <b>Step 2 — log in.</b> Open the login link below (open it in an <b>Incognito window</b> if a different
+          family member is signed into Kite in this browser), sign in as <b>{{ a.person || a.account_label }}</b>,
+          and this page <b>connects automatically</b> when you're done.
+        </div>
+        <div class="cp-btns">
+          <button class="btn sm feed" [disabled]="!connectLoginUrl()" (click)="openConnectLoginPage()">Open login ↗</button>
+          <button class="btn ghost sm" (click)="copyLoginLink()" [disabled]="!connectLoginUrl()">
+            {{ linkCopied() ? '✓ Copied' : '⧉ Copy link' }}</button>
+        </div>
+        @if (connectLoginUrl()) {
+          <input class="cp-linkbox" [value]="connectLoginUrl()" readonly onclick="this.select()"
+                 title="Tap to select, then copy" />
+        }
+        <div class="cp-or"><span>or paste a token (optional)</span></div>
+        <div class="cp-row">
+          <input class="cp-input" placeholder="Paste the Kite redirect URL (or request_token)"
+                 [ngModel]="tokenInput()" (ngModelChange)="tokenInput.set($event)" (keyup.enter)="submitToken(a)" autofocus>
+        </div>
+        <button class="cp-adv" (click)="showAdvanced.set(!showAdvanced())">
+          {{ showAdvanced() ? '− ' : '+ ' }}I already have an access token</button>
+        @if (showAdvanced()) {
+          <div class="cp-row">
+            <input class="cp-input" placeholder="Paste a ready access_token (advanced)"
+                   [ngModel]="accessTokenInput()" (ngModelChange)="accessTokenInput.set($event)" (keyup.enter)="submitToken(a)">
+          </div>
+        }
+        <div class="cp-note">The token attaches to whichever account it truly belongs to (matched by Zerodha user) — it can’t land on the wrong one. Tokens expire ~6 AM IST daily.</div>
+        <div class="modal-actions">
+          <button class="btn ghost" (click)="cancelConnect()">Cancel</button>
+          <button class="btn" [disabled]="connecting() || (!tokenInput().trim() && !accessTokenInput().trim())"
+                  (click)="submitToken(a)">{{ connecting() ? 'Connecting…' : 'Connect' }}</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ── Login log modal ───────────────────────────────────────────────── -->
+  @if (showLog()) {
+    <div class="fno-modal-backdrop" (click)="showLog.set(false)">
+      <div class="fno-modal card" (click)="$event.stopPropagation()">
+        <div class="card-head">
+          <div class="card-title">Login log</div>
+          <button class="btn ghost sm" (click)="showLog.set(false)">✕</button>
+        </div>
+        <div class="log-wrap">
+          <table class="fno-table">
+            <thead><tr><th>When</th><th>Account</th><th>Event</th><th>Detail</th></tr></thead>
+            <tbody>
+              @for (l of loginLog(); track l.id) {
+                <tr>
+                  <td class="mut nowrap">{{ fmtDt(l.created_at) }}</td>
+                  <td>{{ l.account_label || '—' }}</td>
+                  <td><span class="tag" [ngClass]="{ ok: l.event === 'connected', bad: l.event === 'login_failed' || l.event === 'token_expired' }">{{ l.event }}</span></td>
+                  <td class="mut">{{ l.detail }}</td>
+                </tr>
+              }
+              @if (!loginLog().length) { <tr><td colspan="4" class="mut">No login events yet.</td></tr> }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  }
+</div>

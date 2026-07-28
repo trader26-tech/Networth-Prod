@@ -1,0 +1,2198 @@
+// F&O tab — light design system (matches the dividends/equity pages)
+.fno-page {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 1280px;
+  margin: 0 auto;
+
+  .pos { color: var(--positive) !important; }
+  .neg { color: var(--negative) !important; }
+  .mut { color: var(--text-muted); font-size: 11.5px; }
+  .thin { color: var(--text-muted); font-weight: 400; font-size: 10.5px; margin-left: 4px; }
+  .r { text-align: right; }
+
+  // shared pills
+  .pills { display: flex; gap: 4px; flex-wrap: wrap; }
+  .pill {
+    border: 1px solid var(--border); background: transparent; color: var(--text-secondary);
+    font-size: 11.5px; font-weight: 700; padding: 4px 11px; border-radius: 999px; cursor: pointer;
+    &:hover { border-color: var(--accent); color: var(--accent); }
+    &.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  }
+
+  .day-chip {
+    display: inline-flex; align-items: center; gap: 6px; margin-left: 8px;
+    font-size: 11px; font-weight: 700; text-transform: none; letter-spacing: 0;
+    background: rgba(56, 126, 209, 0.1); color: var(--accent);
+    border: 1px solid rgba(56, 126, 209, 0.3); border-radius: 999px; padding: 2px 4px 2px 10px;
+    .chip-x {
+      border: none; background: transparent; color: var(--accent); cursor: pointer;
+      font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 999px;
+      &:hover { background: rgba(56, 126, 209, 0.15); }
+    }
+  }
+}
+
+// ── toasts ────────────────────────────────────────────────────────────────
+.fno-toast {
+  position: fixed; top: 60px; right: 18px; z-index: 60;
+  padding: 10px 14px; border-radius: 8px; font-weight: 600; font-size: 12.5px;
+  box-shadow: 0 6px 24px rgba(26, 28, 46, 0.18); max-width: 420px;
+  &.bad { background: #fdecea; color: #b3261e; border: 1px solid #f2b4ae; }
+  &.ok { background: #e6f4ea; color: #1a5d2b; border: 1px solid #b7e0c0; }
+}
+
+.fno-migrate {
+  background: #fff8e6; border-color: #f4d27a; font-size: 12.5px;
+  code { background: rgba(0, 0, 0, 0.05); padding: 1px 5px; border-radius: 4px; }
+}
+
+// ── hero KPI bar (mirrors the Stocks page's KPI bar exactly) ──────────────
+// Compact, professional stat row — tight, hairline-divided tiles (no chunky
+// padding or dashed underlines).
+.fno-kbar {
+  display: flex; flex-wrap: wrap; align-items: stretch; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 14px; padding: 4px 6px; overflow: visible;
+  box-shadow: 0 2px 10px rgba(26, 28, 46, 0.05); position: relative; z-index: 5;
+}
+.fkb {
+  // no dividers — just evenly-spaced tiles (like the Stocks KPI bar), a touch bigger
+  flex: 1 1 150px; min-width: 120px; padding: 10px 20px; display: flex; flex-direction: column; gap: 5px;
+  position: relative; justify-content: center;
+  .fkb-k {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;
+  }
+  .fkb-i { font-size: 9px; color: var(--text-muted); opacity: 0.5; }
+  .fkb-v {
+    font-size: 22px; font-weight: 800; letter-spacing: -0.4px; white-space: nowrap; line-height: 1.15;
+    color: var(--text-primary); display: flex; align-items: center; min-height: 0;
+    .arw { font-size: 12px; vertical-align: 1px; margin-left: 1px; }
+  }
+
+  &.has-pop { cursor: help;
+    &:hover .fkb-i { opacity: 1; color: var(--accent); }
+    &:hover .uline { border-bottom-color: var(--accent); }
+    &:hover .fkb-pop { opacity: 1; visibility: visible; transform: translateY(0); }
+  }
+  // on a narrow screen the tiles wrap 2-up — drop the left hairline on row starts
+  @media (max-width: 560px) { &:nth-child(odd)::before { display: none; } }
+}
+// LIVE pill — same treatment as the Stocks page
+.kb-live {
+  font-size: 8.5px; font-weight: 800; letter-spacing: 0.5px; color: var(--positive);
+  background: #e7f6f1; border: 1px solid #bfe6da; padding: 1px 6px; border-radius: 999px;
+  vertical-align: 3px; margin-left: 5px;
+}
+
+// hover popover (CAGR detail · drawdown breakdown)
+.fkb-pop {
+  position: absolute; top: calc(100% + 8px); left: 12px; z-index: 30; width: 290px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(26, 28, 46, 0.22); padding: 12px 14px;
+  opacity: 0; visibility: hidden; transform: translateY(-6px); transition: opacity 0.15s, transform 0.15s;
+  &::before {   // little bridge so the hover doesn't drop when moving into it
+    content: ''; position: absolute; top: -8px; left: 0; right: 0; height: 8px;
+  }
+  .pop-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); margin-bottom: 8px; }
+  .pop-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    font-size: 12.5px; padding: 3px 0; color: var(--text-secondary);
+    b { font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums;
+      &.pos { color: var(--positive); } &.neg { color: var(--negative); } }
+    &.big { font-weight: 700; color: var(--text-primary); b { font-size: 15px; } }
+  }
+  .pop-div { height: 1px; background: var(--border); margin: 8px 0; }
+  .pop-sub { font-size: 10.5px; color: var(--text-muted); margin: 1px 0 3px;
+    &.label { text-transform: uppercase; font-weight: 700; letter-spacing: 0.04em; margin-bottom: 5px; }
+    &.tight { margin: -1px 0 5px; } }
+  .pop-note { font-size: 11.5px; color: var(--text-muted); }
+  .pop-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .pop-edit { display: flex; gap: 6px; margin-top: 8px; align-items: center; }
+  .pop-input {
+    flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px;
+    font-size: 12px; background: var(--bg-card); color: var(--text-primary);
+    &:focus { outline: none; border-color: var(--accent); }
+  }
+}
+@keyframes fno-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(22, 160, 133, 0.45); }
+  70% { box-shadow: 0 0 0 7px rgba(22, 160, 133, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(22, 160, 133, 0); }
+}
+
+// ── shared card bits ──────────────────────────────────────────────────────
+.card-head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+  margin-bottom: 10px;
+  .card-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 1px;
+    b { font-weight: 800; }
+    .sub-dot { margin: 0 6px; opacity: 0.5; }
+    .sub-dash { opacity: 0.85; letter-spacing: -0.5px; } }
+}
+.btn {
+  border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 7px; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  &:hover:not(:disabled) { background: var(--accent-hover); }
+  &:disabled { opacity: 0.55; cursor: default; }
+  &.ghost {
+    background: transparent; color: var(--accent);
+    &:hover:not(:disabled) { background: var(--bg-hover); }
+  }
+  &.danger { border-color: #e3a5a1; color: var(--negative); &:hover { background: #fdecea; } }
+  &.sm { font-size: 11px; padding: 4px 10px; }
+}
+
+// ── P&L chart — pure HTML/CSS (clip-path polygons on gradient divs) ───────
+.fno-chart-card {
+  // filter button (holds the time ranges + intraday zoom)
+  .chart-filter { position: relative; }
+  .cf-btn {
+    display: inline-flex; align-items: center; gap: 7px; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: 9px; padding: 6px 11px; cursor: pointer;
+    font-size: 12px; font-weight: 700; color: var(--text-primary);
+    svg { color: var(--text-muted); }
+    &:hover, &.active { border-color: var(--accent); svg { color: var(--accent); } }
+    .cv { color: var(--text-muted); font-size: 10px; transition: transform 0.15s; &.open { transform: rotate(180deg); } }
+  }
+  .cf-back { position: fixed; inset: 0; z-index: 40; }
+  .cf-pop {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 45; width: 232px;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 14px 40px rgba(26, 28, 46, 0.2); padding: 10px;
+    .cf-sec { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--text-muted); margin: 4px 2px 6px; }
+    .cf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 4px;
+      button {
+        border: 1px solid var(--border); background: transparent; color: var(--text-secondary);
+        font-size: 11.5px; font-weight: 700; padding: 6px 4px; border-radius: 7px; cursor: pointer; transition: 0.12s;
+        &:hover { border-color: var(--accent); color: var(--accent); }
+        &.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+      } }
+    .cf-hint { font-size: 10.5px; color: var(--text-muted); margin-top: 8px; padding-top: 8px;
+      border-top: 1px solid var(--border); text-align: center; }
+  }
+
+  // ── market-aware Today control (dropdown: live pill / locked chip + views) ──
+  .chart-tabs { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .tp-caret { font-size: 9px; opacity: 0.6; margin-left: 1px; transition: transform 0.15s;
+    &.open { transform: rotate(180deg); } }
+  .today-pill {
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary);
+    font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 9px; cursor: pointer;
+    transition: 0.15s;
+    &.live {
+      border-color: rgba(22, 160, 133, 0.45);
+      &:hover { border-color: var(--positive); }
+      &.on { background: rgba(22, 160, 133, 0.1); border-color: var(--positive); color: var(--positive); }
+    }
+    &.locked {
+      color: var(--text-muted); border-style: dashed;
+      svg { color: var(--text-muted); }
+      &:hover { border-color: var(--accent); color: var(--text-secondary); svg { color: var(--accent); } }
+      &.on { border-style: solid; border-color: var(--accent); color: var(--accent); }
+    }
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted);
+    display: inline-block; flex: none;
+    &.on { background: var(--positive); animation: fnoLivePulse 1.8s ease-out infinite; }
+  }
+  @keyframes fnoLivePulse {
+    0%   { box-shadow: 0 0 0 0 rgba(22, 160, 133, 0.55); }
+    70%  { box-shadow: 0 0 0 6px rgba(22, 160, 133, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(22, 160, 133, 0); }
+  }
+
+  .today-wrap { position: relative; display: inline-flex; }
+  .th-back { position: fixed; inset: 0; z-index: 40; }
+  .today-pop {
+    position: absolute; right: 0; top: calc(100% + 8px); z-index: 45; width: 262px; max-width: 78vw;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 14px 40px rgba(26, 28, 46, 0.2); padding: 12px;
+    opacity: 0; visibility: hidden; transform: translateY(-4px); transition: 0.14s;
+    &::before { content: ''; position: absolute; left: 0; right: 0; top: -8px; height: 8px; } // hover bridge
+  }
+  .today-wrap:hover .today-pop,
+  .today-wrap.pinned .today-pop { opacity: 1; visibility: visible; transform: translateY(0); }
+  .tp-why {
+    display: flex; align-items: flex-start; gap: 7px; font-size: 12px; font-weight: 700;
+    color: var(--text-primary); line-height: 1.35;
+    svg { color: var(--accent); flex: none; margin-top: 1px; }
+  }
+  .tp-sub { font-size: 11px; color: var(--text-muted); margin: 8px 0 10px; line-height: 1.4; }
+  .tp-head { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted); margin: 1px 2px 9px; }
+  .tp-actions {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 7px;
+    button {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 1px; position: relative;
+      border: 1px solid var(--border); background: transparent; border-radius: 8px;
+      padding: 7px 9px; cursor: pointer; text-align: left; transition: 0.12s;
+      b { font-size: 11.5px; font-weight: 800; color: var(--text-primary); }
+      span { font-size: 9.5px; color: var(--text-muted); }
+      &:hover { border-color: var(--accent); background: var(--bg-hover); b { color: var(--accent); } }
+      &.sel { border-color: var(--accent); background: rgba(56, 126, 209, 0.08);
+        b { color: var(--accent); }
+        &::after { content: '✓'; position: absolute; top: 5px; right: 7px; font-size: 10px;
+          font-weight: 800; color: var(--accent); } }
+    }
+  }
+
+  .chart-holder { position: relative; }
+  .chart-frame { position: relative; padding-bottom: 26px; }
+
+  // plot area + an OPTIONAL right gutter for the current-value pill — present
+  // only in the zoomed Last-hour view (width set inline). Full day / ranges use
+  // the whole width, so the day's timeline isn't cramped by a value gutter.
+  .plot-row { display: flex; align-items: stretch; }
+  .chart-canvas {
+    position: relative; height: 260px; flex: 1 1 auto; min-width: 0; cursor: crosshair; overflow: hidden;
+    border-radius: 6px; touch-action: none;
+    &.zoomed { cursor: grab; &:active { cursor: grabbing; } }
+  }
+  .val-gutter { position: relative; flex: none; }   // width set inline (0 on Full day)
+
+  .gridln {
+    position: absolute; left: 0; right: 0; height: 0;
+    border-top: 1px dashed rgba(144, 151, 180, 0.26); pointer-events: none;
+    .ylab {
+      position: absolute; right: 2px; top: -7px; font-size: 10.5px; font-weight: 600;
+      color: var(--text-muted); background: var(--bg-card); padding: 0 4px; border-radius: 4px; line-height: 14px;
+    }
+  }
+  .zeroln {
+    position: absolute; left: 0; right: 0; height: 0;
+    border-top: 1px dashed rgba(144, 151, 180, 0.55); pointer-events: none;
+  }
+
+  // the curve — a single SVG path, constant-width stroke at every slope
+  .pnl-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+
+  // current-value pill pinned to the right axis at the newest point
+  // sits in the value gutter, vertically at the newest point — a small arrow on
+  // its left points back to where the line ends.
+  .val-pill {
+    position: absolute; left: 5px; transform: translateY(-50%); z-index: 4;
+    background: var(--positive); color: #fff !important; font-size: 10px; font-weight: 800;
+    padding: 2px 6px; border-radius: 6px; white-space: nowrap; pointer-events: none;
+    box-shadow: 0 2px 6px rgba(22, 160, 133, 0.35);
+    &::before { content: ''; position: absolute; left: -4px; top: 50%; transform: translateY(-50%);
+      border: 4px solid transparent; border-right-color: var(--positive); }
+    &.loss { background: var(--negative); box-shadow: 0 2px 6px rgba(229, 57, 53, 0.35);
+      &::before { border-right-color: var(--negative); } }
+  }
+
+  .hoverln {
+    position: absolute; top: 4px; bottom: 4px; width: 0;
+    border-left: 1px dashed rgba(56, 126, 209, 0.55); pointer-events: none;
+  }
+  .dotc {
+    position: absolute; width: 9px; height: 9px; border-radius: 50%;
+    transform: translate(-50%, -50%); background: var(--positive);
+    border: 1.5px solid #fff; box-shadow: 0 1px 4px rgba(26, 28, 46, 0.3);
+    pointer-events: none; z-index: 3;
+    &.neg-bg { background: var(--negative); }
+  }
+  .ring {
+    position: absolute; width: 9px; height: 9px; border-radius: 50%;
+    transform: translate(-50%, -50%); border: 1.5px solid var(--positive);
+    pointer-events: none; animation: fno-ring 1.6s ease-out infinite;
+    &.neg-ring { border-color: var(--negative); }
+  }
+  @keyframes fno-ring {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+    100% { transform: translate(-50%, -50%) scale(3.2); opacity: 0; }
+  }
+
+  .xaxis {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 26px; pointer-events: none;   // right inset set inline = value-gutter width
+    .xlab {
+      position: absolute; transform: translateX(-50%); white-space: nowrap;
+      display: flex; flex-direction: column; align-items: center; gap: 1px; line-height: 1.12;
+      .xl-d { font-size: 10.5px; font-weight: 600; color: var(--text-muted); }
+      .xl-y { font-size: 9px; font-weight: 800; color: var(--text-secondary); opacity: 0.72;
+        letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+      &:first-child { transform: none; align-items: flex-start; }
+      &:last-child { transform: translateX(-100%); align-items: flex-end; }
+    }
+  }
+
+  .chart-empty {
+    min-height: 190px; display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); font-size: 12.5px; text-align: center; padding: 0 12%;
+    line-height: 1.7; border: 1px dashed var(--border); border-radius: 9px;
+  }
+
+  // "today has no booked trade, but the open book is live" — show the mark-to-market
+  .chart-live-unreal {
+    flex: 1 1 auto; min-height: 190px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 6px; border-radius: 12px;
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(22,160,133,.06), transparent 70%);
+    &.neg { background: linear-gradient(180deg, rgba(229,57,53,.06), transparent 70%); }
+    .clu-lbl { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--text-muted); display: inline-flex; align-items: center; gap: 7px; }
+    .clu-val { font-size: 34px; font-weight: 800; letter-spacing: -1px; font-variant-numeric: tabular-nums;
+      color: var(--text-muted); }
+    &.pos .clu-val { color: var(--positive); } &.neg .clu-val { color: var(--negative); }
+    .clu-sub { font-size: 11.5px; color: var(--text-muted); b { font-weight: 800; } }
+    .clu-refresh { margin-top: 8px; }
+  }
+
+  // completed-day view: just that day's closing P&L (no intraday timeline)
+  .day-summary {
+    min-height: 190px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; text-align: center; border-radius: 9px;
+    background: linear-gradient(180deg, rgba(56, 126, 209, 0.03), transparent);
+    .ds-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+    .ds-total { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+    .ds-strats { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+    .ds-note { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+  }
+
+  .chart-tip {
+    position: absolute; top: 8px; transform: translateX(10px);
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(26, 28, 46, 0.14); padding: 7px 11px;
+    display: flex; flex-direction: column; gap: 1px; pointer-events: none; z-index: 5;
+    &.flip { transform: translateX(calc(-100% - 10px)); }
+    .tip-t { font-size: 10.5px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+    .tip-v { font-size: 15px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; letter-spacing: -0.2px; }
+    .tip-cap { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); opacity: .8; }
+    .tip-d { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; b { font-weight: 800; font-variant-numeric: tabular-nums; } }
+  }
+
+  .chart-stats {
+    display: flex; gap: 22px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border);
+    .cs { display: inline-flex; gap: 7px; align-items: baseline; font-size: 12.5px;
+      .cs-l { color: var(--text-muted); font-size: 11px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.03em; }
+      b { font-weight: 800; }
+      &.has-tip { cursor: help; b { text-decoration: underline dotted; text-underline-offset: 3px; } } }
+  }
+}
+
+// ── top row: P&L chart (left) + compact per-strategy cards (right) · 50/50 ──
+.fno-top {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; margin-bottom: 14px;
+  > .card { margin-bottom: 0; }
+  @media (max-width: 980px) { grid-template-columns: 1fr; }
+}
+.fno-stratpanel { display: flex; flex-direction: column; min-width: 0;
+  .sp-head { margin-bottom: 10px; }
+  .sp-list { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex: 1;
+    max-height: 460px; padding-right: 4px; }         // scrolls when there are many strategies
+  .sp-empty { color: var(--text-muted); font-size: 13px; padding: 28px 6px; text-align: center; }
+}
+// modern strategy card — a coloured left rail, a headline P&L, and a clean
+// hairline-divided stat strip (no boxes around the metrics)
+.scard {
+  --sc-accent: #9097b4;
+  position: relative; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 14px; padding: 13px 15px 13px 16px;
+  background: var(--bg-card);
+  transition: border-color .14s, box-shadow .14s, transform .14s;
+
+  &.sentinel { --sc-accent: #387ed1; }
+  &.crude    { --sc-accent: #d97706; }
+  &.other    { --sc-accent: #9097b4; }
+
+  // coloured rail down the left edge
+  &::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--sc-accent);
+  }
+  &:hover {
+    border-color: var(--sc-accent);
+    box-shadow: 0 6px 18px rgba(20, 22, 40, .09);
+    transform: translateY(-1px);
+  }
+
+  .sc-top { display: flex; align-items: center; gap: 9px; }
+  .sc-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--sc-accent); }
+  &.sentinel .sc-dot { box-shadow: 0 0 0 3px rgba(56, 126, 209, .16); }
+  &.crude    .sc-dot { box-shadow: 0 0 0 3px rgba(217, 119, 6, .16); }
+  &.other    .sc-dot { box-shadow: 0 0 0 3px rgba(144, 151, 180, .16); }
+  .sc-name {
+    font-size: 14px; font-weight: 800; letter-spacing: -.2px; color: var(--text-primary); min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sc-pnl {
+    margin-left: auto; font-size: 19px; font-weight: 800; letter-spacing: -.5px;
+    font-variant-numeric: tabular-nums; color: var(--text-muted); flex: none;
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); }
+  }
+
+  // stat strip — flat, boxless, divided by thin vertical rules
+  .sc-metrics {
+    display: flex; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--border);
+  }
+  .scm {
+    flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 3px;
+    padding: 0 12px; border-left: 1px solid var(--border);
+    &:first-child { padding-left: 0; border-left: none; }
+    &:last-child  { padding-right: 0; }
+  }
+  .scm-l {
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+    color: var(--text-muted); white-space: nowrap;
+  }
+  .scm-v {
+    font-size: 14px; font-weight: 800; letter-spacing: -.2px; color: var(--text-primary);
+    font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); }
+  }
+}
+
+// ── layout: calendar (left) + trade history (right) ──────────────────────
+.fno-grid {
+  display: grid; grid-template-columns: minmax(320px, 2fr) minmax(380px, 3fr); gap: 14px;
+  align-items: start;
+  @media (max-width: 980px) { grid-template-columns: 1fr; }
+}
+
+// ── calendar ──────────────────────────────────────────────────────────────
+.fno-cal {
+  // heading on its own line, then a picker-left · amount-right row below it
+  .cal-head { display: flex; flex-direction: column; gap: 11px; margin-bottom: 12px; }
+  .cal-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  // month picker = one segmented control (‹ month ›)
+  .cal-monthpick {
+    display: inline-flex; align-items: center; gap: 1px;
+    border: 1px solid var(--border); border-radius: 10px; padding: 2px; background: var(--bg-card);
+  }
+  .nav-btn {
+    border: none; background: transparent; border-radius: 8px;
+    width: 26px; height: 26px; cursor: pointer; color: var(--text-secondary); font-size: 15px; line-height: 1;
+    &:hover { background: var(--bg-hover); color: var(--accent); }
+  }
+  .cal-month {
+    border: none; background: transparent; font-weight: 800; font-size: 13px; cursor: pointer;
+    color: var(--text-primary); padding: 2px 6px; border-radius: 6px; min-width: 92px; text-align: center;
+    &:hover { background: var(--bg-hover); }
+  }
+  .cal-mtot { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; }
+  .cal-total {
+    font-size: 12px; color: var(--text-muted); margin-bottom: 8px;
+    b { font-size: 14px; margin-left: 6px; font-weight: 800; }
+  }
+  .cal-wd {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px;
+    span { text-align: center; font-size: 10px; font-weight: 700; color: var(--text-muted); }
+  }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-cell {
+    position: relative; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-card);
+    min-height: 52px; padding: 4px 3px 3px; cursor: default; display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start; gap: 2px; overflow: hidden;
+    &.empty { border-color: transparent; background: transparent; }
+    &.has { cursor: pointer; &:hover { outline: 2px solid var(--accent); outline-offset: -1px; } }
+    &.today { box-shadow: inset 0 0 0 2px var(--accent); }
+    &.sel { outline: 2.5px solid var(--accent); outline-offset: -1px; box-shadow: 0 3px 10px rgba(56, 126, 209, 0.25); }
+    .cc-d { font-size: 10.5px; font-weight: 700; color: var(--text-muted); }
+    .cc-amt { font-size: 10px; font-weight: 800; letter-spacing: -0.02em; }
+
+    // profit — green, deeper = bigger day (opacity carries the magnitude)
+    &.p1 { background: rgba(22, 160, 133, 0.12); border-color: rgba(22, 160, 133, 0.25); .cc-amt { color: #0e7a63; } }
+    &.p2 { background: rgba(22, 160, 133, 0.28); border-color: rgba(22, 160, 133, 0.4); .cc-amt { color: #0b6350; } }
+    &.p3 { background: rgba(22, 160, 133, 0.55); border-color: rgba(22, 160, 133, 0.6); .cc-amt, .cc-d { color: #fff; } }
+    &.p4 { background: rgba(22, 160, 133, 0.85); border-color: #0e7a63; .cc-amt, .cc-d { color: #fff; } }
+    // loss — red
+    &.n1 { background: rgba(229, 57, 53, 0.12); border-color: rgba(229, 57, 53, 0.25); .cc-amt { color: #b3261e; } }
+    &.n2 { background: rgba(229, 57, 53, 0.28); border-color: rgba(229, 57, 53, 0.4); .cc-amt { color: #9a1f18; } }
+    &.n3 { background: rgba(229, 57, 53, 0.55); border-color: rgba(229, 57, 53, 0.6); .cc-amt, .cc-d { color: #fff; } }
+    &.n4 { background: rgba(229, 57, 53, 0.85); border-color: #9a1f18; .cc-amt, .cc-d { color: #fff; } }
+  }
+  .cal-legend {
+    display: flex; align-items: center; gap: 5px; margin-top: 10px; font-size: 10.5px; color: var(--text-muted);
+    .lg { width: 13px; height: 13px; border-radius: 4px; display: inline-block; border: 1px solid var(--border); }
+    .lg.p2 { background: rgba(22, 160, 133, 0.28); } .lg.p4 { background: rgba(22, 160, 133, 0.85); }
+    .lg.n2 { background: rgba(229, 57, 53, 0.28); } .lg.n4 { background: rgba(229, 57, 53, 0.85); }
+    .lg.z { background: var(--bg-card); }
+  }
+}
+
+// ── trade history ─────────────────────────────────────────────────────────
+.fno-trades {
+  .th-search {
+    border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; font-size: 12px;
+    background: var(--bg-card); color: var(--text-primary); width: 150px;
+    &:focus { outline: none; border-color: var(--accent); }
+  }
+  .th-pills { margin-bottom: 8px; }
+  .day-strats { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .backfill {
+    background: #fff8e6; border: 1px solid #f4d27a; border-radius: 8px;
+    font-size: 11.5px; color: #7a5b16; padding: 8px 12px; line-height: 1.7; margin-bottom: 8px;
+    b { color: #5d450f; }
+    .file-btn { margin-left: 6px; vertical-align: middle; }
+  }
+  .th-wrap { max-height: 430px; overflow: auto; border-top: 1px solid var(--border); }
+  .th-table {
+    thead th { position: sticky; top: 0; background: var(--bg-card); z-index: 1; }
+    .nowrap { white-space: nowrap; }
+    .strat-sel {
+      border: 1px solid var(--border); border-radius: 6px; font-size: 11px; padding: 2px 5px;
+      background: var(--bg-card); color: var(--text-primary);
+    }
+  }
+  .empty { color: var(--text-muted); font-size: 12.5px; padding: 10px 0; line-height: 1.6; }
+}
+
+// ── strategies ────────────────────────────────────────────────────────────
+.fno-strats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px;
+}
+.strat-card {
+  .strat-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+  .strat-total { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; }
+  .strat-bars {
+    position: relative; display: flex; gap: 3px; height: 44px; margin: 8px 0 4px;
+    &::before {   // midline at ₹0
+      content: ''; position: absolute; left: 0; right: 0; top: 50%;
+      border-top: 1px solid var(--border);
+    }
+    .bar-slot { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .bar-top { height: 50%; display: flex; align-items: flex-end; }
+    .bar-bot { height: 50%; display: flex; align-items: flex-start; }
+    .bar { width: 100%; border-radius: 2px; }
+    .bp { background: rgba(22, 160, 133, 0.75); }
+    .bn { background: rgba(229, 57, 53, 0.75); }
+  }
+  .strat-stats {
+    display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 11.5px; color: var(--text-muted);
+    b { font-weight: 800; color: var(--text-primary); margin-left: 3px; }
+  }
+}
+.strat-empty { font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; }
+
+// tags (strategy chips)
+.tag {
+  display: inline-flex; gap: 5px; align-items: baseline; font-size: 10.5px; font-weight: 800;
+  padding: 2px 8px; border-radius: 999px; background: var(--bg-hover); color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.03em;
+  &.sentinel { background: rgba(56, 126, 209, 0.12); color: #2d6db8; }
+  &.crude { background: rgba(217, 119, 6, 0.13); color: #b45309; }
+  &.ok { background: rgba(22, 160, 133, 0.13); color: #0e7a63; }
+  &.bad { background: rgba(229, 57, 53, 0.12); color: #b3261e; }
+  b { font-size: 11.5px; text-transform: none; }
+}
+
+// ── tables ────────────────────────────────────────────────────────────────
+.fno-table {
+  width: 100%; border-collapse: collapse; font-size: 12px;
+  th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+       color: var(--text-muted); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th.r { text-align: right; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+}
+
+// ── page header (title + description) + account picker ────────────────────
+.fno-head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;
+  .fh-title { min-width: 0;
+    h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+    .fh-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; max-width: 620px;
+      b { font-weight: 700; color: var(--text-primary); } } }
+  @media (max-width: 720px) { flex-direction: column; align-items: stretch; }
+}
+.acct-picker { position: relative; }
+.picker-btn {
+  display: inline-flex; align-items: center; gap: 9px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 13px; cursor: pointer;
+  font-size: 12.5px; font-weight: 700; color: var(--text-primary);
+  &:hover, &.active { border-color: var(--accent); }
+  .pi { color: var(--text-muted); }
+  .cv { color: var(--text-muted); font-size: 11px; transition: transform 0.15s; &.open { transform: rotate(180deg); } }
+}
+.picker-back { position: fixed; inset: 0; z-index: 90; background: transparent; }
+.picker-pop {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 95; width: min(390px, 92vw);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(26, 28, 46, 0.22); padding: 8px; overflow: visible;
+}
+.pp-head { padding: 8px 10px 10px;
+  h4 { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -0.3px; }
+  p { margin: 2px 0 0; font-size: 11px; color: var(--text-muted); } }
+.pp-list { display: flex; flex-direction: column; gap: 1px; }
+.pp-empty { padding: 12px 10px; font-size: 12px; color: var(--text-muted); }
+.pp-row {
+  display: flex; align-items: center; gap: 10px; border-radius: 11px; padding: 8px 8px; transition: background 0.12s;
+  &:hover { background: var(--bg-hover); }
+  &.editing { align-items: flex-start; }
+  &.sel { background: rgba(56, 126, 209, 0.07); }
+  &.all { width: 100%; text-align: left; border: none; background: none; cursor: pointer; font: inherit;
+    color: inherit; margin-bottom: 2px;
+    &:hover { background: var(--bg-hover); }
+    &.sel { background: rgba(56, 126, 209, 0.07); } }
+}
+.pp-check-btn { border: none; background: none; padding: 0; cursor: pointer; flex: none; display: grid; place-items: center; position: relative; }
+.pp-check {
+  flex: none; width: 18px; height: 18px; border-radius: 5px; border: 2px solid #c4cbe0; position: relative; transition: 0.12s;
+  &.on { background: var(--accent); border-color: var(--accent);
+    &::after { content: ''; position: absolute; left: 5px; top: 1.5px; width: 4px; height: 8px;
+      border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); } }
+}
+.pp-ic {
+  flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+  font-size: 11px; font-weight: 800; color: #fff; letter-spacing: 0.2px;
+  &.z { background: #387ed1; }
+  &.all { background: var(--text-muted); }
+}
+// a bare lightning glyph on the Z logo = the paid-API "price feed" account
+.pp-ic-wrap { position: relative; flex: none; display: inline-flex; }
+.pp-ic-feed {
+  position: absolute; bottom: -6px; right: -6px; font-size: 13px; line-height: 1; cursor: help; z-index: 2;
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+  &[data-tip]:hover::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 0;
+    background: #1a1c2e; color: #fff; font-size: 10px; font-weight: 700; white-space: nowrap;
+    padding: 4px 8px; border-radius: 6px; pointer-events: none; z-index: 60;
+    box-shadow: 0 4px 14px rgba(26, 28, 46, 0.28);
+  }
+}
+.pp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px;
+  .pp-name { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pp-person {
+    font-size: 11.5px; color: var(--text-secondary); font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px; width: fit-content;
+    &:hover { color: var(--text-primary); text-decoration: underline; }
+    &.unset { color: var(--text-muted); font-style: italic; }
+  }
+  .pp-meta { font-size: 10.5px; color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; margin-top: 1px; }
+  .pp-dot { width: 7px; height: 7px; border-radius: 50%;
+    &.ok { background: var(--positive); } &.bad { background: var(--negative); } &.idle { background: #c4c9dd; } }
+  .pp-key {
+    font-size: 10px; color: var(--text-muted); margin-top: 2px; width: fit-content;
+    padding: 1px 7px; border-radius: 999px; background: var(--surface-2, rgba(120,130,160,.1));
+    letter-spacing: .1px; font-variant-numeric: tabular-nums;
+    &.paid { color: #b45309; background: rgba(245, 158, 11, .14); font-weight: 700; }
+  }
+}
+.pp-acts { display: flex; gap: 4px; flex: none; }
+.pa {
+  position: relative;
+  width: 34px; height: 34px; border: 1px solid var(--border); background: var(--bg-card); border-radius: 9px; cursor: pointer;
+  color: var(--text-secondary); font-size: 17px; line-height: 1; transition: 0.12s; display: grid; place-items: center;
+  &:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--accent); color: var(--accent); }
+  &:disabled { opacity: 0.4; cursor: default; }
+  // the login/connect action is the primary one — give it accent weight
+  &.login { color: var(--accent); font-size: 19px; font-weight: 800; }
+  &.warn { color: var(--warning); border-color: #e3b34d; }
+  &.on { color: var(--accent); border-color: var(--accent); }
+  &.del:hover { background: #fdecea; border-color: #e3a5a1; color: var(--negative); }
+
+  // custom hover tooltip (nicer than native title)
+  &[data-tip]:hover::after {
+    content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    background: #1a1c2e; color: #fff; font-size: 10.5px; font-weight: 700; white-space: nowrap;
+    padding: 4px 8px; border-radius: 6px; pointer-events: none; z-index: 60;
+    box-shadow: 0 4px 14px rgba(26, 28, 46, 0.28);
+  }
+  &[data-tip]:hover::before {
+    content: ''; position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%);
+    border: 5px solid transparent; border-top-color: #1a1c2e; pointer-events: none; z-index: 60;
+  }
+}
+.pp-edit { flex: 1; display: flex; flex-direction: column; gap: 6px;
+  .pe-in { border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; font-size: 12px;
+    background: var(--bg-card); color: var(--text-primary); &:focus { outline: none; border-color: var(--accent); } }
+  .pe-hint { font-size: 10.5px; color: var(--text-muted); line-height: 1.4; margin: -1px 1px 1px; b { font-weight: 800; } }
+  .pe-secret { display: flex; gap: 6px; align-items: stretch; .pe-in { flex: 1; } }
+  .pe-eye { border: 1px solid var(--border); border-radius: 7px; background: var(--bg-card); cursor: pointer; padding: 0 9px; font-size: 13px; line-height: 1; &:hover { border-color: var(--accent); } }
+  .pe-keyhead { font-size: 11px; font-weight: 700; color: var(--text-secondary); margin: 4px 1px 0;
+    b { font-weight: 800; } b.ok { color: var(--positive); } b.warn { color: #b45309; } }
+  .pe-acts { display: flex; gap: 6px; }
+  .pe-logoff { margin-left: auto; }
+  // price-feed toggle (a proper switch, grouped in the account's edit panel)
+  .pe-feed {
+    display: flex; align-items: center; gap: 9px; text-align: left; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--bg-card);
+    &:hover { border-color: rgba(217, 119, 6, 0.4); }
+    &.on { border-color: rgba(217, 119, 6, 0.5); background: rgba(217, 119, 6, 0.07);
+      .pe-feed-sw { background: #d97706; .pe-feed-knob { left: 15px; } } }
+    .pe-feed-sw { flex: none; width: 30px; height: 17px; border-radius: 999px; background: #c4cbe0;
+      position: relative; transition: background 0.15s;
+      .pe-feed-knob { position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
+        background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: left 0.15s; } }
+    .pe-feed-txt { display: flex; flex-direction: column; line-height: 1.25;
+      b { font-size: 11.5px; font-weight: 700; color: var(--text-primary); }
+      small { font-size: 10px; color: var(--text-muted); } }
+  } }
+.pp-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 6px;
+  border-top: 1px solid var(--border); padding-top: 4px;
+  .pp-link { background: none; border: none; color: var(--text-secondary); font-size: 12px; font-weight: 700;
+    cursor: pointer; padding: 9px 10px; border-radius: 8px; &:hover { background: var(--bg-hover); color: var(--accent); } }
+  .pp-add { background: none; border: none; color: var(--accent); font-size: 12.5px; font-weight: 800;
+    cursor: pointer; padding: 9px 10px; border-radius: 8px; &:hover { background: var(--bg-hover); } } }
+
+// dashed underline on hoverable KPI values (like the home dashboard)
+.fkb .uline { border-bottom: 1px dotted color-mix(in srgb, var(--text-muted) 38%, transparent); padding-bottom: 1px; width: fit-content; transition: border-color .12s; }
+
+// minimal max-drawdown popover
+.dd-pop {
+  .dd-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .dd-lbl { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+  .dd-big { font-size: 17px; font-weight: 800; }
+  .dd-when { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+  .dd-list { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 5px; }
+  .dd-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+  .dd-name { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; color: var(--text-secondary); }
+  .dd-dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block;
+    &.sentinel { background: #387ed1; } &.crude { background: #d97706; } &.other { background: #9097b4; } }
+  .dd-val { font-weight: 800; font-variant-numeric: tabular-nums; }
+}
+
+// ── modals (add account · Kite login · tradebook · login log · trade history) ──
+.fno-modal-backdrop {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(20, 22, 40, 0.45); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center; padding: 26px;
+  animation: fno-fade 0.14s ease;
+}
+@keyframes fno-fade { from { opacity: 0; } to { opacity: 1; } }
+.fno-modal {
+  width: min(640px, 100%); max-height: calc(100vh - 52px);
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 24px 70px rgba(20, 22, 40, 0.32);
+}
+.fno-modal.sm { width: min(460px, 100%); }
+
+// trade-history popup — wide, with a sticky head + a scrolling table body
+.th-modal {
+  width: min(920px, 100%);
+  .th-modal-head {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;
+    flex: none; margin-bottom: 12px;
+  }
+  .th-modal-tools { display: flex; align-items: center; gap: 8px; flex: none; }
+  .th-modal-tools .th-search {
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 11px; font-size: 12.5px;
+    background: var(--bg-card); color: var(--text-primary); width: 200px;
+    &:focus { outline: none; border-color: var(--accent); }
+  }
+  .th-close { align-self: center; }
+  .th-pills { flex: none; margin-bottom: 10px; }
+  .backfill { flex: none; }
+  .th-modal-scroll {
+    flex: 1 1 auto; overflow: auto; min-height: 0; border-top: 1px solid var(--border);
+    thead th { position: sticky; top: 0; background: var(--bg-card); z-index: 1; }
+  }
+  .th-acc { color: var(--text-secondary); white-space: nowrap; }
+  .empty, .mut { padding: 20px 2px; text-align: center; color: var(--text-muted); }
+}
+.modal-form { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 2px; }
+.mf { display: flex; flex-direction: column; gap: 4px;
+  span { font-size: 11px; font-weight: 700; color: var(--text-secondary); i { color: var(--text-muted); font-weight: 400; } }
+  input { border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; font-size: 12.5px;
+    background: var(--bg-card); color: var(--text-primary); &:focus { outline: none; border-color: var(--accent); } } }
+.mf-note { font-size: 11px; color: var(--text-muted); line-height: 1.5;
+  code { background: rgba(0,0,0,0.05); padding: 1px 4px; border-radius: 3px; }
+  b { font-weight: 800; }
+  &.ok { color: #1a5d2b; background: #e6f4ea; border: 1px solid #b7e0c0; border-radius: 8px; padding: 7px 10px; }
+  &.warn { color: #92400e; background: #fff8e6; border: 1px solid #f4d27a; border-radius: 8px; padding: 7px 10px;
+    i { font-style: italic; } }
+}
+// "Advanced: own Kite app" disclosure toggle in the add-account form
+.mf-adv {
+  display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+  background: none; border: none; cursor: pointer; padding: 2px 0; margin-top: 2px;
+  color: var(--text-secondary); font-size: 11.5px; font-weight: 700;
+  &:hover { color: var(--accent); }
+  .cv { display: inline-block; transition: transform 0.15s; font-size: 10px; &.open { transform: rotate(90deg); } }
+}
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
+  &.between { justify-content: space-between; } &.end { justify-content: flex-end; } }
+
+.cp-steps {
+  font-size: 12px; color: var(--text-secondary); line-height: 1.7; margin: 6px 0;
+  b { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;
+      border-radius: 50%; background: var(--accent); color: #fff; font-size: 10px; font-weight: 800; margin-right: 1px; }
+  code { background: rgba(0, 0, 0, 0.06); padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+}
+.cp-steps .who { font-weight: 800; color: var(--text-primary); }
+.cp-warn { font-size: 11.5px; line-height: 1.55; color: #92400e; background: #fff8e6;
+  border: 1px solid #f4d27a; border-radius: 8px; padding: 8px 11px; margin: 2px 0 8px;
+  b { font-weight: 800; } i { font-style: italic; } }
+.cp-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+// "own Kite app key" section inside the connect modal
+.ck-sec { border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; margin: 2px 0 10px;
+  background: var(--bg-primary); display: flex; flex-direction: column; gap: 6px;
+  .ck-head { font-size: 11.5px; font-weight: 700; color: var(--text-secondary);
+    b { font-weight: 800; } b.ok { color: var(--positive); } b.warn { color: #b45309; } }
+  .cp-row { margin: 0; }
+  .ck-save { align-self: flex-start; }
+  .cp-note { margin-top: 1px; }
+}
+.relogin { margin-bottom: 8px; }
+.cp-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+.cp-input {
+  flex: 1 1 320px; border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px;
+  font-size: 12.5px; background: var(--bg-card); color: var(--text-primary);
+  &:focus { outline: none; border-color: var(--accent); }
+}
+.cp-linkbox { width: 100%; margin: 8px 0 2px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-muted);
+  background: var(--bg-secondary); cursor: text; text-overflow: ellipsis;
+  &:focus { outline: none; border-color: var(--accent); color: var(--text-primary); } }
+.cp-adv { align-self: flex-start; border: none; background: transparent; color: var(--accent);
+  font-size: 11.5px; font-weight: 700; cursor: pointer; padding: 2px 0; &:hover { text-decoration: underline; } }
+.cp-note { font-size: 11px; color: var(--text-muted); line-height: 1.5; margin-top: 4px; }
+
+// primary / paid-feed variant of the connect modal — green "you can log in here"
+// instead of the amber "use incognito" warning, plus a highlighted login button.
+.cp-warn.feed { color: var(--positive); background: rgba(22, 160, 133, 0.08);
+  border-color: rgba(22, 160, 133, 0.35); }
+.btn.sm.feed { background: var(--positive); border-color: var(--positive); color: #fff;
+  &:hover:not(:disabled) { background: var(--positive); filter: brightness(1.08); } }
+.cp-or { display: flex; align-items: center; gap: 10px; margin: 11px 0 5px;
+  color: var(--text-muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em;
+  &::before, &::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  span { white-space: nowrap; } }
+
+// inline tradebook panel (expands under an account row in the picker)
+.tb-panel {
+  margin: 1px 4px 6px; padding: 10px 12px; border-radius: 10px;
+  background: var(--bg-secondary); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 9px;
+  .tb-panel-h {
+    font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted);
+    .tb-hint { text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 10.5px; margin-left: 6px; }
+  }
+  .tb-file { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .tb-ic { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: #fff;
+    display: grid; place-items: center; font-size: 13px; flex: none; }
+  .tb-info { min-width: 0;
+    b { font-size: 12.5px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tb-meta { font-size: 10.5px; color: var(--text-muted); } }
+  .tb-acts { display: flex; gap: 7px; }
+  .tb-empty { font-size: 11.5px; color: var(--text-secondary); line-height: 1.6; }
+  .file-btn.full { justify-content: center; width: 100%; }
+
+  // ── imported P&L statements (authoritative booked · multiple periods) ──
+  .tb-stmt { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); display: flex;
+    flex-direction: column; gap: 9px; }
+  // realised numbers row (reused inside each statement's timeline card)
+  .ts-nums { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11.5px; font-weight: 600; color: var(--text-secondary);
+    b { font-weight: 800; font-variant-numeric: tabular-nums; &.pos { color: var(--positive); } &.neg { color: var(--negative); } }
+    .ts-mut { color: var(--text-muted); } }
+  // green coverage summary card (mirrors the tradebook coverage card)
+  .ts-cov { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 9px 12px; border-radius: 9px; border: 1px solid rgba(22,160,133,0.35);
+    background: rgba(22,160,133,0.06);
+    .ts-cov-l { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .ts-cov-r { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+    .ts-cov-lbl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--positive); }
+    .ts-cov-range { font-size: 13px; font-weight: 700; white-space: nowrap;
+      .ts-cov-arr { color: var(--text-muted); margin: 0 5px; font-weight: 500; } }
+    .ts-cov-real { font-size: 16px; font-weight: 800; &.pos { color: var(--positive); } &.neg { color: var(--negative); } }
+    .ts-cov-sub { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; } }
+
+  // ── overall coverage summary card ─────────────────────────────────────────
+  .tb-cov {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 9px 12px; border-radius: 9px; background: var(--bg-primary); border: 1px solid var(--border);
+    .tb-cov-l { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .tb-cov-r { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+    .tb-cov-lbl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+    .tb-cov-range { font-size: 13.5px; font-weight: 700; letter-spacing: 0.01em; white-space: nowrap;
+      .tb-cov-arr { color: var(--text-muted); margin: 0 5px; font-weight: 500; } }
+    .tb-cov-days { font-size: 17px; font-weight: 800; line-height: 1;
+      small { font-size: 10px; font-weight: 600; color: var(--text-muted); margin-left: 3px; } }
+    .tb-cov-sub { font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }
+  }
+
+  // gap / overlap flags
+  .tb-flags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tb-flag { font-size: 10.5px; font-weight: 600; padding: 3px 8px; border-radius: 6px;
+    &.gap { background: rgba(255,169,77,0.14); color: #e8871e; border: 1px solid rgba(255,169,77,0.4); }
+    &.ovl { background: rgba(99,230,190,0.12); color: #1a9e78; border: 1px solid rgba(99,230,190,0.4); } }
+
+  // ── vertical timeline (oldest → newest) ───────────────────────────────────
+  .tb-vtl { display: flex; flex-direction: column; padding-left: 3px; }
+
+  // connector segment between two consecutive books
+  .tb-link { position: relative; height: 26px; margin-left: 7px;   // aligns with the 15px dot's centre
+    display: flex; align-items: center;
+    .tb-link-line { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--border); }
+    .tb-link-tag { margin-left: 16px; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 20px;
+      &.join { color: var(--text-muted); background: var(--bg-primary); border: 1px solid var(--border); }
+      &.gap  { color: #e8871e; background: rgba(255,169,77,0.14); border: 1px solid rgba(255,169,77,0.45); }
+      &.ovl  { color: #1a9e78; background: rgba(99,230,190,0.14); border: 1px solid rgba(99,230,190,0.45); } }
+    &.gap .tb-link-line { background: repeating-linear-gradient(to bottom, #e8871e 0 4px, transparent 4px 8px); }
+    &.ovl .tb-link-line { background: #1a9e78; }
+  }
+
+  // a book node = dot on the spine + detail card
+  .tb-node { display: flex; align-items: stretch; gap: 12px; }
+  .tb-dot { position: relative; width: 15px; height: 15px; border-radius: 50%; flex: none; margin-top: 12px;
+    box-shadow: 0 0 0 3px var(--bg-secondary), inset 0 0 0 2px rgba(255,255,255,0.35); z-index: 1; }
+  .tb-card { flex: 1; min-width: 0; border-radius: 9px; background: var(--bg-primary);
+    border: 1px solid var(--border); padding: 9px 11px; display: flex; flex-direction: column; gap: 7px; }
+  .tb-card-h { display: flex; align-items: center; gap: 7px;
+    b { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+    .tb-tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; flex: none;
+      color: var(--text-muted); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+    .tb-x { flex: none; width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-muted); cursor: pointer; font-size: 11px;
+      display: grid; place-items: center;
+      &:hover:not(:disabled) { border-color: var(--negative); color: var(--negative); }
+      &:disabled { opacity: 0.4; cursor: default; } }
+  }
+  // explicit start / end dates — the whole point of the redesign
+  .tb-dates { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
+    .tb-d { display: flex; flex-direction: column;
+      small { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+      b { font-size: 13px; font-weight: 700; } }
+    .tb-d-arr { color: var(--text-muted); font-size: 13px; padding-bottom: 1px; }
+    .tb-d-span { margin-left: auto; font-size: 10.5px; color: var(--text-muted); white-space: nowrap; padding-bottom: 1px; }
+  }
+}
+
+// file-picker button (used in accounts + backfill banner)
+.file-btn {
+  position: relative; overflow: hidden; display: inline-flex; align-items: center;
+  input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  &.disabled { opacity: 0.55; pointer-events: none; }
+}
+
+/* ── Open Positions (carried-forward, mark-to-market) ─────────────────────── */
+.openpos-card {
+  .op-head { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 6px; }
+  .op-titles { min-width: 0; flex: 1; }
+  .op-badge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+    background: rgba(56,126,209,.12); color: var(--accent); padding: 2px 7px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
+  .op-stat { display: flex; flex-direction: column; align-items: flex-end; text-align: right; white-space: nowrap; }
+  .ops-val { font-size: 22px; font-weight: 800; letter-spacing: -.5px; color: var(--text-primary);
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); } }
+  .ops-sub { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-top: 1px;
+    b.pos { color: var(--positive); } b.neg { color: var(--negative); } }
+  .op-refresh { flex: none; align-self: center; min-width: 32px; }
+  .op-note { font-size: 11px; color: var(--text-muted); background: var(--bg-primary);
+    border: 1px dashed var(--border); border-radius: 8px; padding: 6px 10px; margin: 4px 0 8px; }
+  // price-feed-offline banner — solid amber, with an inline "Log in" button
+  .op-note.feed-off {
+    color: #92400e; background: #fff8e6; border: 1px solid #f4d27a; border-style: solid;
+    display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; line-height: 1.5;
+    b { font-weight: 800; }
+    .feed-login { margin-left: auto; flex: none; padding: 4px 12px;
+      background: #d97706; border-color: #d97706;
+      &:hover:not(:disabled) { background: #b45309; border-color: #b45309; } }
+  }
+  .ops-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-muted); margin-top: 1px; }
+  // big unrealized value + a small "today's move" pill beside it (arrow shows direction)
+  .ops-main { display: flex; align-items: center; gap: 9px; }
+  .ops-chip { display: inline-flex; align-items: baseline; gap: 3px; padding: 3px 8px; border-radius: 999px;
+    font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1;
+    background: rgba(22, 160, 133, 0.12); color: var(--positive);
+    &.neg { background: rgba(229, 57, 53, 0.12); color: var(--negative); }
+    .ops-arw { font-size: 9px; }
+    .ops-chip-lbl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; opacity: .7; } }
+  .fno-table-wrap { overflow-x: auto; }
+  tr.unpriced td { opacity: .62; }
+  // legs closed today (qty 0) still carry the day's booked P&L — shown greyed,
+  // like Kite's Positions screen, so the card total ties out to the terminal.
+  tr.op-closed td { opacity: .58; }
+  .op-carry { font-size: 10.5px; font-style: italic; }
+  .side-tag { font-size: 9.5px; font-weight: 800; letter-spacing: .3px; padding: 2px 6px; border-radius: 5px;
+    background: rgba(22,160,133,.14); color: var(--positive); }
+  .side-tag.short { background: rgba(229,57,53,.13); color: var(--negative); }
+  .side-tag.closed { background: rgba(120,120,120,.16); color: var(--text-muted); }
+}
+@media (max-width: 640px) {
+  .openpos-card .op-head { flex-wrap: wrap; }
+  .openpos-card .op-stat { align-items: flex-start; text-align: left; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Single-screen board — LEFT: chart over calendar · RIGHT: strategies · open · trades
+//  Locks the working area to one viewport; each region scrolls internally.
+// ═══════════════════════════════════════════════════════════════════════════
+// LEFT = all live data (chart on top · strategies + open positions below) ·
+// RIGHT = all past data (calendar on top · trade history below). 50/50 split.
+// Board grid: P&L chart (top-left) over the calendar (bottom-left); the Open
+// Positions book spans the whole right column so the full live list is visible.
+.fno-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  // A DEFINITE height is what lets the legs pane scroll instead of expanding. The
+  // calendar row is fixed and roomy (comfortable week-cells); the chart takes the
+  // rest; the open column spans both rows and stays exactly flush with them.
+  grid-template-rows: minmax(0, 1fr) 440px;
+  grid-template-areas:
+    "chart open"
+    "cal   open";
+  gap: 14px; align-items: stretch;
+  height: max(880px, calc(100vh - 190px));
+  > .card { margin-bottom: 0; min-height: 0; display: flex; flex-direction: column; }
+}
+.fno-chart-card { grid-area: chart; }
+.fno-livecol    { grid-area: open; }
+.fno-cal        { grid-area: cal; }
+
+// stacks below the "single screen" width — natural heights: chart · open · calendar
+@media (max-width: 1080px) {
+  .fno-board {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-template-areas: "chart" "open" "cal";
+    height: auto; min-height: 0;
+  }
+  .fno-board > .card { min-height: 340px; }
+  .fno-livecol { min-height: 560px; }
+  .fno-livecol .rc-sec + .rc-sec { border-left: none; border-top: 1px solid var(--border); }
+  .rc-open-scroll, .rc-trades-scroll { max-height: 62vh; }
+}
+
+// ── chart card fills its half; the SVG (viewBox 0-100, preserveAspectRatio none) scales ──
+.fno-chart-card {
+  .card-head { flex: none; }
+  .chart-holder { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .chart-frame  { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .plot-row     { flex: 1 1 auto; min-height: 0; }
+  .chart-canvas { flex: 1 1 auto; height: auto; min-height: 130px; }
+  .chart-empty  { flex: 1 1 auto; min-height: 130px; }
+  .chart-stats  { flex: none; margin-top: 8px; padding-top: 8px; gap: 18px; }
+}
+
+// ── calendar (right-bottom) — the hero of the right column; the grid flexes to fill ──
+.fno-cal {
+  overflow: hidden;
+  .card-head { margin-bottom: 8px; }
+  .cal-mtot {
+    font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.3px;
+    color: var(--text-muted);
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); }
+  }
+  .cal-head, .cal-wd, .cal-legend { flex: none; }
+  // The fixed 440px calendar row gives the grid plenty of height; the week-rows share it
+  // evenly (~54px each) so every day comfortably shows its number AND its P&L amount.
+  .cal-grid { flex: 1 1 auto; min-height: 0; grid-auto-rows: minmax(0, 1fr); align-content: stretch; }
+  .cal-cell { min-height: 0; }
+  .cal-legend { margin-top: 10px; }
+}
+
+// ── live-col = the Open Positions book, full right column ────────────────────
+.fno-livecol {
+  min-height: 0; overflow: hidden; padding: 0;
+  .rc-sec + .rc-sec { border-top: 1px solid var(--border); border-left: none; }
+  // Keep the open-positions column exactly as tall as the chart+calendar column:
+  // shrink the payoff a touch so a real chunk of LEGS shows, and scroll the rest.
+  .rc-open { display: flex; flex-direction: column; min-height: 0;
+    .payoff { flex: none; }
+    // A payoff reads best WIDE — lock a landscape aspect (width always > height),
+    // capped so it never eats the whole column. Sliders live inside; legs scroll.
+    .pf-canvas { width: 100%; height: auto; aspect-ratio: 16 / 9; max-height: 46vh; min-height: 260px; }
+  }
+  .rc-open-scroll { flex: 1 1 auto; min-height: 168px; overflow-y: auto; overscroll-behavior: contain;
+    thead th { position: sticky; top: 0; z-index: 2; background: var(--bg-card); box-shadow: 0 1px 0 var(--border); } }
+}
+// ── past-col = trade history, stacked ────────────────────────────────────────
+.fno-pastcol {
+  display: flex; flex-direction: column; min-height: 0; overflow: hidden; padding: 0;
+}
+.rc-sec {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; padding: 13px 16px;
+  & + & { border-top: 1px solid var(--border); }
+}
+.rc-head {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;
+  margin-bottom: 10px; flex: none;
+  .card-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; b { font-weight: 800; } }
+}
+.rc-count {
+  flex: none; align-self: center; font-size: 11px; font-weight: 800; color: var(--text-muted);
+  background: var(--bg-hover); border-radius: 999px; padding: 2px 9px; font-variant-numeric: tabular-nums;
+}
+.rc-empty { color: var(--text-muted); font-size: 12px; padding: 14px 2px; text-align: center; line-height: 1.6; }
+
+// Each section: fixed header + a flexing scroll body. The section caps its own
+// height (% of the column) and clips overflow, so a squeezed section can never
+// spill onto the one below it — the scroll body absorbs the squeeze instead.
+
+// strategies — stacked horizontal bullet bars (booked notch + live total bar)
+.rc-strats { flex: 0 0 auto; min-height: 0;
+  .rc-head { margin-bottom: 8px; }
+}
+.rc-strat-scroll {
+  flex: none; min-height: 0; display: flex; flex-direction: column; gap: 12px;
+  overflow-y: auto; padding-right: 2px;
+}
+
+// one strategy = a labelled row + a track
+.sbar {
+  --sb: #9097b4;                              // strategy accent (dot + booked tint)
+  &.sentinel { --sb: #387ed1; }
+  &.crude    { --sb: #d97706; }
+  &.other    { --sb: #9097b4; }
+
+  .sbar-top {
+    display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px;
+  }
+  .sbar-name { font-size: 12.5px; font-weight: 800; letter-spacing: -.2px; color: var(--text-primary); flex: none; }
+  .sbar-sub {
+    font-size: 10.5px; color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    b { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  }
+  .sbar-total {
+    margin-left: auto; flex: none; font-size: 14px; font-weight: 800; letter-spacing: -.3px;
+    font-variant-numeric: tabular-nums; color: var(--text-muted);
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); }
+  }
+
+  // the track: a centred ₹0 baseline with booked (solid) + unrealized (light)
+  // segments diverging from it. No fill behind the bars.
+  .sbar-track {
+    position: relative; height: 14px;
+  }
+  // ₹0 line — pinned to the centre, taller than the bars so it reads as the axis
+  .sbar-zero {
+    position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px;
+    background: var(--border); transform: translateX(-0.5px); z-index: 2;
+  }
+  .sbar-seg {
+    position: absolute; top: 0; bottom: 0; border-radius: 3px; min-width: 2px;
+    transition: left .5s cubic-bezier(.4,0,.2,1), width .5s cubic-bezier(.4,0,.2,1);
+  }
+  .sbar-seg.booked { background: var(--positive); z-index: 1; &.neg { background: var(--negative); } }
+  // unrealized = the live/at-risk part → a flat, lighter tint (no stripes)
+  .sbar-seg.unreal {
+    background: color-mix(in srgb, var(--positive) 30%, transparent); z-index: 1;
+    &.neg { background: color-mix(in srgb, var(--negative) 30%, transparent); }
+  }
+}
+
+// open positions — the rest of the live column below the strategies bar
+.fno-livecol .rc-open { flex: 1 1 auto; min-height: 132px; }
+
+// open positions — the sole left-bottom card; its table scrolls
+.rc-open {
+  flex: 1 1 auto; min-width: 0; min-height: 0;
+  .rc-open-right { display: flex; align-items: center; gap: 9px; flex: none; }
+  .ops-val { font-size: 17px; }
+  .ops-sub { font-size: 10px; }
+  .op-note { margin: 0 0 8px; flex: none; }
+  .op-refresh { align-self: center; }
+  .rc-open-scroll {
+    flex: 1 1 auto; overflow: auto; min-height: 0;
+    thead th { position: sticky; top: 0; background: var(--bg-card); z-index: 1; }
+  }
+}
+// inline strategy editor in the Open Positions table (type or pick per leg)
+.op-strat {
+  white-space: nowrap;
+  .ls-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+  .leg-strat {
+    width: 74px; max-width: 88px; border: 1px solid transparent; border-radius: 6px;
+    background: transparent; color: var(--text-primary); font: inherit; font-size: 11.5px; font-weight: 700;
+    padding: 2px 5px; cursor: pointer; text-transform: capitalize;
+    &:hover { border-color: var(--border); background: var(--bg-hover); }
+    &:focus { outline: none; border-color: var(--accent); background: var(--bg-card); cursor: text; }
+  }
+}
+// "Whose" column in Open Positions — an avatar (tinted by the leg's strategy, kept
+// on hover) + the account owner's name
+.op-whose {
+  white-space: nowrap;
+  display: flex; align-items: center; gap: 7px;
+  .wh-ava {
+    flex: none; width: 20px; height: 20px; border-radius: 50%; color: #fff;
+    font-size: 10px; font-weight: 800; letter-spacing: -.2px;
+    display: inline-grid; place-items: center;
+  }
+  .wh-name {
+    font-size: 12px; font-weight: 700; color: var(--text-primary);
+    text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; max-width: 96px;
+  }
+}
+// "Trade history" expand button — opens the full log in a popup
+.th-open-btn {
+  display: inline-flex; align-items: center; gap: 6px; align-self: center; flex: none;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary);
+  font-size: 11.5px; font-weight: 700; padding: 5px 10px; border-radius: 8px; cursor: pointer;
+  white-space: nowrap; transition: border-color .12s, color .12s, background .12s;
+  svg { color: var(--text-muted); transition: color .12s; }
+  &:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); svg { color: var(--accent); } }
+  .thb-count {
+    font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums;
+    background: var(--bg-hover); color: var(--text-muted); border-radius: 999px; padding: 1px 6px;
+  }
+  &:hover .thb-count { background: rgba(56, 126, 209, 0.12); color: var(--accent); }
+}
+
+// trade history — small strip below the calendar, table scrolls
+.rc-trades {
+  flex: 1 1 auto; min-height: 128px;
+  .th-search { flex: none; }
+  .th-pills { flex: none; }
+  .backfill { flex: none; }
+  .rc-trades-scroll {
+    flex: 1 1 auto; overflow: auto; min-height: 0; border-top: 1px solid var(--border);
+    .th-table thead th { position: sticky; top: 0; background: var(--bg-card); z-index: 1; }
+  }
+}
+// lean 3-column trade log: Instrument · Trade (side + qty) · Account, nothing else
+.th-mini {
+  td, th { padding: 6px 10px; }
+  .th-qty { margin-left: 7px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .th-acc { color: var(--text-muted); font-size: 11.5px; white-space: nowrap; }
+  b { font-weight: 700; }
+}
+
+/* ── central "Viewing date" — clean value + hover calendar picker ─────────── */
+.fkb-date {
+  cursor: pointer;
+  .date-v { display: inline-flex; align-items: center; gap: 7px; }
+  &:hover .fkb-cal, &.on .fkb-cal { color: var(--accent); }
+  &.on .date-v { color: var(--accent); }
+}
+/* the calendar popover (reuses .fkb-pop hover behaviour) */
+.dp-pop { width: 258px; padding: 11px 12px 12px; }
+.dp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.dp-nav { width: 26px; height: 26px; border: 1px solid var(--border); background: var(--bg-card); border-radius: 8px;
+  color: var(--text-secondary); font-size: 15px; font-weight: 700; cursor: pointer; line-height: 1; transition: .12s;
+  &:hover { border-color: var(--accent); color: var(--accent); } }
+.dp-title { flex: 1; margin: 0 6px; border: none; background: none; font-family: inherit; font-size: 13.5px;
+  font-weight: 800; color: var(--text-primary); cursor: pointer; letter-spacing: -.2px;
+  &:hover { color: var(--accent); } }
+.dp-wd { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 3px;
+  span { text-align: center; font-size: 9.5px; font-weight: 800; color: var(--text-muted); } }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.dp-cell { position: relative; aspect-ratio: 1; border: none; background: transparent; border-radius: 8px;
+  font-family: inherit; font-size: 12px; font-weight: 700; color: var(--text-secondary); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: background .1s, color .1s;
+  &:hover:not(:disabled) { background: rgba(56,126,209,.12); color: var(--accent); }
+  &.empty { visibility: hidden; cursor: default; }
+  &:disabled { color: var(--text-muted); opacity: .32; cursor: default; }
+  &.has::after { content: ''; position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
+    width: 4px; height: 4px; border-radius: 50%; background: var(--accent); opacity: .5; }
+  &.today { color: var(--text-primary); box-shadow: inset 0 0 0 1.5px var(--border); }
+  &.sel { background: var(--accent); color: #fff; box-shadow: none;
+    &.has::after { background: #fff; opacity: .85; } &:hover { background: var(--accent); color: #fff; } }
+}
+.dp-live { width: 100%; margin-top: 10px; padding: 7px; border: 1px solid var(--border); background: var(--bg-card);
+  border-radius: 9px; font-family: inherit; font-size: 12px; font-weight: 800; color: var(--text-secondary);
+  cursor: pointer; transition: .12s;
+  &:hover { border-color: var(--accent); color: var(--accent); }
+  &.on { border-color: var(--positive); color: var(--positive); background: rgba(22,160,133,.06); } }
+
+/* per-account P&L breakdown inside the chart hover tooltip */
+.chart-tip .tip-accts { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 2px; min-width: 122px; }
+.chart-tip .tip-acct { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 11px;
+  .ta-name { color: var(--text-secondary); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 92px; }
+  b { font-weight: 800; font-variant-numeric: tabular-nums; } }
+
+/* ── Accounts filter tile in the KPI bar ──────────────────────────────────── */
+.fkb-users {
+  .users-v { font-size: 15px; font-weight: 800; gap: 7px; letter-spacing: -.2px; }
+  .fkb-usr { width: 15px; height: 15px; color: var(--text-muted); flex: none; transition: color .12s; }
+  &:hover .fkb-usr, &.on .fkb-usr { color: var(--accent); }
+  &.on .users-v { color: var(--accent); }
+}
+.users-pop { width: 252px; padding: 10px 8px; }
+.users-pop .pop-h { padding: 0 6px 2px; }
+.up-row {
+  display: flex; align-items: center; gap: 9px; width: 100%; border: none; background: none; cursor: pointer;
+  padding: 7px 8px; border-radius: 9px; text-align: left; font-family: inherit; transition: background .1s;
+  &:hover { background: rgba(120, 130, 160, 0.08); }
+  &.on { background: rgba(56, 126, 209, 0.07); }
+}
+.up-check {
+  width: 17px; height: 17px; border-radius: 6px; border: 1.5px solid var(--border); flex: none; position: relative; transition: .12s;
+  &.on { background: var(--accent); border-color: var(--accent);
+    &::after { content: ''; position: absolute; left: 5px; top: 2px; width: 4px; height: 8px;
+      border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); } }
+}
+.up-av {
+  width: 25px; height: 25px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+  background: var(--bg-primary); border: 1px solid var(--border); font-size: 11px; font-weight: 800;
+  color: var(--text-secondary); text-transform: uppercase;
+}
+.up-main { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.up-name { font-size: 13px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up-sub { font-size: 10.5px; color: var(--text-muted); font-weight: 600; display: inline-flex; align-items: center; gap: 5px; }
+.up-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--text-muted);
+  &.ok { background: var(--positive); } &.bad { background: var(--negative); } &.idle { background: #c9a227; } }
+
+
+// ── viewbar: day + accounts tabs (below the KPI bar) ──────────────────────
+.fno-viewbar { display: flex; gap: 10px; margin: -2px 0 2px; flex-wrap: wrap; }
+.vb-tab { position: relative; }
+.vb-btn { display: inline-flex; align-items: center; gap: 9px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 11px; padding: 8px 14px; cursor: pointer; font: inherit; color: var(--text-primary);
+  box-shadow: 0 2px 10px rgba(26, 28, 46, 0.04); transition: border-color .12s, box-shadow .12s; }
+.vb-btn:hover { border-color: var(--accent); }
+.vb-tab.open > .vb-btn, .vb-tab.on > .vb-btn { border-color: var(--accent); box-shadow: 0 2px 12px rgba(56, 126, 209, 0.14); }
+.vb-usr { display: inline-flex; align-items: center; }
+.vb-usr svg { width: 15px; height: 15px; color: var(--text-muted); }
+.vb-k { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }
+.vb-v { font-size: 13.5px; font-weight: 800; color: var(--text-primary); letter-spacing: -.2px; }
+.vb-tab.on .vb-v { color: var(--accent); }
+.vb-cv { font-size: 10px; color: var(--text-muted); transition: transform .15s; }
+.vb-cv.up { transform: rotate(180deg); }
+.vb-back { position: fixed; inset: 0; z-index: 44; }
+.vb-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 45;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(26, 28, 46, 0.2); }
+.vb-pop.users-pop { min-width: 252px; }
+
+
+// ── account-holder cards (below the KPI bar) — click one to view only it ──
+.fno-holders { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 2px; }
+.fhc {
+  text-align: left; font: inherit; color: inherit; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 13px 16px; cursor: pointer; transition: .15s; box-shadow: 0 2px 10px rgba(26, 28, 46, 0.05);
+  display: flex; flex-direction: column; gap: 5px;
+  &:hover { border-color: var(--accent); box-shadow: 0 8px 22px rgba(56, 126, 209, 0.14); transform: translateY(-1px); }
+  &.on { border-color: var(--accent); box-shadow: 0 6px 18px rgba(56, 126, 209, 0.18);
+    background: linear-gradient(180deg, rgba(56, 126, 209, 0.08), rgba(56, 126, 209, 0.03)); }
+  .fhc-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .fhc-name { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 800; color: var(--text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  // multi-select tick — hollow ring by default, fills with a check when selected
+  .fhc-tick { flex: none; width: 15px; height: 15px; border-radius: 5px; border: 1.5px solid var(--border);
+    background: var(--bg-card); transition: .15s; position: relative; }
+  &:hover .fhc-tick { border-color: var(--accent); }
+  .fhc-tick.on { background: var(--accent); border-color: var(--accent);
+    &::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 900; color: #fff; line-height: 1; } }
+  // Big Total P&L headline.
+  .fhc-big { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; margin: 3px 0 1px; }
+  .fhc-bigv { font-size: 24px; font-weight: 800; letter-spacing: -.6px; line-height: 1.05; color: var(--text-primary);
+    font-variant-numeric: tabular-nums; &.pos { color: var(--positive); } &.neg { color: var(--negative); } }
+  .fhc-biglbl { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted);
+    .fkb-i { font-size: 9px; opacity: .5; } }
+  // hover the Total P&L → a breakdown popup (booked − charges + other + open = total)
+  .fhc-big.has-pop { position: relative; cursor: help;
+    &:hover { .fhc-biglbl .fkb-i { opacity: 1; color: var(--accent); }
+      .fhc-pop { opacity: 1; visibility: visible; transform: translateY(0); } } }
+  .fhc-pop { left: 0; width: 250px;
+    .pop-row b.pos { color: var(--positive); } .pop-row b.neg { color: var(--negative); }
+    .pop-note { font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.4; } }
+  // Net · Charges · Open — headers on one row, values directly below (row-major fill).
+  .fhc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px 12px; margin: 5px 0 2px; }
+  .fhc-k { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--text-muted); white-space: nowrap; }
+  .fhc-v { font-size: 15px; font-weight: 800; letter-spacing: -.3px; line-height: 1.1; white-space: nowrap;
+    font-variant-numeric: tabular-nums; color: var(--text-primary);
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); } &.cost { color: #b45309; } }
+  .fhc-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 1px; }
+  .fhc-sub { font-size: 11px; color: var(--text-muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fhc-more { font-size: 11px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+  // Phones: show only the Total P&L — hide the Net/Charges/Open block and footer.
+  @media (max-width: 640px) { .fhc-stats, .fhc-foot { display: none; } }
+}
+
+
+// ── bulk strategy assignment (Trade History + Open Positions) ─────────────
+.chk-col { width: 36px; text-align: center; }
+.chk-col input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); vertical-align: middle; margin: 0; }
+tr.sel-row > td { background: rgba(56, 126, 209, 0.08); }
+.bulk-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 2px 0 10px; padding: 8px 12px;
+  background: var(--bg-hover); border: 1px solid var(--accent); border-radius: 11px; }
+.bb-count { font-size: 12.5px; font-weight: 800; color: var(--text-primary); }
+.bb-arrow { font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin-left: 2px; margin-right: 2px; }
+.bb-strat { border: none; color: #fff; font-size: 12px; font-weight: 800; padding: 5px 13px; border-radius: 999px;
+  cursor: pointer; transition: filter .12s; text-transform: capitalize; }
+.bb-strat:hover:not(:disabled) { filter: brightness(1.09); }
+.bb-strat:disabled { opacity: .55; cursor: default; }
+.bb-clear { margin-left: auto; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-muted);
+  font-size: 11.5px; font-weight: 700; padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+.bb-clear:hover { border-color: var(--accent); color: var(--accent); }
+
+
+// ── strategy manager (add / remove the strategies you tag trades with) ─────
+.strat-mgr { position: relative; display: inline-flex; }
+.strat-mgr-btn.active { border-color: var(--accent); color: var(--accent); }
+.strat-mgr-pop { position: absolute; top: calc(100% + 6px); right: 0; z-index: 46; width: 272px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(26, 28, 46, 0.22); padding: 12px; }
+.smp-h { font-size: 12.5px; font-weight: 800; color: var(--text-primary); margin-bottom: 8px; display: flex; flex-direction: column; }
+.smp-h span { font-size: 10.5px; font-weight: 600; color: var(--text-muted); margin-top: 2px; }
+.smp-list { display: flex; flex-direction: column; gap: 1px; max-height: 210px; overflow-y: auto; margin-bottom: 10px; }
+.smp-row { display: flex; align-items: center; gap: 9px; padding: 5px 4px; font-size: 13px; }
+.smp-dot { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.smp-name { font-weight: 700; color: var(--text-primary); text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.smp-lock { margin-left: auto; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: var(--text-muted); }
+.smp-del { margin-left: auto; border: none; background: none; color: var(--text-muted); font-size: 13px; font-weight: 800; cursor: pointer; padding: 2px 7px; border-radius: 6px; }
+.smp-del:hover:not(:disabled) { color: var(--negative); background: rgba(229, 57, 53, 0.1); }
+.smp-add { display: flex; align-items: center; gap: 7px; border-top: 1px solid var(--border); padding-top: 10px; }
+.smp-color { width: 30px; height: 30px; padding: 1px; border: 1px solid var(--border); border-radius: 7px; background: none; cursor: pointer; flex: none; }
+.smp-in { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; font-size: 12.5px; background: var(--bg-card); color: var(--text-primary); }
+.smp-in:focus { outline: none; border-color: var(--accent); }
+.smp-addbtn { border: none; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; padding: 7px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.smp-addbtn:disabled { opacity: .5; cursor: default; }
+
+
+// ── chart filter popover: Today-only zoom (segmented toggle) ──────────────
+.cf-pop .cf-zoom { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+.cf-pop .cf-zk { font-size: 11px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+.cf-pop .cf-seg { display: inline-flex; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
+.cf-pop .cf-seg button { border: none; background: transparent; color: var(--text-secondary);
+  font-size: 11px; font-weight: 700; padding: 4px 11px; border-radius: 6px; cursor: pointer; transition: .12s; white-space: nowrap; }
+.cf-pop .cf-seg button:hover { color: var(--accent); }
+.cf-pop .cf-seg button.on { background: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(56, 126, 209, 0.3); }
+// with the Today toggle present, the hint no longer needs its own divider
+.cf-pop .cf-zoom + .cf-hint { border-top: none; padding-top: 4px; margin-top: 6px; }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Payoff diagram (P&L at expiry) — sits under the Open Positions header
+// ═══════════════════════════════════════════════════════════════════════════
+.payoff {
+  flex: none; margin: -2px 0 12px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.pf-top {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 9px;
+}
+.pf-titlewrap { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pf-title { font-size: 13px; font-weight: 800; letter-spacing: -0.2px; color: var(--text-primary); }
+.pf-scope {
+  font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  .pf-hint { color: var(--text-muted); opacity: 0.7; }
+}
+.pf-scope b { font-weight: 800; color: var(--text-secondary); }
+
+// ── "All ▾" scope picker ──────────────────────────────────────────────────────
+.pf-pick { position: relative; flex: none; }
+.pf-pick-btn {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--text-secondary); border-radius: 9px; padding: 5px 9px;
+  font-size: 11.5px; font-weight: 800; cursor: pointer; transition: .13s;
+  svg { color: var(--text-muted); }
+  .pfp-lbl { letter-spacing: -.1px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pfp-caret { transition: transform .18s; &.up { transform: rotate(180deg); } }
+  &:hover { border-color: var(--accent); color: var(--accent); svg { color: var(--accent); } }
+  &.on { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--bg-card)); }
+}
+.pf-pick-back { position: fixed; inset: 0; z-index: 40; }
+.pf-pick-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 41; width: 236px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 6px;
+  box-shadow: 0 14px 40px rgba(15,23,42,.22); animation: pf-menu-in .14s ease-out;
+  max-height: 340px; overflow-y: auto;
+}
+@keyframes pf-menu-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+.pfm-sec {
+  display: flex; align-items: center; gap: 6px; font-size: 9px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .6px; color: var(--text-muted); padding: 7px 8px 4px;
+  .pfm-lite { font-weight: 700; opacity: .7; text-transform: none; letter-spacing: 0; }
+  .pfm-clear { margin-left: auto; border: none; background: none; color: var(--accent); font-size: 10px;
+    font-weight: 800; cursor: pointer; padding: 0; text-transform: none; letter-spacing: 0; &:hover { text-decoration: underline; } }
+}
+.pfm-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
+  border: none; background: none; border-radius: 8px; padding: 8px 9px; transition: background .12s;
+  .pfm-r-main { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0;
+    b { font-size: 12.5px; font-weight: 800; color: var(--text-primary); }
+    em { font-style: normal; font-size: 10px; color: var(--text-muted); font-weight: 600; margin-left: 5px; }
+    .pfm-r-hd { font-size: 12.5px; font-weight: 800; color: var(--text-primary); }
+    .pfm-accs { display: flex; flex-wrap: wrap; gap: 4px; }
+    .pfm-acc { font-size: 9px; font-weight: 700; color: var(--text-secondary); background: var(--bg-hover);
+      border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; white-space: nowrap; } }
+  .pfm-tick { color: var(--accent); font-weight: 900; font-size: 13px; align-self: center; }
+  &:hover { background: var(--bg-hover); }
+  &.on { background: color-mix(in srgb, var(--accent) 10%, transparent);
+    .pfm-acc { background: var(--bg-card); } }
+}
+.pfm-legs { display: flex; flex-direction: column; gap: 2px; padding: 2px; }
+.pfm-leg {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 7px; cursor: pointer;
+  transition: background .12s; input { display: none; }
+  .pfm-leg-box { width: 15px; height: 15px; border-radius: 5px; border: 2px solid var(--border); flex: none; position: relative; transition: .12s; }
+  .pfm-leg-nm { flex: 1; font-size: 11px; font-weight: 700; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .pfm-leg-qty { font-size: 10.5px; font-weight: 800; color: var(--positive); font-variant-numeric: tabular-nums; &.short { color: var(--negative); } }
+  &:hover { background: var(--bg-hover); }
+  &.on { .pfm-leg-box { background: var(--accent); border-color: var(--accent);
+      &::after { content: ''; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); } }
+    .pfm-leg-nm { color: var(--text-primary); } }
+}
+
+// ── hero: ONE clean KPI bar (no dividers) — same treatment as the Stocks KPI bar
+.pf-kbar {
+  display: flex; flex-wrap: wrap; align-items: stretch; gap: 2px 0;
+  padding: 6px 8px; margin-bottom: 9px; border-radius: 14px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  box-shadow: 0 2px 10px rgba(26, 28, 46, 0.05);
+}
+.pf-kb {
+  // narrower basis + tighter padding so all five stats fit on ONE row in the
+  // compact column even with the market closed; wrap stays as a last resort
+  flex: 1 1 96px; min-width: 88px; padding: 6px 13px; display: flex; flex-direction: column; gap: 5px;
+  .pf-kb-k { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted);
+    white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .pf-kb-v { font-size: 18px; font-weight: 800; letter-spacing: -.4px; line-height: 1.1; font-variant-numeric: tabular-nums;
+    color: var(--text-primary); white-space: nowrap;
+    small { font-size: 10px; font-weight: 700; color: var(--text-muted); margin-left: 1px; }
+    &.big { font-size: 23px; letter-spacing: -.7px; }
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); } }
+}
+@media (max-width: 560px) { .pf-kb { padding: 6px 10px; .pf-kb-v.big { font-size: 21px; } } }
+
+// ── legend row ────────────────────────────────────────────────────────────────
+.pf-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.pf-legend { display: inline-flex; align-items: center; gap: 12px; flex: 1; min-width: 0;
+  .lg { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+  .lg-swatch { width: 14px; height: 0; flex: none; border-radius: 2px;
+    &.exp { border-top: 2.5px solid var(--text-secondary); }
+    &.now { border-top: 2.5px dashed var(--accent); }
+    &.pos { width: 9px; height: 9px; border-top: none; border-radius: 50%; background: var(--positive); box-shadow: 0 0 0 2px color-mix(in srgb, var(--positive) 25%, transparent); } }
+}
+
+// the plot
+.pf-chart { display: grid; grid-template-columns: 42px 1fr; gap: 0; }
+.pf-yaxis { position: relative; }
+.pf-ytick {
+  position: absolute; right: 6px; transform: translateY(-50%); font-size: 9.5px; font-weight: 700;
+  color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+  &.zero { color: var(--text-secondary); font-weight: 800; }
+}
+.pf-plot { min-width: 0; }
+.pf-canvas {
+  position: relative; height: clamp(280px, 42vh, 520px); width: 100%; overflow: hidden;
+  border-radius: 10px; background: var(--bg-card);
+  border: 1px solid var(--border); cursor: crosshair; touch-action: none;
+  &.zoomed { cursor: grab; &:active { cursor: grabbing; } }
+}
+.pf-grid {
+  position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed color-mix(in srgb, var(--border) 70%, transparent);
+  transform: translateY(-0.5px); pointer-events: none;
+  &.zero { border-top: 1px solid var(--text-muted); opacity: .55; border-top-style: solid; }
+}
+.pf-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.pf-line { stroke-width: 2.25px; stroke-linejoin: round; stroke-linecap: round;
+  &.pos { stroke: var(--positive); } &.neg { stroke: var(--negative); } }
+// today / theta curve — smooth, dashed, accent-tinted
+.pf-today {
+  stroke: var(--accent); stroke-width: 1.9px; stroke-dasharray: 4 3.2;
+  stroke-linejoin: round; stroke-linecap: round; opacity: .92;
+}
+
+.pf-be {
+  position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed color-mix(in srgb, var(--text-muted) 60%, transparent);
+  transform: translateX(-0.5px); pointer-events: none;
+  .pf-be-lbl {
+    position: absolute; top: 3px; left: 50%; transform: translateX(-50%);
+    font-size: 8.5px; font-weight: 800; letter-spacing: .2px; color: var(--text-secondary);
+    background: color-mix(in srgb, var(--bg-card) 88%, transparent); padding: 0 3px; border-radius: 3px; white-space: nowrap;
+  }
+}
+.pf-spot {
+  position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px solid var(--accent);
+  transform: translateX(-0.75px); pointer-events: none; opacity: .9;
+  // pinned near the TOP, just below the BE labels (the bottom now belongs to the
+  // in-chart slider dock).
+  .pf-spot-lbl {
+    position: absolute; top: 21px; left: 50%; transform: translateX(-50%);
+    font-size: 8.5px; font-weight: 800; color: #fff; background: var(--accent);
+    padding: 1px 5px; border-radius: 999px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.18);
+  }
+  // keep the pill on-canvas when the spot sits at either edge (common when zoomed)
+  &.left .pf-spot-lbl { left: 0; transform: none; }
+  &.right .pf-spot-lbl { left: auto; right: 0; transform: none; }
+}
+.pf-curdot {
+  position: absolute; width: 13px; height: 13px; border-radius: 50%; transform: translate(-50%, -50%);
+  border: 2.5px solid var(--bg-card); pointer-events: none; z-index: 5;
+  box-shadow: 0 0 0 1.5px currentColor, 0 1px 6px rgba(0,0,0,.25);
+  &.pos { background: var(--positive); color: var(--positive); }
+  &.neg { background: var(--negative); color: var(--negative); }
+  // soft pulse ring so "you are here" catches the eye
+  &::before { content: ''; position: absolute; inset: -4px; border-radius: 50%;
+    border: 1.5px solid currentColor; opacity: .5; animation: pf-pulse 1.9s ease-out infinite; }
+  // the "You · ₹P&L" label, flipped to the left when near the right edge
+  .pf-here {
+    position: absolute; left: 50%; bottom: calc(100% + 7px); transform: translateX(-50%);
+    color: #fff; border-radius: 999px; padding: 2px 8px; white-space: nowrap;
+    font-size: 9.5px; font-weight: 800; font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 8px rgba(0,0,0,.28);
+  }
+  &.pos .pf-here { background: var(--positive); }
+  &.neg .pf-here { background: var(--negative); }
+  &.right .pf-here { left: auto; right: 50%; transform: translateX(50%); }
+  // hard-left edge (e.g. spot at the left after zooming) → anchor from the dot
+  &.left .pf-here { left: 0; transform: none; }
+}
+@keyframes pf-pulse { 0% { transform: scale(1); opacity: .5; } 100% { transform: scale(1.9); opacity: 0; } }
+.pf-mark {
+  position: absolute; width: 6px; height: 6px; border-radius: 50%; transform: translate(-50%, -50%);
+  pointer-events: none; z-index: 2; border: 1.5px solid var(--bg-card);
+  &.win  { background: var(--positive); }
+  &.lose { background: var(--negative); }
+}
+.pf-cross { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid color-mix(in srgb, var(--text-primary) 40%, transparent);
+  transform: translateX(-0.5px); pointer-events: none; z-index: 6; }
+// Tooltip sits ABOVE every marker (z 30) and pins to the top of the plot, so the
+// "You are here" pill / "Now" chip can never hide the hovered price + P&L.
+.pf-tip {
+  position: absolute; top: 6px; transform: translateX(8px); z-index: 30; pointer-events: none;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 5px 9px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.20); white-space: nowrap;
+  &.right { transform: translateX(-100%) translateX(-8px); }
+  .pft-price { font-size: 11px; font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .pft-pnl { font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
+    span { font-size: 9px; font-weight: 600; color: var(--text-muted); margin-left: 3px; }
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); }
+    &.proj { font-size: 10px; opacity: .9; span { color: var(--accent); } } }
+}
+// While hovering, fade the persistent pills so the tooltip reads clean.
+.pf-canvas.hovering {
+  .pf-here, .pf-spot-lbl, .pf-scrub-tag { opacity: .22; transition: opacity .12s; }
+}
+.pf-xaxis { position: relative; height: 16px; margin-top: 3px; }
+.pf-xtick {
+  position: absolute; top: 0; transform: translateX(-50%); font-size: 9px; font-weight: 700;
+  color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+  &.spot { color: var(--accent); font-weight: 800; }
+}
+
+// shared price axis directly under the plot (gutter + labels aligned)
+.pf-axisrow { display: grid; grid-template-columns: 42px 1fr; gap: 0; margin-top: 4px; }
+.pf-axisgut { }
+
+// ── day slider — scrub days forward and watch the P&L (theta) ─────────────────
+.pf-days {
+  margin-top: 12px; padding: 11px 13px; border-radius: 12px;
+  background: var(--bg-hover); border: 1px solid var(--border);
+}
+.pfday-top {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;
+  .pfday-lbl { font-size: 12.5px; font-weight: 800; color: var(--text-primary); letter-spacing: -.2px; }
+  .pfday-pnl { font-size: 11px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums;
+    b { font-size: 13px; font-weight: 800; margin-left: 2px; &.pos { color: var(--positive); } &.neg { color: var(--negative); } } }
+}
+.pfday-slider {
+  --pct: 0%;
+  -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 999px; cursor: pointer;
+  background: linear-gradient(90deg, var(--accent) var(--pct), color-mix(in srgb, var(--border) 85%, transparent) var(--pct));
+  outline: none;
+  &::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+    background: var(--accent); border: 3px solid var(--bg-card); box-shadow: 0 2px 8px rgba(56,126,209,.45); cursor: grab; }
+  &::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--accent);
+    border: 3px solid var(--bg-card); box-shadow: 0 2px 8px rgba(56,126,209,.45); cursor: grab; }
+}
+.pfday-scale {
+  display: flex; justify-content: space-between; align-items: center; margin-top: 6px;
+  span { font-size: 9.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; }
+}
+
+// ── chart toolbar: fullscreen toggle + the "All ▾" picker, right of the title ──
+.pf-toolbar { display: flex; align-items: center; gap: 8px; flex: none; }
+.pf-fs-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 30px;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-secondary);
+  border-radius: 9px; cursor: pointer; transition: .13s; flex: none;
+  &:hover { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg-card)); }
+}
+
+// ── on-canvas zoom controls (top-right); wheel & pinch also zoom ──────────────
+.pf-zoom {
+  position: absolute; top: 8px; right: 8px; z-index: 8; display: flex; flex-direction: column; gap: 5px;
+}
+.pfz-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border: 1px solid var(--border); border-radius: 8px; cursor: pointer; color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-card) 86%, transparent); backdrop-filter: blur(4px);
+  box-shadow: 0 1px 5px rgba(0,0,0,.10); transition: .12s;
+  &:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  &:disabled { opacity: .4; cursor: default; }
+  &.reset { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+}
+
+// ── price-scrub marker (driven by the strike slider) ─────────────────────────
+.pf-scrub {
+  position: absolute; top: 0; bottom: 0; width: 0; z-index: 4;
+  border-left: 1.5px dashed color-mix(in srgb, var(--text-primary) 55%, transparent);
+  transform: translateX(-0.75px); pointer-events: none;
+}
+.pf-scrubdot {
+  position: absolute; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%, -50%);
+  border: 2.5px solid var(--bg-card); pointer-events: none; z-index: 7;
+  box-shadow: 0 0 0 1.5px currentColor, 0 1px 5px rgba(0,0,0,.25);
+  &.pos { background: var(--positive); color: var(--positive); }
+  &.neg { background: var(--negative); color: var(--negative); }
+  .pf-scrub-tag {
+    position: absolute; left: 50%; top: calc(100% + 7px); transform: translateX(-50%);
+    color: #fff; border-radius: 999px; padding: 2px 8px; white-space: nowrap;
+    font-size: 9.5px; font-weight: 800; font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 8px rgba(0,0,0,.28); background: color-mix(in srgb, var(--text-primary) 82%, #000);
+  }
+  &.right .pf-scrub-tag { left: auto; right: 50%; transform: translateX(50%); }
+  &.left .pf-scrub-tag { left: 0; transform: none; }
+}
+
+// ── price slider — a violet accent to distinguish it from the blue day slider ──
+.pf-pricebar { margin-top: 10px; }
+.pfday-slider.price {
+  background: linear-gradient(90deg, var(--accent) var(--pct), color-mix(in srgb, var(--border) 85%, transparent) var(--pct));
+  &::-webkit-slider-thumb { background: var(--accent); box-shadow: 0 2px 8px rgba(56,126,209,.45); }
+  &::-moz-range-thumb { background: var(--accent); box-shadow: 0 2px 8px rgba(56,126,209,.45); }
+}
+.pf-scrub-reset {
+  margin-left: 7px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent);
+  border-radius: 999px; padding: 1px 8px; font-size: 9.5px; font-weight: 800; cursor: pointer; letter-spacing: .2px;
+  &:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+}
+.pfsc-live { color: var(--accent) !important; font-size: 9px !important; }
+
+// ── FULLSCREEN — full-width hero, then 3 columns: positions | chart | chain ───
+.payoff.is-full {
+  position: fixed; inset: 0; z-index: 200; margin: 0; border-bottom: none; border-radius: 0;
+  background: var(--bg-primary); padding: 12px clamp(12px, 2.5vw, 32px) 16px;
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: fno-fade .16s ease;
+  .pf-top, .pf-kbar, .pf-meta { flex: none; }
+  // full-width KPI bar; a touch more breathing room since it's the only header now
+  .pf-kbar { margin-bottom: 8px; }
+  .pf-kb { padding: 8px 20px; }
+  .pf-kb .pf-kb-v.big { font-size: 25px; }
+  .pf-meta { margin-bottom: 8px; }
+
+  .pf-stage { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: row; gap: 14px; }
+  .pf-poscol  { flex: 0 0 clamp(230px, 19vw, 300px); }
+  .pf-midcol  { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+  .pf-chaincol{ flex: 0 0 clamp(300px, 24vw, 380px); }
+
+  // chart fills ALL the height above the controls — no wasted gap in the middle
+  .pf-plotwrap { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .pf-chart { flex: 1 1 auto; min-height: 0; grid-template-rows: 1fr; }
+  .pf-plot { height: 100%; min-height: 0; }
+  // higher-specificity (.pf-midcol …) so it beats the inline .rc-open aspect-ratio
+  .pf-midcol .pf-canvas { width: 100%; height: 100%; aspect-ratio: auto; max-height: none; min-height: 0; }
+  .pf-controls { flex: none; margin-top: 10px; }
+}
+@media (max-width: 1040px) {
+  .payoff.is-full { overflow-y: auto; }
+  .payoff.is-full .pf-stage { flex-direction: column; }
+  .payoff.is-full .pf-poscol, .payoff.is-full .pf-chaincol { flex: none; max-height: 40vh; }
+  .payoff.is-full .pf-canvas { max-height: 52vh; }
+}
+
+// ── left column: the positions you own (reuses .pfr-* rows) ───────────────────
+.pf-poscol {
+  display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); overflow: hidden;
+}
+
+// ── controls panel (fullscreen) — fills the space under the landscape chart ──
+.pf-controls {
+  display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px;
+  background: var(--bg-card); border: 1px solid var(--border); overflow-y: auto;
+}
+.pfc-btns { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pfc-btn {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+  background: var(--bg-hover); color: var(--text-secondary); border-radius: 9px; padding: 7px 13px;
+  font-size: 12px; font-weight: 800; cursor: pointer; transition: .13s; white-space: nowrap;
+  &:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  &:disabled { opacity: .45; cursor: default; }
+  &.on { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-hover)); }
+  &.off { border-color: color-mix(in srgb, var(--text-muted) 40%, var(--border)); }
+  .pfc-i { font-size: 14px; line-height: 1; display: inline-block; &.spin { animation: pfc-spin .8s linear infinite; } }
+}
+@keyframes pfc-spin { to { transform: rotate(360deg); } }
+// the sliders in the panel breathe more than the cramped in-chart overlay
+.pf-controls .pfc-sliders { display: flex; flex-direction: column; gap: 7px; }
+.pf-controls .pfk-row { height: 24px; gap: 10px;
+  .pfk-lbl { min-width: 66px; font-size: 12px; }
+  .pfk-mid { min-width: 54px; font-size: 11px; }
+  .pfk-val { min-width: 74px; font-size: 12.5px; }
+  &.today { padding-bottom: 8px; margin-bottom: 3px; border-bottom: 1px dashed var(--border); }
+  .pfk-slider { height: 5px; }
+}
+
+// ── stage / columns (block in the inline view; flex row in fullscreen) ───────
+.pf-stage { display: block; }
+.pf-left, .pf-plotwrap { min-width: 0; }
+
+// ── in-chart control dock (Today theta + Price scrub) — frosted, minimal ─────
+.pf-dock {
+  position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 9; max-width: 560px;
+  display: flex; flex-direction: column; gap: 2px; padding: 5px 9px; border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-card) 78%, transparent); backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  box-shadow: 0 3px 14px rgba(15,23,42,.10); cursor: default;
+}
+.pfk-row {
+  display: flex; align-items: center; gap: 8px; height: 19px;
+  &.dim { opacity: .72; .pfk-slider { --c: color-mix(in srgb, var(--accent) 55%, var(--text-muted)); } }
+  .pfk-ic { font-size: 11px; flex: none; line-height: 1; opacity: .85; }
+  .pfk-lbl { flex: 0 0 auto; min-width: 42px; font-size: 10.5px; font-weight: 800; color: var(--text-primary);
+    font-variant-numeric: tabular-nums; letter-spacing: -.2px; white-space: nowrap;
+    &.on { color: var(--accent); } &[title] { cursor: pointer; } }
+  .pfk-mid { flex: 0 0 auto; min-width: 44px; text-align: right; font-size: 10px; font-weight: 800;
+    color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pfk-end { flex: none; font-size: 8.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+  .pfk-val { flex: 0 0 auto; min-width: 56px; text-align: right; font-size: 11px; font-weight: 800;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); } &.mut { color: var(--text-muted); font-weight: 700; font-size: 9.5px; } }
+  .pfk-reset { flex: none; border: none; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
+    width: 17px; height: 17px; border-radius: 50%; cursor: pointer; font-size: 10px; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center; &:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); } }
+}
+.pfk-slider {
+  --pct: 0%; -webkit-appearance: none; appearance: none; flex: 1 1 auto; min-width: 0;
+  height: 4px; border-radius: 999px; cursor: pointer; outline: none;
+  --c: var(--accent);
+  background: linear-gradient(90deg, var(--c) var(--pct), color-mix(in srgb, var(--border) 78%, transparent) var(--pct));
+  &.price { --c: var(--accent); }
+  &::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--c); border: 2.5px solid var(--bg-card); box-shadow: 0 1px 5px rgba(0,0,0,.28); cursor: grab; }
+  &::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--c);
+    border: 2.5px solid var(--bg-card); box-shadow: 0 1px 5px rgba(0,0,0,.28); cursor: grab; }
+}
+
+// ── right column (fullscreen): what-if builder on top, instruments below ─────
+.pf-side { min-height: 0; }
+
+// ── instruments panel — all open positions (grouped by underlying) + what-if ─
+.pf-rail {
+  flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); overflow: hidden;
+}
+.pfr-head {
+  display: flex; align-items: center; justify-content: space-between; flex: none;
+  padding: 10px 13px; border-bottom: 1px solid var(--border);
+  font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--text-secondary);
+  .pfr-n { font-size: 9.5px; font-weight: 800; color: var(--text-muted); background: var(--bg-hover);
+    border-radius: 999px; padding: 1px 8px; text-transform: none; letter-spacing: 0; }
+}
+.pfr-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 5px; }
+// group header (per underlying, or the what-if bucket) — a clear sticky bar
+.pfr-grp {
+  display: flex; align-items: center; gap: 7px; margin: 6px 0 3px; padding: 5px 8px;
+  border-radius: 7px; background: var(--bg-hover); position: sticky; top: 0; z-index: 1;
+  &:first-child { margin-top: 0; }
+  .pfr-grp-nm { font-size: 11.5px; font-weight: 900; color: var(--text-primary); letter-spacing: .1px; cursor: pointer; white-space: nowrap;
+    &:hover { color: var(--accent); } }
+  .pfr-grp-spot { flex: none; font-size: 9.5px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums;
+    background: color-mix(in srgb, var(--accent) 14%, transparent); border-radius: 999px; padding: 1px 7px; }
+  .pfr-grp-tag { flex: none; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: #fff;
+    background: var(--accent); border-radius: 999px; padding: 1px 7px; margin-left: auto; }
+  .pfr-grp-x { margin-left: auto; border: none; background: none; cursor: pointer; color: var(--text-muted);
+    font-size: 10px; font-weight: 800; text-decoration: underline; &:hover { color: var(--negative); } }
+  // prominent "Clear all" pill for the What-if group
+  .pfr-grp-clear { margin-left: auto; border: 1px solid color-mix(in srgb, var(--negative) 40%, var(--border));
+    background: var(--bg-card); color: var(--negative); border-radius: 999px; padding: 2px 11px;
+    font-size: 10px; font-weight: 800; cursor: pointer; transition: .12s; white-space: nowrap;
+    &:hover { background: var(--negative); color: #fff; } }
+  &.wif { background: color-mix(in srgb, var(--accent) 12%, transparent);
+    .pfr-grp-nm { color: var(--accent); cursor: default; } }
+  &.on { background: color-mix(in srgb, var(--accent) 12%, transparent);
+    .pfr-grp-nm { color: var(--accent); } }
+}
+.pfr-leg {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 9px; border-radius: 8px; transition: background .12s;
+  &:hover { background: var(--bg-hover); }
+  &.off { opacity: .6; }
+  &.wif { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .pfr-l { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .pfr-nm { font-size: 12.5px; font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pfr-sub { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; color: var(--text-muted);
+    font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pfr-r { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
+  .pfr-ltp { font-size: 12.5px; font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .pfr-mv { font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap;
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); } }
+  .pfr-x { border: none; background: var(--bg-hover); cursor: pointer; width: 18px; height: 18px; border-radius: 50%;
+    color: var(--text-muted); font-size: 10px; font-weight: 800; &:hover { background: var(--negative); color: #fff; }
+    &.big { width: 24px; height: 24px; font-size: 12px; align-self: center; flex: none;
+      &:hover { background: var(--negative); color: #fff; } } }
+  // what-if legs get a soft accent rail so they read as hypothetical, not real
+  &.wif { border-left: 2px solid var(--accent); padding-left: 7px; }
+}
+.side-tag.sm { font-size: 8.5px; padding: 1px 5px; border-radius: 4px; letter-spacing: .3px; }
+.pfr-foot {
+  flex: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 13px; border-top: 1px solid var(--border); background: var(--bg-hover);
+  span { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); }
+  b { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums;
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); } }
+}
+
+// ── ghost "before" line (real book, sans what-if legs) ───────────────────────
+.pf-base {
+  stroke: var(--text-muted); stroke-width: 1.6px; stroke-dasharray: 2 3.5;
+  stroke-linejoin: round; stroke-linecap: round; opacity: .5;
+}
+.lg-swatch.base { border-top: 2px dashed var(--text-muted) !important; }
+
+// ── "what-if active" chip in the normal (non-fullscreen) toolbar ─────────────
+.pf-wchip {
+  display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px; flex: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-card)); color: var(--accent);
+  font-size: 11.5px; font-weight: 800; cursor: pointer; white-space: nowrap; transition: .13s;
+  &:hover { background: color-mix(in srgb, var(--accent) 20%, var(--bg-card)); }
+}
+
+// ── What-if position builder — compact VERTICAL form in the right column ──────
+.pf-build {
+  flex: none; padding: 11px 12px; border-radius: 12px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  box-shadow: 0 1px 8px rgba(26, 28, 46, 0.04);
+}
+.pfb-head {
+  font-size: 12px; font-weight: 900; color: var(--text-primary); letter-spacing: -.2px; margin-bottom: 9px;
+}
+// selected option (real price from the chain) + browse button
+.pfb-picked {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--bg-hover); font-variant-numeric: tabular-nums;
+  .pfb-pk-main { flex: 1; min-width: 0; font-size: 12px; font-weight: 700; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    b { font-weight: 900; } }
+  .pfb-pk-px { flex: none; font-size: 12.5px; font-weight: 800; color: var(--text-primary); }
+  .pfb-pk-x { flex: none; border: none; background: var(--bg-card); cursor: pointer; width: 20px; height: 20px; border-radius: 50%;
+    color: var(--text-muted); font-size: 10px; font-weight: 800; &:hover { background: var(--negative); color: #fff; } }
+  &.buy  { border-color: color-mix(in srgb, var(--positive) 40%, var(--border)); .pfb-pk-main b { color: var(--positive); } }
+  &.sell { border-color: color-mix(in srgb, var(--negative) 40%, var(--border)); .pfb-pk-main b { color: var(--negative); } }
+}
+.pfb-browse {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+  border: 1px dashed color-mix(in srgb, var(--accent) 50%, var(--border)); background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--accent); border-radius: 9px; padding: 10px; font-size: 12.5px; font-weight: 800; cursor: pointer; transition: .13s;
+  &:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  &:disabled { opacity: .45; cursor: default; }
+}
+.pfb-form { display: flex; flex-direction: column; gap: 9px; }
+// segmented controls (type + buy/sell) — full width, split evenly
+.pfb-seg {
+  display: flex; background: var(--bg-hover); border: 1px solid var(--border);
+  border-radius: 9px; padding: 2px; gap: 2px;
+  button {
+    flex: 1; border: none; background: none; cursor: pointer; border-radius: 7px; padding: 6px 4px;
+    font-size: 11.5px; font-weight: 800; color: var(--text-secondary); transition: .12s; white-space: nowrap;
+    &:hover { color: var(--text-primary); }
+    &.on { background: var(--bg-card); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  }
+  &.side button.buy.on  { background: var(--positive); color: #fff; }
+  &.side button.sell.on { background: var(--negative); color: #fff; }
+}
+// the strike/lots/premium fields sit in a responsive grid
+.pfb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+.pfb-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.pfb-lbl {
+  font-size: 8.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted);
+  em { font-style: normal; color: var(--accent); text-transform: none; letter-spacing: 0; font-weight: 700; }
+}
+.pfb-step {
+  display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; background: var(--bg-card);
+  button {
+    border: none; background: var(--bg-hover); cursor: pointer; width: 26px; flex: none; color: var(--text-secondary);
+    font-size: 15px; font-weight: 800; line-height: 1; transition: .12s;
+    &:hover { background: color-mix(in srgb, var(--accent) 16%, var(--bg-hover)); color: var(--accent); }
+  }
+  input {
+    flex: 1; width: 100%; min-width: 0; border: none; background: none; text-align: center; color: var(--text-primary);
+    font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; padding: 6px 2px;
+    -moz-appearance: textfield; &:focus { outline: none; }
+    &::-webkit-outer-spin-button, &::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  }
+}
+.pfb-field.prem .pfb-preminp {
+  display: flex; align-items: center; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-card); overflow: hidden;
+  input {
+    flex: 1; width: 100%; min-width: 0; border: none; background: none; text-align: center; color: var(--text-primary);
+    font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; padding: 6px 2px;
+    -moz-appearance: textfield; &:focus { outline: none; }
+    &::-webkit-outer-spin-button, &::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  }
+  .pfb-reest { border: none; background: var(--bg-hover); cursor: pointer; width: 24px; flex: none; align-self: stretch;
+    color: var(--accent); font-size: 12px; font-weight: 800; &:hover { background: color-mix(in srgb, var(--accent) 16%, var(--bg-hover)); } }
+}
+// preview + add on one row
+.pfb-actions { display: flex; align-items: center; gap: 10px; }
+.pfb-preview {
+  flex: 1; min-width: 0; font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums;
+  padding: 6px 10px; border-radius: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  &.buy  { color: var(--positive); background: color-mix(in srgb, var(--positive) 12%, transparent); }
+  &.sell { color: var(--negative); background: color-mix(in srgb, var(--negative) 12%, transparent); }
+}
+.pfb-add {
+  flex: none; border: none; cursor: pointer; border-radius: 9px; padding: 10px 15px;
+  background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 800; letter-spacing: -.1px;
+  box-shadow: 0 2px 8px rgba(56,126,209,.4); transition: .13s; white-space: nowrap;
+  &:hover:not(:disabled) { background: #2f6cb8; }
+  &:disabled { opacity: .45; cursor: default; box-shadow: none; }
+}
+
+// ── options-chain drawer (fullscreen) — pick a real option to add ────────────
+// ── right column: the permanent options chain ────────────────────────────────
+.pf-chaincol {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 11px 12px 0; overflow: hidden;
+}
+.pfc2-head {
+  display: flex; align-items: baseline; justify-content: space-between; flex: none; margin-bottom: 9px;
+  .pfc2-title { font-size: 13px; font-weight: 900; color: var(--text-primary); letter-spacing: -.3px; text-transform: uppercase; }
+  .pfc2-spot { font-size: 11px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+}
+.pfc2-unders {
+  display: flex; flex-wrap: wrap; gap: 5px; flex: none; margin-bottom: 8px;
+  .pfc2-u { border: 1px solid var(--border); background: var(--bg-hover); color: var(--text-secondary);
+    border-radius: 999px; padding: 4px 11px; font-size: 11.5px; font-weight: 800; cursor: pointer; transition: .12s; white-space: nowrap;
+    &:hover { color: var(--text-primary); }
+    &.on { background: var(--accent); color: #fff; border-color: var(--accent); } }
+}
+.pfc2-sub {
+  display: flex; align-items: center; gap: 8px; flex: none; margin-bottom: 8px;
+  .pfc2-exp { flex: 1; min-width: 0; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); border-radius: 8px;
+    padding: 6px 9px; font-size: 12px; font-weight: 700; cursor: pointer; &:focus { outline: none; border-color: var(--accent); }
+    &.static { cursor: default; } }
+  .pfc2-fut { flex: none; border: 1px solid var(--border); background: var(--bg-hover); color: var(--text-secondary);
+    border-radius: 8px; padding: 6px 11px; font-size: 12px; font-weight: 800; cursor: pointer; transition: .12s; white-space: nowrap;
+    &:hover { border-color: var(--accent); color: var(--accent); } }
+}
+// add-mode: Buy/Sell + Lots (applied when you tap a strike)
+.pfc2-mode {
+  display: flex; align-items: center; gap: 9px; flex: none; margin-bottom: 8px;
+  .pfb-seg.sm { flex: 1; button { padding: 5px 4px; font-size: 11.5px; } }
+  .pfc2-lots { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .4px; color: var(--text-muted);
+    button { border: 1px solid var(--border); background: var(--bg-hover); cursor: pointer; width: 24px; height: 24px; border-radius: 7px;
+      color: var(--text-secondary); font-size: 14px; font-weight: 800; &:hover { border-color: var(--accent); color: var(--accent); } }
+    b { min-width: 16px; text-align: center; font-size: 13px; color: var(--text-primary); font-variant-numeric: tabular-nums; } }
+}
+// filters row
+.pfc2-filters {
+  display: flex; align-items: center; gap: 7px; flex: none; margin-bottom: 8px;
+  .pfc2-f { border: 1px solid var(--border); background: var(--bg-hover); color: var(--text-secondary); border-radius: 8px;
+    padding: 5px 10px; font-size: 11px; font-weight: 800; cursor: pointer; white-space: nowrap; transition: .12s;
+    &:hover { border-color: var(--accent); color: var(--accent); } }
+  .pfc2-seg { display: inline-flex; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; margin-left: auto;
+    button { border: none; background: none; cursor: pointer; border-radius: 6px; padding: 4px 9px; font-size: 11px; font-weight: 800; color: var(--text-secondary); transition: .12s;
+      &.on { background: var(--bg-card); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,.12); } } }
+}
+// added what-if chips (bottom of the chain column)
+.pfc2-wif {
+  flex: none; border-top: 1px solid var(--border); margin-top: 4px; padding: 8px 0 10px;
+  .pfc2-wif-hd { display: flex; align-items: center; justify-content: space-between; font-size: 10px; font-weight: 900;
+    text-transform: uppercase; letter-spacing: .4px; color: var(--accent); margin-bottom: 6px;
+    button { border: none; background: none; cursor: pointer; color: var(--text-muted); font-size: 10px; font-weight: 800; text-decoration: underline; &:hover { color: var(--negative); } } }
+  .pfc2-wif-legs { display: flex; flex-wrap: wrap; gap: 5px; max-height: 84px; overflow-y: auto; }
+  .pfc2-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums;
+    padding: 2px 4px 2px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-hover); white-space: nowrap;
+    &.buy { border-color: color-mix(in srgb, var(--positive) 45%, var(--border)); color: var(--positive); }
+    &.sell { border-color: color-mix(in srgb, var(--negative) 45%, var(--border)); color: var(--negative); }
+    button { border: none; background: var(--bg-card); cursor: pointer; width: 15px; height: 15px; border-radius: 50%; color: var(--text-muted);
+      font-size: 9px; font-weight: 800; &:hover { background: var(--negative); color: #fff; } } }
+}
+.pfc2-msg { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 12.5px; font-weight: 700;
+  &.err { color: var(--negative); text-align: center; padding: 0 20px; line-height: 1.5; } }
+.pfc2-tblhd {
+  display: grid; grid-template-columns: 1fr 72px 1fr; flex: none;
+  font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted);
+  padding: 0 4px 5px; border-bottom: 1px solid var(--border);
+  .c { color: var(--positive); } .p { text-align: right; color: var(--negative); } .k { text-align: center; }
+  &[data-t='C'] { grid-template-columns: 1fr 72px; }
+  &[data-t='P'] { grid-template-columns: 72px 1fr; }
+}
+.pfc2-rows { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 3px 0; }
+.pfc2-row {
+  display: grid; grid-template-columns: 1fr 72px 1fr; align-items: center; gap: 4px; padding: 2px 0;
+  &[data-t='C'] { grid-template-columns: 1fr 72px; }
+  &[data-t='P'] { grid-template-columns: 72px 1fr; }
+  &.atm { background: color-mix(in srgb, var(--accent) 9%, transparent); border-radius: 8px; }
+  .pfc2-k { text-align: center; font-size: 12px; font-weight: 800; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .pfc2-cell {
+    border: 1px solid transparent; background: none; cursor: pointer; border-radius: 7px; padding: 7px 8px;
+    font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; transition: .1s;
+    &.call { text-align: left; color: var(--text-primary); &:hover { background: color-mix(in srgb, var(--positive) 14%, transparent); border-color: var(--positive); color: var(--positive); } }
+    &.put  { text-align: right; color: var(--text-primary); &:hover { background: color-mix(in srgb, var(--negative) 14%, transparent); border-color: var(--negative); color: var(--negative); } }
+  }
+}
+.pfc2-row.atm .pfc2-k::after { content: ' ATM'; font-size: 8px; color: var(--accent); font-weight: 800; }
+.pfc2-note { flex: none; padding: 8px 2px 12px; font-size: 10px; font-weight: 600; color: var(--text-muted); line-height: 1.5; }
+// added-feedback bar (the full editable list lives in the Positions column)
+.pfc2-added {
+  flex: none; display: flex; align-items: center; gap: 8px; margin: 4px 0 11px;
+  padding: 8px 10px; border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  .pfc2-added-n { flex: 1; min-width: 0; font-size: 11px; font-weight: 800; color: var(--accent); line-height: 1.3;
+    em { font-style: normal; font-weight: 600; color: var(--text-muted); } }
+  .pfc2-clear { flex: none; border: 1px solid color-mix(in srgb, var(--negative) 45%, var(--border));
+    background: var(--bg-card); color: var(--negative); border-radius: 8px; padding: 6px 12px;
+    font-size: 11.5px; font-weight: 800; cursor: pointer; white-space: nowrap; transition: .12s;
+    &:hover { background: var(--negative); color: #fff; } }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Exit Radar (right-top card)
+// ═══════════════════════════════════════════════════════════════════════════
+.rc-exit { flex: 0 0 auto; min-height: 0; overflow: visible;
+  .rc-head { margin-bottom: 10px; align-items: center; }
+}
+.exit-under {
+  flex: none; font-size: 10.5px; font-weight: 800; letter-spacing: .3px; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 999px; padding: 3px 10px;
+}
+.exit-body { display: flex; flex-direction: column; gap: 11px; }
+
+.exit-hero {
+  display: flex; flex-direction: column; gap: 8px; padding: 11px 13px; border-radius: 12px;
+  background: var(--bg-hover); border: 1px solid var(--border);
+}
+.eh-max { display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  .eh-l { font-size: 10.5px; font-weight: 700; color: var(--text-muted); }
+  .eh-v { font-size: 20px; font-weight: 800; letter-spacing: -.6px; color: var(--positive); font-variant-numeric: tabular-nums; }
+}
+.eh-gauge { display: flex; flex-direction: column; gap: 5px; }
+.ehg-track { position: relative; height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.ehg-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--positive) 55%, #fff), var(--positive));
+  transition: width .5s cubic-bezier(.4,0,.2,1);
+  &.over { background: linear-gradient(90deg, var(--positive), color-mix(in srgb, var(--positive) 70%, #0a0)); } }
+.ehg-track { overflow: visible; }
+.ehg-target { position: absolute; top: -2px; bottom: -2px; width: 2px; border-radius: 2px;
+  background: var(--text-secondary); opacity: .5; transform: translateX(-1px); }
+.ehg-cap { font-size: 10.5px; color: var(--text-muted); font-weight: 700;
+  b { font-variant-numeric: tabular-nums; color: var(--text-secondary);
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); } } }
+
+.exit-advice {
+  border-radius: 11px; padding: 10px 12px; border: 1px solid var(--border);
+  .ea-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 800; color: var(--text-primary); margin-bottom: 4px; }
+  .ea-ico { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px;
+    border-radius: 50%; font-size: 11px; font-weight: 900; color: #fff; flex: none; }
+  .ea-body { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--text-secondary); }
+  &.good { background: color-mix(in srgb, var(--positive) 8%, transparent); border-color: color-mix(in srgb, var(--positive) 30%, var(--border));
+    .ea-ico { background: var(--positive); } }
+  &.warn { background: color-mix(in srgb, var(--negative) 8%, transparent); border-color: color-mix(in srgb, var(--negative) 30%, var(--border));
+    .ea-ico { background: var(--negative); } }
+  &.info { background: color-mix(in srgb, var(--accent) 7%, transparent); border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
+    .ea-ico { background: var(--accent); } }
+}
+
+.exit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.eg-cell {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 9px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  &.wide { grid-column: span 2; }
+  .egc-l { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); }
+  .egc-v { font-size: 17px; font-weight: 800; letter-spacing: -.3px; color: var(--text-primary); font-variant-numeric: tabular-nums;
+    &.sm { font-size: 12.5px; letter-spacing: 0; }
+    &.warn { color: var(--negative); }
+    &.pos { color: var(--positive); } &.neg { color: var(--negative); } }
+}
+.exit-empty { padding: 22px 8px; }
+
+@media (max-width: 1080px) {
+  .rc-exit { overflow: visible; }
+}

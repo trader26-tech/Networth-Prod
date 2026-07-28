@@ -1,0 +1,263 @@
+<div class="land-head">
+  <div>
+    <h1>Other Income</h1>
+    <p class="sub">Everything that isn't salary — dividends, interest, rent, bonuses, gifts, capital gains. Tick a <b>reminder</b> to log a recurring one without retyping, or add a receipt directly. Foreign income (e.g. KWD) converts to ₹ live.</p>
+    <div class="month-pick">
+      <button class="mp-nav" (click)="shiftMonth(-1)" title="Previous month">‹</button>
+      <span class="mp-label">{{ monthLabel() }}</span>
+      <button class="mp-nav" (click)="shiftMonth(1)" [disabled]="isCurrentMonth()" title="Next month">›</button>
+      @if (!isCurrentMonth()) { <button class="mp-today" (click)="goToday()" title="Jump to this month">Today</button> }
+    </div>
+  </div>
+  <div class="actions">
+    <div class="rm-wrap">
+      <button class="btn ghost rm-btn" [class.on]="showReminders()" (click)="showReminders.set(!showReminders())" title="Recurring reminders">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        Reminders
+        @if (remindersPending() > 0) { <span class="rm-badge">{{ remindersPending() }}</span> }
+      </button>
+      @if (showReminders()) {
+        <div class="rm-backdrop" (click)="showReminders.set(false)"></div>
+        <div class="rm-pop">
+          <div class="rmp-head"><span class="rmp-title">Reminders · {{ monthLabel() }}</span><span class="muted">tick to log</span></div>
+          @if (templates().length) {
+            <div class="rm-list">
+              @for (t of templates(); track t.id) {
+                <div class="rm-row" [class.got]="t.added">
+                  <button class="rm-tick" (click)="toggleReminderItem(t)" [title]="t.added ? 'Remove from this month' : 'Add to this month'"><span class="ck">{{ t.added ? '✓' : '' }}</span></button>
+                  <span class="rm-info"><b>{{ t.source }}</b><small>{{ t.category || '—' }} · {{ money(t.amount, t.currency) }} {{ freqLabel(t.frequency).toLowerCase() }}</small></span>
+                  <span class="rm-amt">{{ inr(t.monthly_inr) }}</span>
+                  <button class="rm-del" (click)="removeTemplate(t)" title="Delete reminder">✕</button>
+                </div>
+              }
+            </div>
+            <p class="rm-hint">Ticking logs it into {{ monthLabel() }}. Untick to remove that entry.</p>
+          } @else { <p class="rm-empty">No reminders yet — add income and check “save as recurring”.</p> }
+        </div>
+      }
+    </div>
+    <button class="btn primary" (click)="openAdd()">＋ Log income</button>
+  </div>
+</div>
+
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head"><span class="ni">⚙︎</span>
+      <div><strong>One-time setup — run the migration</strong>
+        <p>Create the income table: paste the <b>SUPABASE.md → "Other income table"</b> SQL into the Supabase SQL editor, then retry.</p></div>
+    </div>
+    <div class="notice-actions"><button class="btn primary" (click)="loadMonth()">I've run it — retry</button></div>
+  </div>
+}
+
+@if (error()) { <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div> }
+@if (loading()) { <div class="state">Loading {{ monthLabel() }}…</div> }
+
+<!-- Hero -->
+@if (!loading() && !needsMigration() && hasData() && data(); as s) {
+  <div class="hero">
+    <div class="hero-main">
+      <span class="hero-label">Received · {{ monthLabel() }}</span>
+      <span class="hero-value">{{ inr(s.monthly_total) }}</span>
+      <span class="hero-exact">{{ s.count }} receipt{{ s.count === 1 ? '' : 's' }} logged</span>
+      <div class="hero-stats">
+        @if (s.has_foreign) { @for (c of s.currencies; track c) { @if (c !== 'INR') { <div class="hs fx"><span class="k">Rate · {{ c }}</span><span class="v sm">{{ inrFull(inrPer(c)) }}</span></div> } } }
+      </div>
+    </div>
+
+    @if (pieCats().length) {
+      <div class="hero-cats">
+        <div class="hc-head">
+          <div class="hc-left"><span class="hc-title">By category</span></div>
+          <div class="hc-right">
+            @if (people().length > 1) {
+              <select class="hc-user" [ngModel]="personFilter()" (ngModelChange)="personFilter.set($event)" title="Whose income">
+                <option value="">Everyone</option>
+                @for (p of people(); track p) { <option [value]="p">{{ p }}</option> }
+              </select>
+            }
+            @if (catFilter()) { <button class="hc-all" (click)="catFilter.set('')">✕ All</button> }
+          </div>
+        </div>
+        <div class="cat-donut-wrap" (mouseleave)="hoveredCat.set(null)">
+          <svg viewBox="0 0 120 120" class="cat-donut">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="#eef1f7" stroke-width="15"/>
+            @for (sg of catDonut().segs; track sg.category) {
+              <circle cx="60" cy="60" r="52" fill="none" [attr.stroke]="sg.color" stroke-width="15"
+                      [attr.stroke-dasharray]="sg.dash" [attr.stroke-dashoffset]="sg.offset"
+                      transform="rotate(-90 60 60)" stroke-linecap="butt" class="seg"
+                      [class.dim]="activeCat() && activeCat() !== sg.category"
+                      (mouseenter)="hoveredCat.set(sg.category)"
+                      (click)="catFilter.set(catFilter() === sg.category ? '' : sg.category)"></circle>
+            }
+            @if (activeSeg(); as h) {
+              <text x="60" y="52" text-anchor="middle" class="cd-amt">{{ inr(h.monthly_inr) }}</text>
+              <text x="60" y="67" text-anchor="middle" class="cd-lbl">{{ (h.pct * 100) | number:'1.0-0' }}%</text>
+            } @else {
+              <text x="60" y="52" text-anchor="middle" class="cd-amt">{{ inr(pieTotal()) }}</text>
+              <text x="60" y="67" text-anchor="middle" class="cd-lbl">{{ personFilter() ? 'received' : 'total' }}</text>
+            }
+          </svg>
+          <div class="cd-name" [style.color]="activeSeg()?.color || null">{{ activeSeg() ? activeSeg()!.category : (personFilter() ? personFilter() + "'s income" : '') }}</div>
+        </div>
+      </div>
+    }
+  </div>
+}
+
+<!-- Empty -->
+@if (!loading() && !needsMigration() && !hasData()) {
+  <div class="empty">
+    <div class="empty-card">
+      <div class="big">💰</div>
+      <h2>Nothing logged for {{ monthLabel() }}</h2>
+      <p>Log a dividend, interest payout, rent or bonus, or open <b>Reminders</b> and tick your recurring ones to log them here without retyping.</p>
+      <div class="empty-actions">
+        <button class="btn primary" (click)="openAdd()">＋ Log income</button>
+        <button class="btn ghost" (click)="showReminders.set(true)">Open reminders</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Filters + table -->
+@if (!loading() && hasData()) {
+  <div class="filters">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" placeholder="Search source, category, note…" [ngModel]="search()" (ngModelChange)="search.set($event)">
+      @if (search()) { <button class="clr" (click)="search.set('')">✕</button> }
+    </div>
+    <label class="fsel"><span>Category</span>
+      <select [ngModel]="catFilter()" (ngModelChange)="catFilter.set($event)">
+        <option value="">All</option>
+        @for (c of (data()?.by_category || []); track c.category) { <option [value]="c.category">{{ c.category }}</option> }
+      </select>
+    </label>
+    <label class="fsel"><span>Person</span>
+      <select [ngModel]="personFilter()" (ngModelChange)="personFilter.set($event)">
+        <option value="">All</option>
+        @for (p of people(); track p) { <option [value]="p">{{ p }}</option> }
+      </select>
+    </label>
+    <span class="count">{{ filtered().length }} of {{ items().length }}</span>
+    @if (hasFilters()) { <button class="clear-all" (click)="clearFilters()">Clear</button> }
+  </div>
+
+  <div class="table-wrap">
+    <table class="land-table">
+      <colgroup>
+        <col class="c-date"><col class="c-name"><col class="c-cat"><col class="c-owner"><col class="c-amt"><col class="c-mo"><col class="c-tags"><col class="c-act">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="has-tip" data-tip="When it was received.">Date</th>
+          <th>Source</th>
+          <th>Category</th>
+          <th>Person</th>
+          <th class="num">Amount</th>
+          <th class="num">₹</th>
+          <th class="has-tip tip-right" data-tip="Account it landed in, or from a reminder.">Tags</th>
+          <th class="act"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (it of filtered(); track it.id) {
+          <tr class="row" [class.open]="expandedId() === it.id" [class.lit]="activeCat() && activeCat() === (it.category || 'Uncategorised')"
+              (click)="toggle(it)" (mouseenter)="hoveredCat.set(it.category || 'Uncategorised')" (mouseleave)="hoveredCat.set(null)">
+            <td class="date" data-label="Date">{{ fmtDay(it.on_date) }}</td>
+            <td class="name" data-label="Source"><b>{{ it.source }}</b>@if (it.note) { <small>{{ it.note }}</small> }</td>
+            <td data-label="Category">
+              @if (it.category) { <span class="cat-tag" [style.color]="catColor(it.category)"><i [style.background-color]="catColor(it.category)"></i>{{ it.category }}</span> }
+              @else { <span class="muted">—</span> }
+            </td>
+            <td data-label="Person">{{ it.owner || '—' }}</td>
+            <td class="num" data-label="Amount">{{ money(it.amount, it.currency) }}</td>
+            <td class="num value" data-label="₹">{{ inr(it.amount_inr) }}</td>
+            <td class="tags" data-label="Tags">
+              @if (it.account) { <span class="tag">{{ it.account }}</span> }
+              @if (it.template_id) { <span class="tag">Reminder</span> }
+            </td>
+            <td class="act" data-label="">
+              <button class="trash" (click)="$event.stopPropagation(); remove(it)" title="Delete" aria-label="Delete">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                </svg>
+              </button>
+            </td>
+          </tr>
+
+          @if (expandedId() === it.id && editDraft(); as d) {
+            <tr class="edit-row">
+              <td [attr.colspan]="8">
+                <div class="edit-panel">
+                  <div class="edit-grid">
+                    <label class="fld"><span>Source *</span><input [ngModel]="d.source" (ngModelChange)="d.source = $event"></label>
+                    <label class="fld"><span>Category</span><input list="oi-cats" [ngModel]="d.category" (ngModelChange)="d.category = $event"></label>
+                    <label class="fld"><span>Who received</span><input [ngModel]="d.owner" (ngModelChange)="d.owner = $event"></label>
+                    <label class="fld"><span>Amount</span><input type="number" [ngModel]="d.amount" (ngModelChange)="d.amount = $event"></label>
+                    <label class="fld"><span>Currency</span><select [ngModel]="d.currency" (ngModelChange)="d.currency = $event">@for (c of currencyList(); track c) { <option [value]="c">{{ c }}</option> }</select></label>
+                    <label class="fld"><span>Date</span><input type="date" [ngModel]="d.on_date" (ngModelChange)="d.on_date = $event"></label>
+                    <label class="fld"><span>Account</span><input list="oi-accounts" [ngModel]="d.account" (ngModelChange)="d.account = $event"></label>
+                    <label class="fld span3"><span>Note</span><textarea rows="2" [ngModel]="d.note" (ngModelChange)="d.note = $event"></textarea></label>
+                  </div>
+                  <div class="parcel-actions">
+                    <button class="btn danger" (click)="remove(it)">Delete</button>
+                    <div class="spacer"></div>
+                    <button class="btn ghost" (click)="toggle(it)">Cancel</button>
+                    <button class="btn primary" (click)="saveEdit(it)" [disabled]="saving() || !d.source.trim()">{{ saving() ? 'Saving…' : 'Save changes' }}</button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+    @if (filtered().length === 0) { <div class="no-match">No income matches. <button class="link" (click)="clearFilters()">Clear filters</button></div> }
+  </div>
+}
+
+<datalist id="oi-cats">@for (c of categories(); track c) { <option [value]="c"></option> }</datalist>
+<datalist id="oi-accounts">@for (a of accountList(); track a) { <option [value]="a"></option> }</datalist>
+
+<!-- Add modal -->
+@if (showAdd()) {
+  <div class="modal-back" (click)="closeAdd()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-head"><h3>Log income</h3><button class="x" (click)="closeAdd()">✕</button></div>
+      <div class="edit-grid">
+        <label class="fld"><span>Source *</span><input [ngModel]="addDraft().source" (ngModelChange)="addDraft().source = $event" placeholder="e.g. INFY dividend"></label>
+        <label class="fld"><span>Category</span><input list="oi-cats" [ngModel]="addDraft().category" (ngModelChange)="addDraft().category = $event" placeholder="pick or type"></label>
+        <label class="fld"><span>Who received</span><input [ngModel]="addDraft().owner" (ngModelChange)="addDraft().owner = $event" placeholder="e.g. Dad"></label>
+        <label class="fld"><span>Amount</span><input type="number" [ngModel]="addDraft().amount" (ngModelChange)="addDraft().amount = $event"></label>
+        <label class="fld"><span>Currency</span><select [ngModel]="addDraft().currency" (ngModelChange)="addDraft().currency = $event">@for (c of currencyList(); track c) { <option [value]="c">{{ c }}</option> }</select></label>
+        <label class="fld"><span>Date</span><input type="date" [ngModel]="addDraft().on_date" (ngModelChange)="addDraft().on_date = $event"></label>
+        <label class="fld"><span>Account</span><input list="oi-accounts" [ngModel]="addDraft().account" (ngModelChange)="addDraft().account = $event" placeholder="bank / broker"></label>
+        <label class="fld span3"><span>Note</span><textarea rows="2" [ngModel]="addDraft().note" (ngModelChange)="addDraft().note = $event"></textarea></label>
+        <div class="fld span3 recur">
+          <label class="chk"><input type="checkbox" [ngModel]="addDraft().saveAsTemplate" (ngModelChange)="addDraft().saveAsTemplate = $event"> Save as a recurring reminder</label>
+          @if (addDraft().saveAsTemplate) {
+            <select [ngModel]="addDraft().frequency" (ngModelChange)="addDraft().frequency = $event">@for (f of FREQS; track f.v) { <option [value]="f.v">{{ f.label }}</option> }</select>
+          }
+        </div>
+      </div>
+      <p class="preview">≈ <b>{{ inr(amountInrPreview(addDraft())) }}</b> @if (isForeign(addDraft().currency)) { <span class="muted">· 1 {{ addDraft().currency }} = {{ inrFull(inrPer(addDraft().currency)) }} (live)</span> }</p>
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="closeAdd()">Cancel</button>
+        <button class="btn primary" (click)="submitAdd()" [disabled]="adding() || !addDraft().source.trim()">{{ adding() ? 'Saving…' : 'Log income' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Undo toast -->
+@if (pendingDelete(); as pd) {
+  <div class="undo-toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+    <span>Deleted <b>{{ pd.item.source }}</b></span>
+    <button class="undo-btn" (click)="undoDelete()">Undo</button>
+    <button class="undo-x" (click)="finalizeDelete()" title="Dismiss">✕</button>
+  </div>
+}

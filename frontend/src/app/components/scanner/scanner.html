@@ -1,0 +1,1332 @@
+<div class="scanner-page">
+
+  <!-- Header -->
+  <div class="scanner-header">
+    <div class="hdr-left">
+      <h1 class="hdr-title">⚡ Strategy Builder</h1>
+      <p class="hdr-sub">
+        Pick a strategy, set your filters, and let the system find the best executable trade —
+        with brokerage and taxes already factored in.
+      </p>
+    </div>
+    <div class="hdr-actions">
+      <button class="btn btn-mega" (click)="scanAll()" [disabled]="loading()">
+        @if (loading() && scanMode() === 'all') {
+        <span class="mega-spin">⟳</span> Scanning all underlyings…
+        } @else {
+        <span class="mega-icon">🌐</span>
+        <span class="mega-text">
+          <b>Find Best Trade Today</b>
+          <small>All underlyings × all expiries · auto-relax on</small>
+        </span>
+        }
+      </button>
+    </div>
+  </div>
+
+  <!-- Step 1: Strategy picker -->
+  @if (strategies().length > 0) {
+  <div class="strategy-picker card">
+    <div class="sp-header">
+      <span class="sp-step">STEP 1</span>
+      <span class="sp-title">Choose your strategy</span>
+    </div>
+    <div class="sp-tabs">
+      @for (s of strategies(); track s.id) {
+      <button class="sp-tab" [class.active]="selectedStrategy() === s.id" [class.unavailable]="!s.available"
+        [disabled]="!s.available" [title]="s.available ? s.description : (s.name + ' — coming soon')"
+        (click)="selectStrategy(s.id)">
+        <span class="sp-tab-name">{{ s.name }}</span>
+        <span class="sp-tab-cat">{{ s.category }}</span>
+        @if (!s.available) { <span class="sp-tab-soon">Soon</span> }
+      </button>
+      }
+      <!-- Futures price calculator tab -->
+      <button class="sp-tab futures-tab" [class.active]="selectedStrategy() === 'futures'"
+              (click)="selectStrategy('futures')">
+        <span class="sp-tab-name">Futures Price</span>
+        <span class="sp-tab-cat">Calculator</span>
+      </button>
+    </div>
+
+    @if (selectedStrategyDef(); as sd) {
+    <div class="sp-detail">
+      <div class="spd-row">
+        <button class="spd-toggle" (click)="showStrategyDetails.set(!showStrategyDetails())">
+          {{ showStrategyDetails() ? '▾' : '▸' }} How this strategy works
+        </button>
+      </div>
+      @if (showStrategyDetails()) {
+      <div class="spd-body">
+        <p class="spd-desc">{{ sd.description }}</p>
+        <div class="spd-section-label">Structure</div>
+        <div class="spd-legs">
+          @for (leg of sd.structure; track $index) {
+          <div class="spd-leg" [class.spd-buy]="leg.action === 'BUY'" [class.spd-sell]="leg.action === 'SELL'">
+            <span class="spd-leg-action">{{ leg.action }}</span>
+            <span class="spd-leg-qty">×{{ leg.qty }}</span>
+            <span class="spd-leg-strike">@ {{ leg.role }}</span>
+            <span class="spd-leg-type">{{ leg.type }}</span>
+            <span class="spd-leg-desc">— {{ leg.desc }}</span>
+          </div>
+          }
+        </div>
+        <div class="spd-when">
+          <span class="spd-when-label">Best when:</span>
+          {{ sd.best_when }}
+        </div>
+      </div>
+      }
+    </div>
+    }
+  </div>
+  }
+
+  <!-- ══ Futures Price Calculator ══════════════════════════════════════════ -->
+  @if (selectedStrategy() === 'futures') {
+  <div class="futures-calc card">
+    <div class="fc-header">
+      <div>
+        <div class="fc-title">Nifty Futures Fair Value</div>
+        <div class="fc-sub">
+          Theoretical price from cost-of-carry model · Market-implied price from
+          put-call parity (F ≈ K<sub>ATM</sub> + C − P)
+        </div>
+      </div>
+      @if (futuresData()) {
+      <div class="fc-spot-chip">
+        <span class="fc-spot-label">{{ futuresData().underlying }} Spot</span>
+        <span class="fc-spot-val">{{ futuresFmt(futuresData().spot) }}</span>
+      </div>
+      }
+    </div>
+
+    <!-- Rate inputs -->
+    <div class="fc-inputs">
+      <div class="fc-input-group">
+        <label class="fc-lbl">Risk-free rate (RBI repo)</label>
+        <div class="fc-input-wrap">
+          <input type="number" class="fc-input" [(ngModel)]="futuresRate"
+                 step="0.1" min="0" max="20" />
+          <span class="fc-unit">%</span>
+        </div>
+      </div>
+      <div class="fc-input-group">
+        <label class="fc-lbl">Dividend yield (Nifty 50)</label>
+        <div class="fc-input-wrap">
+          <input type="number" class="fc-input" [(ngModel)]="futuresDivYield"
+                 step="0.1" min="0" max="10" />
+          <span class="fc-unit">%</span>
+        </div>
+      </div>
+      <button class="fc-calc-btn" (click)="loadFutures()" [disabled]="futuresLoading()">
+        @if (futuresLoading()) { <span class="fc-spin">⟳</span> } @else { Calculate }
+      </button>
+    </div>
+
+    @if (futuresLoading()) {
+    <div class="fc-loading">⟳ Fetching option chain data…</div>
+    }
+
+    @if (futuresData(); as fd) {
+    <!-- Results table -->
+    <div class="fc-table-wrap">
+      <table class="fc-table">
+        <thead>
+          <tr>
+            <th>Expiry</th>
+            <th>DTE</th>
+            <th>ATM Strike</th>
+            <th>Theoretical Price</th>
+            <th>Carry (pts)</th>
+            <th>Ann. Carry %</th>
+            <th>Market Implied</th>
+            <th>Implied Basis</th>
+            <th>Implied Rate %</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of fd.expiries; track row.expiry) {
+          <tr class="fc-row">
+            <td class="fc-expiry">{{ row.expiry }}</td>
+            <td class="fc-dte">{{ row.dte }}d</td>
+            <td class="fc-atm">{{ futuresFmt(row.atm_strike) }}</td>
+            <td class="fc-theo">{{ futuresFmt(row.theoretical, 2) }}</td>
+            <td class="fc-carry" [class.positive]="row.carry_pts >= 0" [class.negative]="row.carry_pts < 0">
+              {{ row.carry_pts >= 0 ? '+' : '' }}{{ futuresFmt(row.carry_pts, 2) }}
+            </td>
+            <td class="fc-ann">{{ row.annualized_carry_pct | number:'1.2-2' }}%</td>
+            @if (row.implied !== null) {
+            <td class="fc-implied">{{ futuresFmt(row.implied, 2) }}</td>
+            <td class="fc-ibasis" [class.positive]="row.implied_basis >= 0" [class.negative]="row.implied_basis < 0">
+              <span class="fc-basis-badge" [class.prem]="row.implied_basis >= 0" [class.disc]="row.implied_basis < 0">
+                {{ row.implied_basis >= 0 ? '+' : '' }}{{ futuresFmt(row.implied_basis, 2) }}
+              </span>
+            </td>
+            <td class="fc-irate">{{ row.implied_rate_pct | number:'1.2-2' }}%</td>
+            } @else {
+            <td class="fc-implied fc-na">—</td>
+            <td class="fc-ibasis fc-na">—</td>
+            <td class="fc-irate fc-na">—</td>
+            }
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Methodology note -->
+    <div class="fc-note">
+      <div class="fc-note-row">
+        <span class="fc-note-icon">📐</span>
+        <span><strong>Theoretical</strong> = Spot × e<sup>(r−q)×T</sup> — cost of carry using risk-free rate <em>r</em>
+          = {{ fd.risk_free_rate * 100 | number:'1.1-1' }}% and dividend yield <em>q</em>
+          = {{ fd.dividend_yield * 100 | number:'1.1-1' }}%</span>
+      </div>
+      <div class="fc-note-row">
+        <span class="fc-note-icon">📊</span>
+        <span><strong>Market Implied</strong> = K<sub>ATM</sub> + C<sub>ATM</sub> − P<sub>ATM</sub>
+          — derived from live option premiums via put-call parity. Reflects what the market actually prices in.</span>
+      </div>
+      <div class="fc-note-row">
+        <span class="fc-note-icon">💡</span>
+        <span>If <strong>Implied Rate &gt; Theoretical Rate</strong>, the market is pricing higher carry than the repo rate
+          (possible due to demand for leverage or hedging). If lower, it may reflect dividend expectations or selling
+          pressure.</span>
+      </div>
+    </div>
+    }
+  </div>
+  }
+
+  @if (selectedStrategy() !== 'futures' && !loading() && activeFilteredLength() > 0) {
+  <div class="header-stats-row">
+    <div class="hdr-stat-card">
+      <div class="hs-label">Combinations Scanned</div>
+      <div class="hs-val">{{ scanned() | number }}</div>
+    </div>
+    <div class="hdr-stat-card">
+      <div class="hs-label">{{ scanMode() === 'all' ? 'Across' : 'In' }} {{ scanMode() === 'all' ? scanLog().length + '
+        chains' : underlying() }}</div>
+      <div class="hs-val accent">{{ activeFilteredLength() }}</div>
+      <div class="hs-sub">tradeable setups</div>
+    </div>
+    <div class="hdr-stat-card">
+      <div class="hs-label">Best Max Profit</div>
+      <div class="hs-val positive">₹{{ activeBestProfit() | number:'1.0-0' }}</div>
+    </div>
+  </div>
+  }
+
+  <!-- Preset row -->
+  <div class="preset-row card">
+    <div class="preset-info">
+      <span class="preset-label">Liquidity preset:</span>
+      <span class="preset-hint">Strict mode hides any option Kite would flag as illiquid.</span>
+    </div>
+    <div class="preset-buttons">
+      <button class="preset-btn strict" (click)="applyPreset('strict')">
+        <span class="pb-icon">🛡</span>
+        <span class="pb-text">
+          <b>Strict</b>
+          <small>OI 50k+ · spread &lt;2% · ATM ±3%</small>
+        </span>
+      </button>
+      <button class="preset-btn normal" (click)="applyPreset('normal')">
+        <span class="pb-icon">✓</span>
+        <span class="pb-text">
+          <b>Tradeable</b>
+          <small>OI 10k+ · spread &lt;5% · ATM ±5%</small>
+        </span>
+      </button>
+      <button class="preset-btn loose" (click)="applyPreset('loose')">
+        <span class="pb-icon">🔍</span>
+        <span class="pb-text">
+          <b>Show All</b>
+          <small>more results, may include illiquid</small>
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Multi-level sort -->
+  <div class="sort-card card">
+    <div class="sort-header">
+      <span class="sort-title">
+        Sort by (priority order)
+        <span class="info-tip"
+          data-tip="Apply multiple sort criteria with priority. Top entry = primary sort. Ties are broken by the next entry. Like SQL ORDER BY a, b, c.">ⓘ</span>
+      </span>
+      @if (sortBy().length < sortOptions.length) { <button class="add-sort-btn" (click)="addSortLevel()">+ Add sort
+        level</button>
+        }
+    </div>
+    <div class="sort-levels">
+      @for (key of sortBy(); track $index; let i = $index, isFirst = $first, isLast = $last) {
+      <div class="sort-level">
+        <span class="sl-num">{{ i + 1 }}</span>
+        <select class="form-control sl-select" [ngModel]="key" (ngModelChange)="setSortLevel(i, $event)">
+          @for (opt of sortOptions; track opt.value) {
+          <option [value]="opt.value">{{ opt.label }}</option>
+          }
+        </select>
+        <button class="sl-btn" [disabled]="isFirst" (click)="moveSortLevel(i, -1)" title="Move up">▲</button>
+        <button class="sl-btn" [disabled]="isLast" (click)="moveSortLevel(i, 1)" title="Move down">▼</button>
+        <button class="sl-btn sl-rm" [disabled]="sortBy().length <= 1" (click)="removeSortLevel(i)"
+          title="Remove this sort level">×</button>
+      </div>
+      }
+    </div>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar card">
+    <div class="filter-group">
+      <label class="filter-lbl">Underlying</label>
+      <select class="form-control" [value]="underlying()" (change)="onUnderlyingChange($any($event.target).value)">
+        @for (u of underlyings(); track u.symbol) {
+        <option [value]="u.symbol">{{ u.symbol }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-lbl">Expiry</label>
+      <select class="form-control" [value]="expiry()" (change)="onExpiryChange($any($event.target).value)">
+        @for (e of expiries(); track e) {
+        <option [value]="e">{{ e }}</option>
+        }
+      </select>
+    </div>
+
+
+    <div class="filter-group">
+      <label class="filter-lbl">
+        Min Lots Fillable
+        <span class="info-tip"
+          data-tip="Minimum lots that can fill at current top-5-level depth across all 3 legs. Higher = safer execution, less slippage.">ⓘ</span>
+      </label>
+      <select class="form-control" [ngModel]="minLots()" (ngModelChange)="setMinLots(+$event)">
+        <option [ngValue]="1">1+ lot</option>
+        <option [ngValue]="3">3+ lots</option>
+        <option [ngValue]="5">5+ lots</option>
+        <option [ngValue]="10">10+ lots</option>
+        <option [ngValue]="20">20+ lots (deep)</option>
+      </select>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-lbl">
+        Max Loss (₹)
+        <span class="info-tip"
+          data-tip="Maximum loss you'll accept (per 1 lot). 0 = only show truly risk-free trades. ₹2000 = allow small bounded risk.">ⓘ</span>
+      </label>
+      <input type="number" class="form-control" [ngModel]="maxLoss()" (ngModelChange)="maxLoss.set(+$event)" min="0"
+        step="500" />
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-lbl">
+        Min Profit (₹)
+        <span class="info-tip"
+          data-tip="Minimum max-profit for the trade to be shown. Filters out tiny profit setups.">ⓘ</span>
+      </label>
+      <input type="number" class="form-control" [ngModel]="minProfit()" (ngModelChange)="minProfit.set(+$event)" min="0"
+        step="500" />
+    </div>
+
+    <div class="filter-group toggle-group">
+      <label class="checkbox">
+        <input type="checkbox" [checked]="showOnlyRiskFree()"
+          (change)="showOnlyRiskFree.set($any($event.target).checked)" />
+        <span>Zero-risk only</span>
+      </label>
+      <button class="advanced-toggle" (click)="showAdvancedFilters.set(!showAdvancedFilters())">
+        {{ showAdvancedFilters() ? '▾' : '▸' }} Advanced
+      </button>
+    </div>
+
+    <button class="btn btn-primary scan-btn" (click)="scan()" [disabled]="loading()">
+      {{ loading() ? '⟳ Scanning…' : '🔍 Re-scan' }}
+    </button>
+  </div>
+
+  <!-- Advanced filters — collapsible -->
+  @if (showAdvancedFilters()) {
+  <div class="filter-bar card adv-bar">
+    <div class="filter-group slider-group">
+      <label class="filter-lbl">
+        Min PoP: <b class="slider-value">{{ minPop() }}%</b>
+        <span class="info-tip"
+          data-tip="Only show trades where probability of profit (at expiry) is at least this much. Drag to adjust: 0% = show all, 80%+ = high-confidence only.">ⓘ</span>
+      </label>
+      <div class="slider-wrap">
+        <input type="range" class="pop-slider" [ngModel]="minPop()" (ngModelChange)="minPop.set(+$event)" min="0"
+          max="100" step="5" />
+        <div class="slider-ticks">
+          <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+        </div>
+      </div>
+    </div>
+    <div class="filter-group">
+      <label class="filter-lbl">
+        Min Expected Value (₹)
+        <span class="info-tip"
+          data-tip="Probability-weighted average outcome in ₹. Negative = on average you lose money; positive = on average you profit. Filter to ≥ 0 to ensure positive EV.">ⓘ</span>
+      </label>
+      <input type="number" class="form-control" [ngModel]="minEv()" (ngModelChange)="minEv.set(+$event)" step="500" />
+    </div>
+    <div class="filter-group">
+      <label class="filter-lbl">
+        Min OI per Leg
+        <span class="info-tip"
+          data-tip="Open Interest = number of outstanding option contracts. High OI = many participants. 10k+ is liquid, 50k+ is very liquid.">ⓘ</span>
+      </label>
+      <input type="number" class="form-control" [ngModel]="minOi()" (ngModelChange)="minOi.set(+$event)" min="0"
+        step="1000" />
+    </div>
+    <div class="filter-group">
+      <label class="filter-lbl">
+        Min Volume per Leg
+        <span class="info-tip"
+          data-tip="Number of contracts traded today. Higher = active intraday trading. Set to 0 to skip (esp. on holidays).">ⓘ</span>
+      </label>
+      <input type="number" class="form-control" [ngModel]="minVolume()" (ngModelChange)="minVolume.set(+$event)" min="0"
+        step="50" />
+    </div>
+    <div class="filter-group">
+      <label class="filter-lbl">
+        Max Bid-Ask Spread %
+        <span class="info-tip"
+          data-tip="Spread = (ask − bid) / mid. Lower = tighter market = better fills. <2% is excellent, >5% means slippage on entry/exit.">ⓘ</span>
+      </label>
+      <input type="number" class="form-control" [ngModel]="maxSpreadPct()" (ngModelChange)="maxSpreadPct.set(+$event)"
+        min="0.1" max="20" step="0.5" />
+    </div>
+    <div class="filter-group">
+      <label class="filter-lbl">
+        Max ATM Distance %
+        <span class="info-tip"
+          data-tip="How far K2 (the body strike) can be from spot, as % of spot. Strikes far from ATM have stale quotes and are often flagged illiquid by Kite.">ⓘ</span>
+      </label>
+      <input type="number" class="form-control" [ngModel]="maxAtmPct()" (ngModelChange)="maxAtmPct.set(+$event)" min="1"
+        max="20" step="0.5" />
+    </div>
+    <div class="filter-group toggle-group">
+      <label class="checkbox">
+        <input type="checkbox" [ngModel]="autoRelax()" (ngModelChange)="autoRelax.set($event)" />
+        <span>
+          Auto-relax in Scan-All
+          <span class="info-tip"
+            data-tip="When 'Find Best Trade Today' returns nothing, automatically loosen max-loss until something appears. Off = strictly respect filters.">ⓘ</span>
+        </span>
+      </label>
+    </div>
+  </div>
+  }
+
+  <!-- Auto-relaxation banner -->
+  @if (scanMode() === 'all' && relaxedTo() && relaxedTo() !== 'user filters' && !loading()) {
+  <div class="relaxed-banner">
+    <span class="rb-icon">ℹ</span>
+    <span>
+      No setup matched your strict filters.
+      Auto-relaxed to <b>{{ relaxedTo() }}</b> to surface the best available trade.
+    </span>
+  </div>
+  }
+
+  <!-- Scan log (only for scan-all mode) -->
+  @if (scanMode() === 'all' && scanLog().length > 0 && !loading()) {
+  <div class="scan-log-card card">
+    <div class="scl-title">Coverage</div>
+    <div class="scl-grid">
+      @for (s of scanLog(); track s.underlying + s.expiry) {
+      <div class="scl-item" [class.scl-found]="s.found > 0" [class.scl-empty]="s.found === 0 && !s.error"
+        [class.scl-err]="s.error">
+        <div class="scl-key">
+          <b>{{ s.underlying }}</b>
+          @if (s.expiry) { <span class="scl-exp">{{ s.expiry }} ({{ s.dte }}d)</span> }
+        </div>
+        @if (s.error) {
+        <div class="scl-val err">{{ s.error }}</div>
+        } @else {
+        <div class="scl-val">
+          <span>{{ s.scanned | number }} combos</span>
+          <span class="scl-found-num" [class.zero]="s.found === 0">→ {{ s.found }} found</span>
+        </div>
+        }
+      </div>
+      }
+    </div>
+  </div>
+  }
+
+  <!-- Active filters summary -->
+  @if (appliedFilters()) {
+  <div class="filters-applied">
+    <span class="fa-label">Filtering:</span>
+    <span class="fa-tag">OI ≥ {{ appliedFilters().min_oi | number }}</span>
+    @if (appliedFilters().is_trading_day && appliedFilters().min_volume > 0) {
+    <span class="fa-tag">Vol ≥ {{ appliedFilters().min_volume }} today</span>
+    } @else {
+    <span class="fa-tag muted">Vol check off (market closed)</span>
+    }
+    <span class="fa-tag">Spread &lt; {{ appliedFilters().max_spread_pct }}%</span>
+    <span class="fa-tag">ATM ±{{ appliedFilters().max_atm_pct }}%</span>
+    <span class="fa-tag">{{ appliedFilters().min_lots }}+ lots fillable</span>
+  </div>
+  }
+
+  <!-- Context strip -->
+  @if (!loading() && spot() > 0) {
+  <div class="context-strip">
+    <span><b>{{ underlying() }}</b> spot</span>
+    <span class="ctx-val">₹{{ spot() | number:'1.2-2' }}</span>
+    <span class="ctx-sep">·</span>
+    <span>ATM</span>
+    <span class="ctx-val">{{ atmStrike() }}</span>
+    <span class="ctx-sep">·</span>
+    <span>{{ dte() }} DTE</span>
+    <span class="ctx-sep">·</span>
+    <span>{{ expiry() }}</span>
+  </div>
+  }
+
+  <!-- Loading state -->
+  @if (loading()) {
+  <div class="state-box">
+    <div class="spinner"></div>
+    <div>Scanning all (K1, K2, K3) combinations…</div>
+  </div>
+  }
+
+  <!-- Error -->
+  @if (error()) {
+  <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  <!-- No results -->
+  @if (!loading() && activeFilteredLength() === 0 && !error()) {
+  <div class="state-box empty">
+    <div class="empty-icon">🔎</div>
+    <div class="empty-title">No risk-free trades right now</div>
+    <div class="empty-sub">
+      With actual bid/ask pricing, the bid-ask spread eats into the credit and risk-free arbs become rare.
+      Click <b>Show All</b> below to surface promising near-zero-risk setups (loss ≤ ₹10k).
+    </div>
+    <button class="btn btn-primary" (click)="applyPreset('loose')" style="margin-top: 12px;">
+      🔍 Switch to Show All
+    </button>
+  </div>
+  }
+
+  <!-- Results grid — BWB -->
+  @if (!loading() && selectedStrategy() !== 'batman' && selectedStrategy() !== 'iron_condor' && filtered().length > 0) {
+  <div class="results-grid">
+    @for (r of filtered(); track r.sym1 + r.sym2 + r.sym3; let i = $index) {
+    <div class="bwb-card card">
+      @if (scanMode() === 'all' && r._underlying) {
+      <div class="card-source-banner">
+        <span class="src-tag">{{ r._underlying }}</span>
+        <span class="src-sep">·</span>
+        <span>{{ r._expiry }}</span>
+        <span class="src-sep">·</span>
+        <span>{{ r._dte }} DTE</span>
+        <span class="src-sep">·</span>
+        <span>spot ₹{{ r._spot | number:'1.2-2' }}</span>
+      </div>
+      }
+
+      <!-- Top row: Type + Strikes + Badges -->
+      <div class="bwb-top">
+        <div class="bwb-rank">#{{ (page() - 1) * perPage() + i + 1 }}</div>
+        <div class="bwb-name">
+          <span class="type-tag" [class.ce-tag]="r.type==='CE'" [class.pe-tag]="r.type==='PE'">
+            {{ r.type === 'CE' ? 'CALL' : 'PUT' }} BWB
+          </span>
+          <span class="strike-trio">
+            <span class="st-buy">+1×{{ r.K1 }}</span>
+            <span class="arrow">/</span>
+            <span class="st-sell">−2×{{ r.K2 }}</span>
+            <span class="arrow">/</span>
+            <span class="st-buy">+1×{{ r.K3 }}</span>
+          </span>
+        </div>
+        <div class="badges-stack">
+          <span class="risk-badge" [ngClass]="riskBadge(r).cls"
+            [title]="r.max_loss === 0 ? 'Max loss at expiry is ₹0 across all spot zones' : (r.rr_ratio >= 5 ? 'High risk-to-reward ratio: '+r.rr_ratio+':1' : 'Has bounded risk; reward is more than loss')">
+            {{ riskBadge(r).label }}
+          </span>
+          <span class="lots-pill" [ngClass]="lotsTier(r.lots_available).cls"
+            [title]="'Max lots you can place at current bid/ask depth, summed across L1–L5 of the order book. The bottleneck leg sets the ceiling.'">
+            <span class="lots-num">{{ r.lots_available }}</span>
+            <span class="lots-text">lots fillable</span>
+          </span>
+          <span class="liq-pill" [class]="'liq-' + r.liquidity_tier"
+            [title]="'Liquidity score 0–100: composite of OI (60pts), volume (20pts), and bid-ask spread (20pts). 70+ excellent, 45+ good, <25 illiquid.'">
+            <span class="liq-dot"></span>
+            <span class="liq-text">{{ liqLabel(r.liquidity_tier) }} {{ r.liquidity_score }}</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Stats grid: NET P&L (after charges) is primary -->
+      <div class="bwb-stats">
+        <div class="stat pop-stat" [ngClass]="popTier(r.pop).cls">
+          <div class="s-lbl">
+            Probability of Profit
+            <span class="info-tip"
+              [attr.data-tip]="'Estimated chance the trade ends in profit at expiry. Computed from log-normal distribution of spot using IV ' + r.iv_used_pct + '% over ' + (r._dte ?? dte()) + ' days.'">ⓘ</span>
+          </div>
+          <div class="s-val pop-val">{{ fmtPop(r.pop) }}</div>
+          <div class="s-sub">{{ popTier(r.pop).label }}</div>
+        </div>
+        <div class="stat">
+          <div class="s-lbl">
+            Net Profit (max)
+            <span class="info-tip"
+              data-tip="Best-case ₹ AFTER deducting brokerage, STT, GST, exchange and SEBI charges, stamp duty. Hover the charges row to see breakdown.">ⓘ</span>
+          </div>
+          <div class="s-val" [class.positive]="r.net_max_profit > 0" [class.negative]="r.net_max_profit < 0">
+            {{ r.net_max_profit >= 0 ? '+' : '' }}₹{{ r.net_max_profit | number:'1.0-0' }}
+          </div>
+          <div class="s-sub muted-sub">gross ₹{{ r.max_profit | number:'1.0-0' }}</div>
+        </div>
+        <div class="stat">
+          <div class="s-lbl">
+            Net Loss (max)
+            <span class="info-tip"
+              data-tip="Worst-case ₹ INCLUDING all charges. The actual most you'd be out of pocket if everything goes wrong.">ⓘ</span>
+          </div>
+          <div class="s-val" [class.negative]="r.net_max_loss > 0" [class.muted]="r.net_max_loss === 0">
+            −₹{{ r.net_max_loss | number:'1.0-0' }}
+          </div>
+          <div class="s-sub muted-sub">gross ₹{{ r.max_loss | number:'1.0-0' }}</div>
+        </div>
+        <div class="stat">
+          <div class="s-lbl">
+            Net Expected Value
+            <span class="info-tip"
+              data-tip="Probability-weighted average outcome AFTER charges. This is the true EV — if you placed this trade many times you'd net this per attempt.">ⓘ</span>
+          </div>
+          <div class="s-val" [class.positive]="r.net_expected_value >= 0" [class.negative]="r.net_expected_value < 0">
+            {{ r.net_expected_value >= 0 ? '+' : '' }}₹{{ r.net_expected_value | number:'1.0-0' }}
+          </div>
+          <div class="s-sub muted-sub">gross ₹{{ r.expected_value | number:'1.0-0' }}</div>
+        </div>
+        <div class="stat charges-stat"
+          [title]="'Brokerage ₹' + r.charges.brokerage + ' + STT ₹' + r.charges.stt + ' + GST ₹' + r.charges.gst + ' + Exchange ₹' + r.charges.exchange + ' + SEBI ₹' + r.charges.sebi + ' + Stamp ₹' + r.charges.stamp">
+          <div class="s-lbl">
+            Charges (round-trip)
+            <span class="info-tip"
+              data-tip="Total Indian options charges: brokerage (₹20/order × 6 orders), 0.1% STT on sell legs, 0.0354% NSE exchange fee, 0.003% stamp on buy, 18% GST on brokerage+exchange.">ⓘ</span>
+          </div>
+          <div class="s-val charges-val">−₹{{ r.charges.total | number:'1.0-0' }}</div>
+          <div class="s-sub muted-sub">brokerage + tax</div>
+        </div>
+      </div>
+
+
+
+      <!-- Why this trade? — expandable proof -->
+      @if (i === 0) {
+      <button class="why-best-btn" (click)="toggleResultExpanded(resultKey(r))">
+        <span class="wb-star">★</span>
+        <span class="wb-text">Why this trade is the best pick</span>
+        <span class="wb-chevron">{{ expandedResultId() === resultKey(r) ? '▾' : '▸' }}</span>
+      </button>
+      }
+      @if (expandedResultId() === resultKey(r)) {
+      <div class="why-best-panel">
+        <div class="wb-section">
+          <div class="wb-h">Ranking justification</div>
+          <ul class="wb-list">
+            <li><b>PoP {{ fmtPop(r.pop) }}</b> ({{ popTier(r.pop).label }}) — based on log-normal distribution at IV {{
+              r.iv_used_pct }}% with {{ r._dte ?? dte() }} days to expiry.</li>
+            <li><b>Net EV ₹{{ r.net_expected_value | number:'1.0-0' }}</b> — probability-weighted outcome after all
+              charges.</li>
+            <li><b>{{ r.lots_available }} lots fillable</b> at current bid/ask depth — bottleneck leg sets this ceiling.
+            </li>
+            <li><b>Liquidity score {{ r.liquidity_score }}/100</b> ({{ liqLabel(r.liquidity_tier) }}) — composite of OI
+              ({{ r.min_oi | number:'1.0-0' }}), volume ({{ r.min_volume | number:'1.0-0' }}), and {{ r.max_spread_pct
+              }}% spread.</li>
+          </ul>
+        </div>
+
+        <div class="wb-section">
+          <div class="wb-h">P&L map at expiry</div>
+          <table class="wb-pnl-table">
+            <tr>
+              <th>Spot zone</th>
+              <th>Gross P&L</th>
+              <th>After charges</th>
+              <th>Outcome</th>
+            </tr>
+            <tr>
+              <td>S < {{ r.K1 }}</td>
+              <td [class.positive]="r.pnl_below >= 0" [class.negative]="r.pnl_below < 0">
+                {{ r.pnl_below >= 0 ? '+' : '' }}₹{{ r.pnl_below | number:'1.0-0' }}
+              </td>
+              <td>₹{{ r.pnl_below - r.charges.total | number:'1.0-0' }}</td>
+              <td>{{ r.pnl_below - r.charges.total > 0 ? '✓ profit' : '✗ loss' }}</td>
+            </tr>
+            <tr class="wb-peak-row">
+              <td>S ≈ {{ r.K2 }} (peak)</td>
+              <td class="positive">+₹{{ r.pnl_peak | number:'1.0-0' }}</td>
+              <td class="positive">+₹{{ r.pnl_peak - r.charges.total | number:'1.0-0' }}</td>
+              <td>★ max profit</td>
+            </tr>
+            <tr>
+              <td>S > {{ r.K3 }}</td>
+              <td [class.positive]="r.pnl_above >= 0" [class.negative]="r.pnl_above < 0">
+                {{ r.pnl_above >= 0 ? '+' : '' }}₹{{ r.pnl_above | number:'1.0-0' }}
+              </td>
+              <td>₹{{ r.pnl_above - r.charges.total | number:'1.0-0' }}</td>
+              <td>{{ r.pnl_above - r.charges.total > 0 ? '✓ profit' : '✗ loss' }}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="wb-section">
+          <div class="wb-h">Charges breakdown</div>
+          <div class="wb-charges-grid">
+            <span>Brokerage</span><b>₹{{ r.charges.brokerage | number:'1.2-2' }}</b>
+            <span>STT (0.1% sell)</span><b>₹{{ r.charges.stt | number:'1.2-2' }}</b>
+            <span>Exchange (0.0354%)</span><b>₹{{ r.charges.exchange | number:'1.2-2' }}</b>
+            <span>SEBI</span><b>₹{{ r.charges.sebi | number:'1.2-2' }}</b>
+            <span>Stamp duty</span><b>₹{{ r.charges.stamp | number:'1.2-2' }}</b>
+            <span>GST (18%)</span><b>₹{{ r.charges.gst | number:'1.2-2' }}</b>
+            <span class="wb-total">Total round-trip</span><b class="wb-total">₹{{ r.charges.total | number:'1.2-2'
+              }}</b>
+          </div>
+        </div>
+      </div>
+      }
+
+      <!-- View Graph toggle -->
+      <button class="view-graph-btn" (click)="toggleGraph(resultKey(r))">
+        <span class="vg-icon">📊</span>
+        <span class="vg-text">{{ isGraphOpen(resultKey(r)) ? 'Hide payoff graph' : 'View payoff graph' }}</span>
+        <span class="vg-chevron">{{ isGraphOpen(resultKey(r)) ? '▾' : '▸' }}</span>
+      </button>
+      @if (isGraphOpen(resultKey(r))) {
+      <app-payoff-graph [data]="graphInputFor(r)"></app-payoff-graph>
+      }
+
+      <!-- Leg details with per-leg market depth -->
+      <div class="legs-row">
+        @for (leg of [
+        { action: 'BUY', sym: r.sym1, px: r.P1, ltp: r.P1_ltp, side: 'ASK', liq: r.leg_liq[0], cls: 'buy-leg' },
+        { action: 'SELL ×2', sym: r.sym2, px: r.P2, ltp: r.P2_ltp, side: 'BID', liq: r.leg_liq[1], cls: 'sell-leg' },
+        { action: 'BUY', sym: r.sym3, px: r.P3, ltp: r.P3_ltp, side: 'ASK', liq: r.leg_liq[2], cls: 'buy-leg' }
+        ]; track leg.sym) {
+        <div class="leg-item" [class]="leg.cls">
+          <div class="leg-line">
+            <span class="leg-action">{{ leg.action }}</span>
+            <span class="leg-sym">{{ leg.sym }}</span>
+            <span class="leg-px-block">
+              <span class="leg-px">@ ₹{{ leg.px | number:'1.2-2' }}</span>
+              <span class="leg-side-tag" [class.bid-tag]="leg.side === 'BID'" [class.ask-tag]="leg.side === 'ASK'">
+                {{ leg.side }}
+              </span>
+              @if (leg.ltp !== leg.px) {
+              <span class="leg-ltp" title="Last traded price for reference">
+                LTP {{ leg.ltp | number:'1.2-2' }}
+              </span>
+              }
+            </span>
+          </div>
+          <div class="leg-depth">
+            <span class="depth-chip" [ngClass]="lotsTier(leg.liq.lots).cls"
+              [title]="leg.liq.side === 'BUY' ? 'Quantity available on ask (sellers willing to sell to you)' : 'Quantity available on bid (buyers willing to buy from you ×2)'">
+              <b>{{ leg.liq.available_qty | number:'1.0-0' }}</b> qty
+              <span class="chip-sep">·</span>
+              <b>{{ leg.liq.lots }}</b> lots
+            </span>
+            @if (leg.liq.bid > 0 && leg.liq.ask > 0) {
+            <span class="leg-bidask">bid {{ leg.liq.bid | number:'1.2-2' }} / ask {{ leg.liq.ask | number:'1.2-2'
+              }}</span>
+            }
+            <span class="leg-oi">OI {{ leg.liq.oi | number:'1.0-0' }}</span>
+          </div>
+        </div>
+        }
+      </div>
+
+      <!-- Meta + apply -->
+      <div class="bwb-footer">
+        <div class="meta-tags">
+          <span class="meta-tag">{{ r.wing_skew === 'right' ? '↗' : '↙' }} {{ r.wing_skew }}-skew</span>
+          <span class="meta-tag">wings {{ r.left_wing }}/{{ r.right_wing }}</span>
+          <span class="meta-tag">spread {{ r.max_spread_pct }}%</span>
+          <span class="meta-tag">ATM ±{{ r.atm_distance }}</span>
+        </div>
+        <button class="btn btn-primary apply-btn" (click)="applyToBuilder(r)">
+          Load into Strategy →
+        </button>
+      </div>
+    </div>
+    }
+  </div>
+
+  <!-- Pagination (BWB) -->
+  @if (totalPages() > 1) {
+  <div class="pagination card">
+    <div class="pg-info">
+      Showing <b>{{ (page() - 1) * perPage() + 1 }}–{{ (page() - 1) * perPage() + filtered().length }}</b>
+      of <b>{{ total() }}</b> setups
+    </div>
+    <div class="pg-controls">
+      <button class="pg-btn" [disabled]="page() === 1" (click)="goToPage(1)">« First</button>
+      <button class="pg-btn" [disabled]="page() === 1" (click)="goToPage(page() - 1)">‹ Prev</button>
+      <span class="pg-page">Page <b>{{ page() }}</b> / {{ totalPages() }}</span>
+      <button class="pg-btn" [disabled]="page() === totalPages()" (click)="goToPage(page() + 1)">Next ›</button>
+      <button class="pg-btn" [disabled]="page() === totalPages()" (click)="goToPage(totalPages())">Last »</button>
+    </div>
+    <div class="pg-perpage">
+      <label class="pg-pp-label">Per page:</label>
+      <select class="form-control pg-pp-select" [ngModel]="perPage()" (ngModelChange)="setPerPage(+$event)">
+        <option [ngValue]="10">10</option>
+        <option [ngValue]="30">30</option>
+        <option [ngValue]="50">50</option>
+        <option [ngValue]="100">100</option>
+      </select>
+    </div>
+  </div>
+  }
+  }
+
+  <!-- Results grid — Batman -->
+  @if (!loading() && selectedStrategy() === 'batman' && batmanFiltered().length > 0) {
+  <div class="results-grid">
+    @for (r of batmanFiltered(); track batmanResultKey(r); let i = $index) {
+    <div class="bwb-card card batman-card">
+      @if (scanMode() === 'all' && r._underlying) {
+      <div class="card-source-banner">
+        <span class="src-tag">{{ r._underlying }}</span>
+        <span class="src-sep">·</span>
+        <span>{{ r._expiry }}</span>
+        <span class="src-sep">·</span>
+        <span>{{ r._dte }} DTE</span>
+        <span class="src-sep">·</span>
+        <span>spot ₹{{ r._spot | number:'1.2-2' }}</span>
+      </div>
+      }
+
+      <!-- Top row -->
+      <div class="bwb-top">
+        <div class="bwb-rank">#{{ (page() - 1) * perPage() + i + 1 }}</div>
+        <div class="bwb-name">
+          <span class="type-tag batman-tag">🦇 BATMAN</span>
+          <span class="strike-trio">
+            <span class="st-buy">+1×{{ r.K1 }}</span>
+            <span class="arrow">/</span>
+            <span class="st-sell">−2×{{ r.K2 }}</span>
+            <span class="arrow">/</span>
+            <span class="st-buy">+1×{{ r.K3 }}</span>
+            <span class="arrow batman-sep">│</span>
+            <span class="st-buy">+1×{{ r.K4 }}</span>
+            <span class="arrow">/</span>
+            <span class="st-sell">−2×{{ r.K5 }}</span>
+            <span class="arrow">/</span>
+            <span class="st-buy">+1×{{ r.K6 }}</span>
+          </span>
+        </div>
+        <div class="badges-stack">
+          <span class="risk-badge" [ngClass]="batmanRiskBadge(r).cls">{{ batmanRiskBadge(r).label }}</span>
+          <span class="lots-pill" [ngClass]="lotsTier(r.lots_available).cls">
+            <span class="lots-num">{{ r.lots_available }}</span>
+            <span class="lots-text">lots fillable</span>
+          </span>
+          <span class="liq-pill" [class]="'liq-' + r.liquidity_tier">
+            <span class="liq-dot"></span>
+            <span class="liq-text">{{ liqLabel(r.liquidity_tier) }} {{ r.liquidity_score }}</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="bwb-stats">
+        <div class="stat pop-stat" [ngClass]="popTier(r.pop).cls">
+          <div class="s-lbl">Probability of Profit</div>
+          <div class="s-val pop-val">{{ fmtPop(r.pop) }}</div>
+          <div class="s-sub">{{ popTier(r.pop).label }}</div>
+        </div>
+        <div class="stat">
+          <div class="s-lbl">Net Profit (max)</div>
+          <div class="s-val" [class.positive]="r.net_max_profit > 0" [class.negative]="r.net_max_profit < 0">
+            {{ r.net_max_profit >= 0 ? '+' : '' }}₹{{ r.net_max_profit | number:'1.0-0' }}
+          </div>
+          <div class="s-sub muted-sub">gross ₹{{ r.max_profit | number:'1.0-0' }}</div>
+        </div>
+        <div class="stat">
+          <div class="s-lbl">Net Loss (max)</div>
+          <div class="s-val" [class.negative]="r.net_max_loss > 0" [class.muted]="r.net_max_loss === 0">
+            −₹{{ r.net_max_loss | number:'1.0-0' }}
+          </div>
+          <div class="s-sub muted-sub">gross ₹{{ r.max_loss | number:'1.0-0' }}</div>
+        </div>
+        <div class="stat">
+          <div class="s-lbl">Net Expected Value</div>
+          <div class="s-val" [class.positive]="r.net_expected_value >= 0" [class.negative]="r.net_expected_value < 0">
+            {{ r.net_expected_value >= 0 ? '+' : '' }}₹{{ r.net_expected_value | number:'1.0-0' }}
+          </div>
+          <div class="s-sub muted-sub">gross ₹{{ r.expected_value | number:'1.0-0' }}</div>
+        </div>
+        <div class="stat charges-stat"
+          [title]="'Brokerage ₹' + r.charges.brokerage + ' + STT ₹' + r.charges.stt + ' + GST ₹' + r.charges.gst">
+          <div class="s-lbl">Charges (round-trip)</div>
+          <div class="s-val charges-val">−₹{{ r.charges.total | number:'1.0-0' }}</div>
+          <div class="s-sub muted-sub">6 legs · brokerage + tax</div>
+        </div>
+      </div>
+
+
+
+      <!-- Why this trade (first result only) -->
+      @if (i === 0) {
+      <button class="why-best-btn" (click)="toggleBatmanExpanded(batmanResultKey(r))">
+        <span class="wb-star">★</span>
+        <span class="wb-text">Why this Batman setup is the best pick</span>
+        <span class="wb-chevron">{{ batmanExpandedId() === batmanResultKey(r) ? '▾' : '▸' }}</span>
+      </button>
+      }
+      @if (batmanExpandedId() === batmanResultKey(r)) {
+      <div class="why-best-panel">
+        <div class="wb-section">
+          <div class="wb-h">Ranking justification (sorted by EV then max-profit)</div>
+          <ul class="wb-list">
+            <li><b>PoP {{ fmtPop(r.pop) }}</b> — log-normal at IV {{ r.iv_used_pct }}% with {{ r._dte ?? dte() }} DTE.
+            </li>
+            <li><b>Net EV ₹{{ r.net_expected_value | number:'1.0-0' }}</b> — probability-weighted outcome after all
+              charges.</li>
+            <li><b>Two profit peaks</b>: left peak +₹{{ r.pnl_left_peak | number:'1.0-0' }} at {{ r.K2 }}, right peak
+              +₹{{ r.pnl_right_peak | number:'1.0-0' }} at {{ r.K5 }}.</li>
+            <li><b>{{ r.lots_available }} lots fillable</b> — bottleneck across all 6 legs.</li>
+            <li><b>Liquidity {{ r.liquidity_score }}/100</b> ({{ liqLabel(r.liquidity_tier) }}) — composite OI, volume,
+              spread.</li>
+          </ul>
+        </div>
+        <div class="wb-section">
+          <div class="wb-h">P&L map at expiry</div>
+          <table class="wb-pnl-table">
+            <tr>
+              <th>Spot zone</th>
+              <th>Gross P&L</th>
+              <th>After charges</th>
+              <th>Outcome</th>
+            </tr>
+            <tr>
+              <td>S &lt; {{ r.K1 }} (far left)</td>
+              <td [class.positive]="r.pnl_far_left >= 0" [class.negative]="r.pnl_far_left < 0">
+                {{ r.pnl_far_left >= 0 ? '+' : '' }}₹{{ r.pnl_far_left | number:'1.0-0' }}
+              </td>
+              <td>₹{{ r.pnl_far_left - r.charges.total | number:'1.0-0' }}</td>
+              <td>{{ r.pnl_far_left - r.charges.total > 0 ? '✓ profit' : '✗ loss' }}</td>
+            </tr>
+            <tr class="wb-peak-row">
+              <td>S ≈ {{ r.K2 }} (left peak ★)</td>
+              <td class="positive">+₹{{ r.pnl_left_peak | number:'1.0-0' }}</td>
+              <td class="positive">+₹{{ r.pnl_left_peak - r.charges.total | number:'1.0-0' }}</td>
+              <td>★ left peak</td>
+            </tr>
+            <tr>
+              <td>{{ r.K3 }}–{{ r.K4 }} (middle)</td>
+              <td [class.positive]="r.pnl_middle >= 0" [class.negative]="r.pnl_middle < 0">
+                {{ r.pnl_middle >= 0 ? '+' : '' }}₹{{ r.pnl_middle | number:'1.0-0' }}
+              </td>
+              <td>₹{{ r.pnl_middle - r.charges.total | number:'1.0-0' }}</td>
+              <td>{{ r.pnl_middle - r.charges.total > 0 ? '✓ profit' : '✗ loss' }}</td>
+            </tr>
+            <tr class="wb-peak-row">
+              <td>S ≈ {{ r.K5 }} (right peak ★)</td>
+              <td class="positive">+₹{{ r.pnl_right_peak | number:'1.0-0' }}</td>
+              <td class="positive">+₹{{ r.pnl_right_peak - r.charges.total | number:'1.0-0' }}</td>
+              <td>★ right peak</td>
+            </tr>
+            <tr>
+              <td>S &gt; {{ r.K6 }} (far right)</td>
+              <td [class.positive]="r.pnl_far_right >= 0" [class.negative]="r.pnl_far_right < 0">
+                {{ r.pnl_far_right >= 0 ? '+' : '' }}₹{{ r.pnl_far_right | number:'1.0-0' }}
+              </td>
+              <td>₹{{ r.pnl_far_right - r.charges.total | number:'1.0-0' }}</td>
+              <td>{{ r.pnl_far_right - r.charges.total > 0 ? '✓ profit' : '✗ loss' }}</td>
+            </tr>
+          </table>
+        </div>
+        <div class="wb-section">
+          <div class="wb-h">Charges breakdown (6 legs × round-trip)</div>
+          <div class="wb-charges-grid">
+            <span>Brokerage</span><b>₹{{ r.charges.brokerage | number:'1.2-2' }}</b>
+            <span>STT</span><b>₹{{ r.charges.stt | number:'1.2-2' }}</b>
+            <span>Exchange</span><b>₹{{ r.charges.exchange | number:'1.2-2' }}</b>
+            <span>SEBI</span><b>₹{{ r.charges.sebi | number:'1.2-2' }}</b>
+            <span>Stamp</span><b>₹{{ r.charges.stamp | number:'1.2-2' }}</b>
+            <span>GST</span><b>₹{{ r.charges.gst | number:'1.2-2' }}</b>
+            <span class="wb-total">Total round-trip</span><b class="wb-total">₹{{ r.charges.total | number:'1.2-2'
+              }}</b>
+          </div>
+        </div>
+      </div>
+      }
+
+      <!-- Payoff graph -->
+      <button class="view-graph-btn" (click)="toggleBatmanGraph(batmanResultKey(r))">
+        <span class="vg-icon">📊</span>
+        <span class="vg-text">{{ isBatmanGraphOpen(batmanResultKey(r)) ? 'Hide payoff graph' : 'View payoff graph'
+          }}</span>
+        <span class="vg-chevron">{{ isBatmanGraphOpen(batmanResultKey(r)) ? '▾' : '▸' }}</span>
+      </button>
+      @if (isBatmanGraphOpen(batmanResultKey(r))) {
+      <app-payoff-graph [data]="batmanGraphInputFor(r)"></app-payoff-graph>
+      }
+
+      <!-- 6 legs -->
+      <div class="legs-row">
+        @for (leg of [
+        { action: 'BUY', sym: r.sym1, px: r.P1, ltp: r.P1_ltp, side: 'ASK', liq: r.leg_liq[0], cls: 'buy-leg', label:
+        'K1 PE' },
+        { action: 'SELL ×2', sym: r.sym2, px: r.P2, ltp: r.P2_ltp, side: 'BID', liq: r.leg_liq[1], cls: 'sell-leg',
+        label: 'K2 PE ★' },
+        { action: 'BUY', sym: r.sym3, px: r.P3, ltp: r.P3_ltp, side: 'ASK', liq: r.leg_liq[2], cls: 'buy-leg', label:
+        'K3 PE' },
+        { action: 'BUY', sym: r.sym4, px: r.P4, ltp: r.P4_ltp, side: 'ASK', liq: r.leg_liq[3], cls: 'buy-leg', label:
+        'K4 CE' },
+        { action: 'SELL ×2', sym: r.sym5, px: r.P5, ltp: r.P5_ltp, side: 'BID', liq: r.leg_liq[4], cls: 'sell-leg',
+        label: 'K5 CE ★' },
+        { action: 'BUY', sym: r.sym6, px: r.P6, ltp: r.P6_ltp, side: 'ASK', liq: r.leg_liq[5], cls: 'buy-leg', label:
+        'K6 CE' }
+        ]; track leg.sym) {
+        <div class="leg-item" [class]="leg.cls">
+          <div class="leg-line">
+            <span class="leg-action">{{ leg.action }}</span>
+            <span class="leg-sym">{{ leg.sym }}</span>
+            <span class="leg-px-block">
+              <span class="leg-px">@ ₹{{ leg.px | number:'1.2-2' }}</span>
+              <span class="leg-side-tag" [class.bid-tag]="leg.side === 'BID'" [class.ask-tag]="leg.side === 'ASK'">{{
+                leg.side }}</span>
+              @if (leg.ltp !== leg.px) {
+              <span class="leg-ltp">LTP {{ leg.ltp | number:'1.2-2' }}</span>
+              }
+            </span>
+          </div>
+          <div class="leg-depth">
+            <span class="depth-chip" [ngClass]="lotsTier(leg.liq.lots).cls">
+              <b>{{ leg.liq.available_qty | number:'1.0-0' }}</b> qty
+              <span class="chip-sep">·</span>
+              <b>{{ leg.liq.lots }}</b> lots
+            </span>
+            @if (leg.liq.bid > 0 && leg.liq.ask > 0) {
+            <span class="leg-bidask">bid {{ leg.liq.bid | number:'1.2-2' }} / ask {{ leg.liq.ask | number:'1.2-2'
+              }}</span>
+            }
+            <span class="leg-oi">OI {{ leg.liq.oi | number:'1.0-0' }}</span>
+          </div>
+        </div>
+        }
+      </div>
+
+      <!-- Footer -->
+      <div class="bwb-footer">
+        <div class="meta-tags">
+          <span class="meta-tag">put wings {{ r.left_inner_wing }}/{{ r.left_outer_wing }}</span>
+          <span class="meta-tag">call wings {{ r.right_inner_wing }}/{{ r.right_outer_wing }}</span>
+          <span class="meta-tag">spread {{ r.max_spread_pct }}%</span>
+          <span class="meta-tag">net credit ₹{{ r.net_credit | number:'1.0-0' }}</span>
+        </div>
+        <button class="btn btn-primary apply-btn" (click)="applyBatmanToBuilder(r)">
+          Load into Strategy →
+        </button>
+      </div>
+    </div>
+    }
+  </div>
+
+  <!-- Pagination (Batman) -->
+  @if (totalPages() > 1) {
+  <div class="pagination card">
+    <div class="pg-info">
+      Showing <b>{{ (page() - 1) * perPage() + 1 }}–{{ (page() - 1) * perPage() + batmanFiltered().length }}</b>
+      of <b>{{ total() }}</b> setups
+    </div>
+    <div class="pg-controls">
+      <button class="pg-btn" [disabled]="page() === 1" (click)="goToPage(1)">« First</button>
+      <button class="pg-btn" [disabled]="page() === 1" (click)="goToPage(page() - 1)">‹ Prev</button>
+      <span class="pg-page">Page <b>{{ page() }}</b> / {{ totalPages() }}</span>
+      <button class="pg-btn" [disabled]="page() === totalPages()" (click)="goToPage(page() + 1)">Next ›</button>
+      <button class="pg-btn" [disabled]="page() === totalPages()" (click)="goToPage(totalPages())">Last »</button>
+    </div>
+    <div class="pg-perpage">
+      <label class="pg-pp-label">Per page:</label>
+      <select class="form-control pg-pp-select" [ngModel]="perPage()" (ngModelChange)="setPerPage(+$event)">
+        <option [ngValue]="10">10</option>
+        <option [ngValue]="30">30</option>
+        <option [ngValue]="50">50</option>
+        <option [ngValue]="100">100</option>
+      </select>
+    </div>
+  </div>
+  }
+  }
+
+  <!-- Results grid — Iron Condor -->
+  @if (!loading() && selectedStrategy() === 'iron_condor' && icFiltered().length > 0) {
+  <div class="results-grid">
+    @for (r of icFiltered(); track icResultKey(r); let i = $index) {
+    <div class="bwb-card card ic-card">
+      @if (scanMode() === 'all' && r._underlying) {
+      <div class="card-source-banner">
+        <span class="src-tag">{{ r._underlying }}</span>
+        <span class="src-sep">·</span>
+        <span>{{ r._expiry }}</span>
+        <span class="src-sep">·</span>
+        <span>{{ r._dte }} DTE</span>
+        <span class="src-sep">·</span>
+        <span>spot ₹{{ r._spot | number:'1.2-2' }}</span>
+      </div>
+      }
+
+      <!-- Top row -->
+      <div class="bwb-top">
+        <div class="bwb-rank">#{{ (page() - 1) * perPage() + i + 1 }}</div>
+        <div class="bwb-name">
+          <span class="type-tag ic-tag">🦅 IRON CONDOR</span>
+          <span class="strike-trio">
+            <span class="st-buy">+1×{{ r.K1 }}</span>
+            <span class="arrow">/</span>
+            <span class="st-sell">−1×{{ r.K2 }}</span>
+            <span class="arrow">│</span>
+            <span class="st-sell">−1×{{ r.K3 }}</span>
+            <span class="arrow">/</span>
+            <span class="st-buy">+1×{{ r.K4 }}</span>
+          </span>
+        </div>
+        <div class="badges-stack">
+          <span class="risk-badge" [ngClass]="icRiskBadge(r).cls">{{ icRiskBadge(r).label }}</span>
+          <span class="lots-pill" [ngClass]="lotsTier(r.lots_available).cls">
+            <span class="lots-num">{{ r.lots_available }}</span>
+            <span class="lots-text">lots fillable</span>
+          </span>
+          <span class="liq-pill" [class]="'liq-' + r.liquidity_tier">
+            <span class="liq-dot"></span>
+            <span class="liq-text">{{ liqLabel(r.liquidity_tier) }} {{ r.liquidity_score }}</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="bwb-stats">
+        <div class="stat pop-stat" [ngClass]="popTier(r.pop).cls">
+          <div class="s-lbl">Probability of Profit</div>
+          <div class="s-val pop-val">{{ fmtPop(r.pop) }}</div>
+          <div class="s-sub">{{ popTier(r.pop).label }}</div>
+        </div>
+        <div class="stat">
+          <div class="s-lbl">Net Credit (max profit)</div>
+          <div class="s-val" [class.positive]="r.net_max_profit > 0" [class.negative]="r.net_max_profit < 0">
+            {{ r.net_max_profit >= 0 ? '+' : '' }}₹{{ r.net_max_profit | number:'1.0-0' }}
+          </div>
+          <div class="s-sub muted-sub">gross ₹{{ r.max_profit | number:'1.0-0' }}</div>
+        </div>
+        <div class="stat">
+          <div class="s-lbl">Max Loss (wing)</div>
+          <div class="s-val negative">−₹{{ r.net_max_loss | number:'1.0-0' }}</div>
+          <div class="s-sub muted-sub">gross ₹{{ r.max_loss | number:'1.0-0' }}</div>
+        </div>
+        <div class="stat">
+          <div class="s-lbl">Net Expected Value</div>
+          <div class="s-val" [class.positive]="r.net_expected_value >= 0" [class.negative]="r.net_expected_value < 0">
+            {{ r.net_expected_value >= 0 ? '+' : '' }}₹{{ r.net_expected_value | number:'1.0-0' }}
+          </div>
+          <div class="s-sub muted-sub">gross ₹{{ r.expected_value | number:'1.0-0' }}</div>
+        </div>
+        <div class="stat charges-stat">
+          <div class="s-lbl">Charges (round-trip)</div>
+          <div class="s-val charges-val">−₹{{ r.charges.total | number:'1.0-0' }}</div>
+          <div class="s-sub muted-sub">4 legs · brokerage + tax</div>
+        </div>
+      </div>
+
+      <!-- Management levels panel -->
+      <div class="ic-mgmt-panel">
+        <div class="ic-mgmt-row">
+          <span class="ic-mgmt-label">Short strikes (delta)</span>
+          <span class="ic-mgmt-value">
+            K2 {{ r.K2 }} <span class="ic-delta-badge">Δ {{ r.delta_short_put | number:'1.2-2' }}</span>
+            &nbsp;|&nbsp;
+            K3 {{ r.K3 }} <span class="ic-delta-badge">Δ {{ r.delta_short_call | number:'1.2-2' }}</span>
+          </span>
+        </div>
+        <div class="ic-mgmt-row">
+          <span class="ic-mgmt-label">Breakevens</span>
+          <span class="ic-mgmt-value">
+            <span class="ic-be-lower">{{ r.be_lower | number:'1.0-0' }}</span>
+            &nbsp;⟷&nbsp;
+            <span class="ic-be-upper">{{ r.be_upper | number:'1.0-0' }}</span>
+            &nbsp;<span class="ic-mgmt-note">(credit ratio {{ r.credit_ratio | number:'1.2-2' }})</span>
+          </span>
+        </div>
+        <div class="ic-mgmt-row">
+          <span class="ic-mgmt-label">Profit target (50%)</span>
+          <span class="ic-mgmt-value positive">+₹{{ r.profit_target_50 | number:'1.0-0' }}</span>
+        </div>
+        <div class="ic-mgmt-row">
+          <span class="ic-mgmt-label">Stop loss (2× credit)</span>
+          <span class="ic-mgmt-value negative">−₹{{ r.stop_loss_2x | number:'1.0-0' }}</span>
+        </div>
+      </div>
+
+      <!-- Why this trade (first result only) -->
+      @if (i === 0) {
+      <button class="why-best-btn" (click)="toggleIcExpanded(icResultKey(r))">
+        <span class="wb-star">★</span>
+        <span class="wb-text">Why this Iron Condor is the best pick</span>
+        <span class="wb-chevron">{{ icExpandedId() === icResultKey(r) ? '▾' : '▸' }}</span>
+      </button>
+      }
+      @if (icExpandedId() === icResultKey(r)) {
+      <div class="why-best-panel">
+        <div class="wb-section">
+          <div class="wb-h">Ranking justification (sorted by EV then PoP)</div>
+          <ul class="wb-list">
+            <li><b>PoP {{ fmtPop(r.pop) }}</b> — log-normal at IV {{ r.iv_used_pct }}% with {{ r._dte ?? dte() }} DTE. Spot stays between {{ r.K2 }} and {{ r.K3 }} ({{ r.profit_zone_width }}pts wide, {{ r.profit_zone_pct | number:'1.1-1' }}% of spot).</li>
+            <li><b>Net EV ₹{{ r.net_expected_value | number:'1.0-0' }}</b> — probability-weighted outcome after all charges.</li>
+            <li><b>Left wing {{ r.left_wing_width }}pts</b> ({{ r.K1 }}–{{ r.K2 }}), <b>right wing {{ r.right_wing_width }}pts</b> ({{ r.K3 }}–{{ r.K4 }}).</li>
+            <li><b>{{ r.lots_available }} lots fillable</b> — bottleneck across all 4 legs.</li>
+            <li><b>Liquidity {{ r.liquidity_score }}/100</b> ({{ liqLabel(r.liquidity_tier) }}) — composite OI, volume, spread.</li>
+          </ul>
+        </div>
+        <div class="wb-section">
+          <div class="wb-h">P&L map at expiry</div>
+          <table class="wb-pnl-table">
+            <tr>
+              <th>Spot zone</th>
+              <th>Gross P&L</th>
+              <th>After charges</th>
+              <th>Outcome</th>
+            </tr>
+            <tr>
+              <td>S &lt; {{ r.K1 }} (far left)</td>
+              <td class="negative">−₹{{ r.pnl_far_left | number:'1.0-0' }}</td>
+              <td class="negative">−₹{{ r.pnl_far_left + r.charges.total | number:'1.0-0' }}</td>
+              <td>✗ max loss</td>
+            </tr>
+            <tr class="wb-peak-row">
+              <td>{{ r.K2 }}–{{ r.K3 }} (profit zone ★)</td>
+              <td class="positive">+₹{{ r.pnl_profit_zone | number:'1.0-0' }}</td>
+              <td class="positive">+₹{{ r.pnl_profit_zone - r.charges.total | number:'1.0-0' }}</td>
+              <td>★ full credit</td>
+            </tr>
+            <tr>
+              <td>S &gt; {{ r.K4 }} (far right)</td>
+              <td class="negative">−₹{{ r.pnl_far_right | number:'1.0-0' }}</td>
+              <td class="negative">−₹{{ r.pnl_far_right + r.charges.total | number:'1.0-0' }}</td>
+              <td>✗ max loss</td>
+            </tr>
+          </table>
+        </div>
+        <div class="wb-section">
+          <div class="wb-h">Charges breakdown (4 legs × round-trip)</div>
+          <div class="wb-charges-grid">
+            <span>Brokerage</span><b>₹{{ r.charges.brokerage | number:'1.2-2' }}</b>
+            <span>STT</span><b>₹{{ r.charges.stt | number:'1.2-2' }}</b>
+            <span>Exchange</span><b>₹{{ r.charges.exchange | number:'1.2-2' }}</b>
+            <span>SEBI</span><b>₹{{ r.charges.sebi | number:'1.2-2' }}</b>
+            <span>Stamp</span><b>₹{{ r.charges.stamp | number:'1.2-2' }}</b>
+            <span>GST</span><b>₹{{ r.charges.gst | number:'1.2-2' }}</b>
+            <span class="wb-total">Total round-trip</span><b class="wb-total">₹{{ r.charges.total | number:'1.2-2' }}</b>
+          </div>
+        </div>
+      </div>
+      }
+
+      <!-- Payoff graph -->
+      <button class="view-graph-btn" (click)="toggleGraph(icResultKey(r))">
+        <span class="vg-icon">📊</span>
+        <span class="vg-text">{{ isGraphOpen(icResultKey(r)) ? 'Hide payoff graph' : 'View payoff graph' }}</span>
+        <span class="vg-chevron">{{ isGraphOpen(icResultKey(r)) ? '▾' : '▸' }}</span>
+      </button>
+      @if (isGraphOpen(icResultKey(r))) {
+      <app-payoff-graph [data]="icGraphInputFor(r)"></app-payoff-graph>
+      }
+
+      <!-- 4 legs -->
+      <div class="legs-row">
+        @for (leg of [
+        { action: 'BUY',  sym: r.sym1, px: r.P1, ltp: r.P1_ltp, side: 'ASK', liq: r.leg_liq[0], cls: 'buy-leg'  },
+        { action: 'SELL', sym: r.sym2, px: r.P2, ltp: r.P2_ltp, side: 'BID', liq: r.leg_liq[1], cls: 'sell-leg' },
+        { action: 'SELL', sym: r.sym3, px: r.P3, ltp: r.P3_ltp, side: 'BID', liq: r.leg_liq[2], cls: 'sell-leg' },
+        { action: 'BUY',  sym: r.sym4, px: r.P4, ltp: r.P4_ltp, side: 'ASK', liq: r.leg_liq[3], cls: 'buy-leg'  }
+        ]; track leg.sym) {
+        <div class="leg-item" [class]="leg.cls">
+          <div class="leg-line">
+            <span class="leg-action">{{ leg.action }}</span>
+            <span class="leg-sym">{{ leg.sym }}</span>
+            <span class="leg-px-block">
+              <span class="leg-px">@ ₹{{ leg.px | number:'1.2-2' }}</span>
+              <span class="leg-side-tag" [class.bid-tag]="leg.side === 'BID'" [class.ask-tag]="leg.side === 'ASK'">{{ leg.side }}</span>
+              @if (leg.ltp !== leg.px) {
+              <span class="leg-ltp">LTP {{ leg.ltp | number:'1.2-2' }}</span>
+              }
+            </span>
+          </div>
+          <div class="leg-depth">
+            <span class="depth-chip" [ngClass]="lotsTier(leg.liq.lots).cls">
+              <b>{{ leg.liq.available_qty | number:'1.0-0' }}</b> qty
+              <span class="chip-sep">·</span>
+              <b>{{ leg.liq.lots }}</b> lots
+            </span>
+            @if (leg.liq.bid > 0 && leg.liq.ask > 0) {
+            <span class="leg-bidask">bid {{ leg.liq.bid | number:'1.2-2' }} / ask {{ leg.liq.ask | number:'1.2-2' }}</span>
+            }
+            <span class="leg-oi">OI {{ leg.liq.oi | number:'1.0-0' }}</span>
+          </div>
+        </div>
+        }
+      </div>
+
+      <!-- Footer -->
+      <div class="bwb-footer">
+        <div class="meta-tags">
+          <span class="meta-tag">profit zone {{ r.profit_zone_width }}pts ({{ r.profit_zone_pct | number:'1.1-1' }}%)</span>
+          <span class="meta-tag">wing {{ r.wing_width }}pts</span>
+          <span class="meta-tag">R:R {{ r.rr_ratio | number:'1.1-1' }}</span>
+          <span class="meta-tag">net credit ₹{{ r.net_credit | number:'1.0-0' }}</span>
+        </div>
+        <button class="btn btn-primary apply-btn" (click)="applyIcToBuilder(r)">
+          Load into Strategy →
+        </button>
+      </div>
+    </div>
+    }
+  </div>
+
+  <!-- Pagination (Iron Condor) -->
+  @if (totalPages() > 1) {
+  <div class="pagination card">
+    <div class="pg-info">
+      Showing <b>{{ (page() - 1) * perPage() + 1 }}–{{ (page() - 1) * perPage() + icFiltered().length }}</b>
+      of <b>{{ total() }}</b> setups
+    </div>
+    <div class="pg-controls">
+      <button class="pg-btn" [disabled]="page() === 1" (click)="goToPage(1)">« First</button>
+      <button class="pg-btn" [disabled]="page() === 1" (click)="goToPage(page() - 1)">‹ Prev</button>
+      <span class="pg-page">Page <b>{{ page() }}</b> / {{ totalPages() }}</span>
+      <button class="pg-btn" [disabled]="page() === totalPages()" (click)="goToPage(page() + 1)">Next ›</button>
+      <button class="pg-btn" [disabled]="page() === totalPages()" (click)="goToPage(totalPages())">Last »</button>
+    </div>
+    <div class="pg-perpage">
+      <label class="pg-pp-label">Per page:</label>
+      <select class="form-control pg-pp-select" [ngModel]="perPage()" (ngModelChange)="setPerPage(+$event)">
+        <option [ngValue]="10">10</option>
+        <option [ngValue]="30">30</option>
+        <option [ngValue]="50">50</option>
+        <option [ngValue]="100">100</option>
+      </select>
+    </div>
+  </div>
+  }
+  }
+
+</div>

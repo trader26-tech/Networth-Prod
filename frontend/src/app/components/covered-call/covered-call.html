@@ -1,0 +1,3140 @@
+<div class="cc-page">
+
+  <!-- ════════ Live Nifty ticker — always visible across all views ═════════ -->
+  @if (niftySpot() > 0) {
+  <div class="nifty-ticker" [class.nt-up]="niftyUp()" [class.nt-dn]="!niftyUp() && niftySpotRef() > 0">
+    <span class="nt-label">NIFTY 50</span>
+    <span class="nt-price">{{ niftySpot() | number:'1.0-0' }}</span>
+    @if (niftySpotRef() > 0 && niftySpot() !== niftySpotRef()) {
+    <span class="nt-change">
+      {{ niftyUp() ? '▲' : '▼' }}
+      {{ niftyChangeAbs() | number:'1.0-0' }}
+      ({{ niftyChangePct() | number:'1.2-2' }}%)
+    </span>
+    }
+    <span class="nt-sep">·</span>
+    <span class="nt-dot">●</span>
+    <span class="nt-live">live</span>
+    @if (hubLastUpdated() || lastUpdatedStr()) {
+    <span class="nt-ts">{{ hubLastUpdated() || lastUpdatedStr() }}</span>
+    }
+  </div>
+  }
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- HUB VIEW                                                                 -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  @if (currentView() === 'hub') {
+
+  <!-- Hub header -->
+  <div class="cc-header">
+    <h1 class="cc-title">Covered Calls</h1>
+    <button class="cc-info-btn" (click)="openPlaybook()" title="What is this page? · How does it work?">
+      ⓘ
+    </button>
+  </div>
+
+  <!-- ════════ Strategy Playbook — modal triggered by 'How to use' ═══════ -->
+  @if (playbookOpen()) {
+  <div class="cc-playbook-backdrop" (click)="closePlaybook()">
+  <div class="cc-playbook-modal" (click)="$event.stopPropagation()">
+    <header class="cc-playbook-head">
+      <span class="pbk-icon">📖</span>
+      <h2>Strategy Playbook — how to actually run this every day</h2>
+      <button class="cc-playbook-close" (click)="closePlaybook()" title="Close">✕</button>
+    </header>
+
+    <div class="pbk-body">
+
+      <!-- ── 1. The strategy in one sentence ───────────────────────────── -->
+      <div class="pbk-banner">
+        <strong>The whole strategy in one sentence:</strong>
+        Buy NiftyBees → sell out-of-money calls every month for premium income →
+        buy a 3-month protective put as crash insurance → keep collecting income
+        while the market does what it does.
+      </div>
+
+      <!-- ── 2. The 4 components ───────────────────────────────────────── -->
+      <details class="pbk-section" open>
+        <summary>① The 4 components — what you actually own</summary>
+        <div class="pbk-grid-4">
+          <div class="pbk-comp pbk-c1">
+            <div class="pbk-comp-icon">📦</div>
+            <div class="pbk-comp-title">NiftyBees (long ETF)</div>
+            <div class="pbk-comp-desc">15,000 shares ≈ 1 Nifty lot exposure. Bought once. Held for years. The compounding engine — Nifty CAGR ~12% historically.</div>
+          </div>
+          <div class="pbk-comp pbk-c2">
+            <div class="pbk-comp-icon">📞</div>
+            <div class="pbk-comp-title">Short CC monthly</div>
+            <div class="pbk-comp-desc">Sell a Nifty Call against the NB position. Δ 0.25-0.30, 2.5-3% OTM, monthly expiry. Premium ~₹15-25K/cycle. The income engine.</div>
+          </div>
+          <div class="pbk-comp pbk-c3">
+            <div class="pbk-comp-icon">🛡️</div>
+            <div class="pbk-comp-title">Long hedge put</div>
+            <div class="pbk-comp-desc">Buy a 75-100 DTE 5-8% OTM Nifty Put. Roll every 60 days. Costs ~1.8%/yr in premium drag — caps crash damage at ~13% vs 30% raw.</div>
+          </div>
+          <div class="pbk-comp pbk-c4">
+            <div class="pbk-comp-icon">💰</div>
+            <div class="pbk-comp-title">Cash reserve</div>
+            <div class="pbk-comp-desc">~₹1-2L liquid fund @ 6.5%. Used for monthly hedge rolls and emergency margin top-up. Never deployed into the trading legs.</div>
+          </div>
+        </div>
+      </details>
+
+      <!-- ── 3. Pre-market check ───────────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>② Pre-market check — should you trade today?</summary>
+        <div class="pbk-checks">
+          <div class="pbk-check pbk-good">
+            <strong>VIX 11 – 22</strong>
+            <span>Normal regime. Sellable premium without tail risk. Below 11 = premium too thin. Above 22 = SKIP this cycle, premium looks rich but tail risk is amplified.</span>
+          </div>
+          <div class="pbk-check pbk-good">
+            <strong>ATM IV ≥ VIX × 0.95</strong>
+            <span>The chain is pricing vol AT or RICHER than the market. Selling now is favourable. Below this = chain is cheap, premium underpaid for the risk.</span>
+          </div>
+          <div class="pbk-check pbk-good">
+            <strong>RSI(14) between 35 and 70</strong>
+            <span>Neutral to mild momentum. Avoid entering when overbought (RSI > 75 — pullback risk) or oversold (RSI < 30 — capitulation, wait for stabilisation).</span>
+          </div>
+          <div class="pbk-check pbk-good">
+            <strong>NB within ±3% of 50-day MA</strong>
+            <span>Trend-following position. Stretched well above 50DMA = mean-reversion risk. Far below = trend break, defensive sizing.</span>
+          </div>
+          <div class="pbk-tip">
+            <strong>Decision rule:</strong> 4/4 checks pass = GO. 3/4 = CAUTION (smaller size). 2/4 or fewer = SKIP this cycle.
+          </div>
+        </div>
+      </details>
+
+      <!-- ── 4. Strike selection ───────────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>③ Strike selection — why Δ 0.25-0.30 is the sweet spot</summary>
+        <div class="pbk-table">
+          <table>
+            <thead>
+              <tr><th>Δ band</th><th>OTM%</th><th>Premium</th><th>P(keep all)</th><th>Verdict</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>0.40+</td><td>~1% OTM</td><td>High (~1.5%)</td><td>~60%</td><td class="pbk-bad">Whip-fires roll-up trigger constantly</td></tr>
+              <tr class="pbk-row-good"><td><strong>0.25-0.30</strong></td><td><strong>2.5-3% OTM</strong></td><td><strong>~1%</strong></td><td><strong>~70-75%</strong></td><td class="pbk-good"><strong>★ Sweet spot — best risk/reward</strong></td></tr>
+              <tr><td>0.15-0.20</td><td>~5% OTM</td><td>Low (~0.5%)</td><td>~85%</td><td class="pbk-warn">Premium too thin to bother</td></tr>
+              <tr><td>&lt; 0.10</td><td>&gt; 7% OTM</td><td>Tiny (~0.2%)</td><td>~95%</td><td class="pbk-bad">Not worth the slot</td></tr>
+            </tbody>
+          </table>
+          <div class="pbk-tip">
+            <strong>Strike floor rule:</strong> Never sell a CC with strike below <code>NB entry × 1.01</code>.
+            If you do and the call gets assigned, you'd cap your gains BELOW your cost basis — guaranteed loss.
+            The system enforces this automatically in the strike-builder; the floor flag turns red if you breach it.
+          </div>
+        </div>
+      </details>
+
+      <!-- ── 5. Expiry selection ───────────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>④ Expiry selection — why monthly, not weekly or quarterly</summary>
+        <div class="pbk-table">
+          <table>
+            <thead><tr><th>Expiry</th><th>Strengths</th><th>Why we DON'T use</th></tr></thead>
+            <tbody>
+              <tr><td>Weekly (7 DTE)</td><td>Cycles fast, low time premium</td><td class="pbk-bad">Tiny premium per cycle, very high gamma in last 2-3 days, 4× more transaction friction. The BTS algorithm penalises weeklies at 0.40×.</td></tr>
+              <tr class="pbk-row-good"><td><strong>Monthly (28-30 DTE)</strong></td><td><strong>Highest OI, fastest theta, 1 decision/month</strong></td><td>—</td></tr>
+              <tr><td>2-month (60 DTE)</td><td>More premium per cycle</td><td class="pbk-warn">Theta is slow in first 30 days (50% wasted), capital ties up longer.</td></tr>
+              <tr><td>Quarterly (90+)</td><td>Big absolute premium</td><td class="pbk-bad">Very slow theta, high vega risk, hard to roll defensively. Only good for HEDGES, not income legs.</td></tr>
+            </tbody>
+          </table>
+          <div class="pbk-tip">
+            <strong>The math:</strong> Theta decay is non-linear — the last 30 days hold ~60% of total time value. Monthly puts you in this fast-decay zone always.
+          </div>
+        </div>
+      </details>
+
+      <!-- ── 6. Hedge selection ────────────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>⑤ Hedge selection — your insurance, always-on</summary>
+        <div class="pbk-grid-2">
+          <div>
+            <h4>What to buy</h4>
+            <ul>
+              <li><strong>Strike:</strong> 5-8% OTM (sweet spot)</li>
+              <li><strong>Expiry:</strong> 75-100 DTE (3-month protocol)</li>
+              <li><strong>Size:</strong> 1 lot per CC lot</li>
+              <li><strong>Hit rate target:</strong> ≥ 18% chance of finishing ITM (Δ ≥ 0.20)</li>
+            </ul>
+          </div>
+          <div>
+            <h4>When to roll</h4>
+            <ul>
+              <li>🟢 <strong>DTE &gt; 45:</strong> hold, do nothing</li>
+              <li>🟡 <strong>DTE 30-45:</strong> plan a roll, scan candidates</li>
+              <li>🔴 <strong>DTE ≤ 30:</strong> ROLL NOW — close + buy fresh 3-month put</li>
+            </ul>
+          </div>
+        </div>
+        <div class="pbk-tip">
+          <strong>The hedge math:</strong> Costs ~1.8%/yr in premium drag. In normal years you "pay" this and feel nothing.
+          In a crash year (~once every 5-7 years), the hedge can save 5-14% of capital.
+          Net effect over a decade: hedged portfolio ends ~5-7% AHEAD despite the drag.
+        </div>
+        <div class="pbk-tip pbk-tip-warn">
+          ⚠ Why NOT 13% OTM hedges: only ~1% chance of finishing ITM in 60 days = lottery insurance. You pay premium 99 times for one payoff that may not even cover accumulated cost. Stay in the 5-8% sweet spot.
+        </div>
+      </details>
+
+      <!-- ── 7. Daily routine ───────────────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>⑥ Daily routine — what to do each day</summary>
+        <div class="pbk-routine">
+          <div class="pbk-routine-row">
+            <span class="pbk-time">9:15 — 9:30 AM</span>
+            <span class="pbk-action">Glance at the Roll Watch panel. If all 🟢, do nothing. If anything 🔴, act before midday.</span>
+          </div>
+          <div class="pbk-routine-row">
+            <span class="pbk-time">11:00 AM</span>
+            <span class="pbk-action">Quick check on Nifty + VIX. If VIX > 22, no new entries today.</span>
+          </div>
+          <div class="pbk-routine-row">
+            <span class="pbk-time">2:30 PM</span>
+            <span class="pbk-action">If a TP or roll trigger is armed, prefer to act in the afternoon — IV is more stable, tighter spreads.</span>
+          </div>
+          <div class="pbk-routine-row">
+            <span class="pbk-time">3:25 PM</span>
+            <span class="pbk-action">Final 5-min check: any DTE ≤ 1 ITM positions? Close immediately to avoid assignment.</span>
+          </div>
+          <div class="pbk-routine-row pbk-routine-friday">
+            <span class="pbk-time">Friday afternoon</span>
+            <span class="pbk-action">Pre-week prep: open Best Trade scanner. Note next week's candidate so you have a target for Monday's pre-market scan.</span>
+          </div>
+        </div>
+      </details>
+
+      <!-- ── 8. The 5 exit triggers ─────────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>⑦ The 5 exit triggers — in priority order</summary>
+        <div class="pbk-stops">
+          <div class="pbk-stop pbk-stop-1">
+            <div class="pbk-stop-head"><strong>STOP 3</strong> · Assignment Defense — <em>highest priority</em></div>
+            <div><strong>Fires when:</strong> DTE ≤ 1 AND call is ITM</div>
+            <div><strong>Action:</strong> Close immediately. Letting it auto-assign would force you to sell NB at the strike.</div>
+          </div>
+          <div class="pbk-stop pbk-stop-2">
+            <div class="pbk-stop-head"><strong>STOP 5</strong> · DTE ≤ 14 Force-Exit</div>
+            <div><strong>Fires when:</strong> Any open CC reaches 14 DTE</div>
+            <div><strong>Action:</strong> Close + roll forward. Last 2 weeks = gamma + assignment risk for tiny remaining theta.</div>
+          </div>
+          <div class="pbk-stop pbk-stop-3">
+            <div class="pbk-stop-head"><strong>STOP 2</strong> · Roll-Up (Δ ≥ 0.40)</div>
+            <div><strong>Fires when:</strong> Short call's delta crosses 0.40 AND DTE &gt; 5</div>
+            <div><strong>Action:</strong> Roll up to a higher strike. Cheaper now (still OTM) than waiting for ITM.</div>
+          </div>
+          <div class="pbk-stop pbk-stop-4">
+            <div class="pbk-stop-head"><strong>STOP 1</strong> · Take-Profit (60% rule)</div>
+            <div><strong>Fires when:</strong> Premium ≤ 40% of entry (60% captured)</div>
+            <div><strong>Action:</strong> Close + sell next month's CC. Captures most theta, avoids gamma risk.</div>
+          </div>
+          <div class="pbk-stop pbk-stop-5">
+            <div class="pbk-stop-head"><strong>STOP 4</strong> · Hold — <em>default</em></div>
+            <div><strong>State:</strong> All triggers safe</div>
+            <div><strong>Action:</strong> Do nothing. Theta is working in your favour. Acting here only adds friction.</div>
+          </div>
+        </div>
+      </details>
+
+      <!-- ── 9. The roll decision ───────────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>⑧ Rolling — when, how, and the anti-whipsaw rule</summary>
+        <div>
+          <p><strong>How a roll works:</strong> One atomic decision = two trades.</p>
+          <ol class="pbk-steps">
+            <li>BUY back the current CC at market (or limit at midpoint)</li>
+            <li>SELL a new CC at higher strike + same/next month for fresh premium</li>
+          </ol>
+          <p>Net cash flow is usually slightly negative (~₹1-3K debit) — the new premium partially offsets the buyback cost.</p>
+          <h4>The whipsaw concern</h4>
+          <p>If Nifty rallies hard, Δ can keep crossing 0.40 cycle after cycle. Each roll books a small loss. <strong>But — and this matters — every rally also grows your NB position</strong>. So:</p>
+          <ul>
+            <li>3 rolls in 3 cycles = ~₹30K bleed (small)</li>
+            <li>Same rally = ₹4-5L paper gain on NB (much larger)</li>
+            <li><strong>Net: still strongly positive, just leaving uncapped upside on the table</strong></li>
+          </ul>
+          <div class="pbk-tip pbk-tip-warn">
+            <strong>The 2-roll cap rule:</strong> If a single CC cycle has been rolled twice and Δ hits 0.40 a third time, STOP rolling.
+            Let the cycle expire (take the cap loss), redeploy fresh next month at Δ 0.25 (more conservative).
+            This stops the rolling treadmill in trending markets.
+          </div>
+        </div>
+      </details>
+
+      <!-- ── 10. Common mistakes ───────────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>⑨ Common mistakes — what NOT to do</summary>
+        <ul class="pbk-mistakes">
+          <li>❌ <strong>Selling CC at Δ &gt; 0.35 for "more premium"</strong> — whip-fires the roll trigger; rolls eat the premium.</li>
+          <li>❌ <strong>Skipping the hedge to save 1.8%/yr</strong> — you'll pay 13-30% in the next crash year.</li>
+          <li>❌ <strong>Holding past DTE 14</strong> — gamma + assignment risk for tiny theta. Always force-exit.</li>
+          <li>❌ <strong>Panic-closing on the first dip</strong> — drawdowns recover; realising losses doesn't.</li>
+          <li>❌ <strong>Selling NB to "lock gains" within year 1</strong> — triggers 20% STCG. Wait for 12+ months for LTCG rate.</li>
+          <li>❌ <strong>Trading on event days</strong> — RBI, Fed, election results, budget. Premium is rich but moves are wild.</li>
+          <li>❌ <strong>Selling deep-OTM hedges (12%+)</strong> — lottery insurance, fires once in 100 cycles.</li>
+          <li>❌ <strong>Choosing weekly expiries because annualised yield looks higher</strong> — paper yield ≠ realised yield once friction is counted.</li>
+        </ul>
+      </details>
+
+      <!-- ── 11. Realistic expectations ────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>⑩ Realistic expectations — what each year looks like</summary>
+        <div class="pbk-expectations">
+          <table>
+            <thead><tr><th>Year type</th><th>Frequency</th><th>NB</th><th>Premium</th><th>Hedge</th><th>Net pre-tax</th><th>Net post-tax</th></tr></thead>
+            <tbody>
+              <tr><td>Bull (Nifty +15%+)</td><td>~2/10 yrs</td><td>+8% (capped)</td><td>+12%</td><td>−1.8%</td><td>+19%</td><td>+14-15%</td></tr>
+              <tr class="pbk-row-good"><td><strong>Normal (Nifty +10-12%)</strong></td><td><strong>6/10 yrs</strong></td><td>+6%</td><td>+12%</td><td>−1.8%</td><td><strong>+17%</strong></td><td><strong>+13%</strong></td></tr>
+              <tr><td>Slow (Nifty +5-7%)</td><td>~1/10 yrs</td><td>+4%</td><td>+12%</td><td>−1.8%</td><td>+15%</td><td>+11%</td></tr>
+              <tr><td>Flat (Nifty 0%)</td><td>~0.5/10 yrs</td><td>0</td><td>+12%</td><td>−1.8%</td><td>+11%</td><td>+8%</td></tr>
+              <tr class="pbk-row-bad"><td>Crash (Nifty −20%+)</td><td>~0.5/10 yrs</td><td>−20%</td><td>+8%</td><td>+5% payoff</td><td>−13%</td><td>−10%</td></tr>
+            </tbody>
+          </table>
+          <div class="pbk-tip">
+            <strong>Multi-year average:</strong> ~13-15% pre-tax, ~10-11% post-tax.
+            <strong>Win rate:</strong> ~70-80% of monthly cycles end profitable.
+            <strong>Max drawdown:</strong> ~−13% in a crash year (vs −30% raw long NB).
+          </div>
+        </div>
+      </details>
+
+      <!-- ── 12. The discipline rules ──────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>⑪ The 5 discipline rules — non-negotiable</summary>
+        <ol class="pbk-rules">
+          <li><strong>Never deviate from the entry checklist.</strong> 4/4 checks = GO. Emotional override = where strategies die.</li>
+          <li><strong>Never skip the hedge.</strong> The 1.8% drag is the price of staying in business through crashes.</li>
+          <li><strong>Never roll more than twice per cycle.</strong> Third trigger = let it expire, redeploy at Δ 0.25 next month.</li>
+          <li><strong>Never trade through VIX > 22.</strong> Wait for vol to settle. Missing one cycle ≪ blowing up.</li>
+          <li><strong>Never panic-close.</strong> If you didn't have a defined exit signal, hold. Drawdowns are temporary; realised losses aren't.</li>
+        </ol>
+      </details>
+
+      <!-- ── 13. Tax notes (brief) ─────────────────────────────────────── -->
+      <details class="pbk-section">
+        <summary>⑫ Tax notes — brief reminder</summary>
+        <ul class="pbk-tax">
+          <li><strong>F&O premium income</strong> is taxed at slab rate (counted as business income).</li>
+          <li><strong>NB gains</strong>: STCG 20% if held &lt; 12 months · LTCG 12.5% above ₹1.25L exempt if held ≥ 12 months.</li>
+          <li><strong>Hedge cost</strong> is an F&O loss → offsets premium gains in your F&O P&L.</li>
+          <li><strong>Year 1:</strong> NO NB sales. Every NB sale within 12 months triggers 20% STCG.</li>
+          <li><strong>Year 2 onwards:</strong> harvest up to ₹1.25L of LTCG annually for ZERO tax.</li>
+          <li><strong>Spouse split:</strong> doubles the exempt window if you co-own NB through a joint account.</li>
+        </ul>
+      </details>
+
+    </div>
+  </div>
+  </div>
+  }
+
+  <!-- ════════ Counter-cyclical alert banners (Phase 3B) ═════════════════ -->
+  @if (counterCyclicalAlerts().length > 0) {
+    <div class="cc-alerts-strip">
+      @for (alert of counterCyclicalAlerts(); track alert.id) {
+        <div class="cc-alert" [class]="'cc-alert-' + alert.tone">
+          <span class="cca-icon">{{ alert.icon }}</span>
+          <div class="cca-body">
+            <div class="cca-title">{{ alert.title }}</div>
+            <div class="cca-action">{{ alert.action }}</div>
+          </div>
+          @if (alert.cta) {
+            <a class="cca-cta" [routerLink]="alert.cta.route">{{ alert.cta.label }} →</a>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- ════════ Performance KPIs — clean, white, big numbers, info-only ════ -->
+  @if (positions().length > 0) {
+    @let st = hubStats();
+  <section class="kpis">
+    <h3 class="kpis-title">Performance</h3>
+    <div class="kpis-grid">
+
+      <button class="kpi" type="button"
+              [class.active]="kpiInfoOpen() === 'premium'"
+              (click)="toggleKpiInfo('premium')"
+              title="Click to see what this means">
+        <div class="kpi-num">₹{{ st.totalPremium | number:'1.0-0' }}</div>
+        <div class="kpi-meta">
+          <span class="kpi-word">Premium</span>
+        </div>
+        @if (kpiInfoOpen() === 'premium') {
+          <div class="kpi-tip">
+            <strong>Total premium collected.</strong> Sum of premium received across all
+            covered-call cycles you've sold (closed + currently open).
+            <code>Σ(premium_received × lots × lot_size)</code>.
+            This is realised income from selling calls; it doesn't include the underlying NB
+            P&L or hedge cost.
+          </div>
+        }
+      </button>
+
+      <button class="kpi" type="button"
+              [class.active]="kpiInfoOpen() === 'pnl'"
+              (click)="toggleKpiInfo('pnl')"
+              title="Click to see what this means">
+        <div class="kpi-num"
+             [class.pos]="st.livePnl >= 0"
+             [class.neg]="st.livePnl < 0">
+          {{ fmtRs(st.livePnl) }}
+        </div>
+        <div class="kpi-meta">
+          <span class="kpi-word">P&L</span>
+        </div>
+        @if (kpiInfoOpen() === 'pnl') {
+          <div class="kpi-tip">
+            <strong>Live mark-to-market P&amp;L on the open book.</strong>
+            Sum of <code>NB ETF P&amp;L + Short-call P&amp;L</code> across all active
+            positions, refreshed live from Kite quotes (BS fallback if quote stale).
+            Green when positive, red when negative.
+          </div>
+        }
+      </button>
+
+      <button class="kpi" type="button"
+              [class.active]="kpiInfoOpen() === 'winrate'"
+              (click)="toggleKpiInfo('winrate')"
+              title="Click to see what this means">
+        <div class="kpi-num">
+          @if (st.winRate !== null) { {{ st.winRate | number:'1.0-0' }}% }
+          @else { — }
+        </div>
+        <div class="kpi-meta">
+          <span class="kpi-word">Win rate</span>
+        </div>
+        @if (kpiInfoOpen() === 'winrate') {
+          <div class="kpi-tip">
+            <strong>% of closed CC cycles that ended profitable.</strong>
+            <code>cycles_profitable / cycles_closed</code>. A cycle is profitable when
+            the premium captured at close exceeds the buyback cost. Long-term target
+            is 70-80%; below 60% suggests strikes are too aggressive.
+          </div>
+        }
+      </button>
+
+    </div>
+  </section>
+  }
+
+  <!-- ════════ Active positions ═════════════════════════════════════════════ -->
+  <div class="hub-section">
+    <div class="hub-section-header">
+      <span class="hub-section-title">Active Positions</span>
+      <span class="hub-section-count">{{ activePositions().length }}</span>
+
+      @if (activePositions().length > 0 || closedPositions().length > 0) {
+      <div class="sort-anchor">
+        <button class="sort-icon-btn"
+                [class.active]="showSortMenu()"
+                (click)="toggleSortMenu(); $event.stopPropagation()"
+                title="Sort & order">
+          Sort
+        </button>
+
+        @if (showSortMenu()) {
+        <div class="sort-backdrop" (click)="closeSortMenu()"></div>
+        <div class="sort-popover" (click)="$event.stopPropagation()">
+          <div class="sp-col">
+            <div class="sp-col-title">Sort by</div>
+            @for (opt of [
+              { v: 'bought',      label: 'Bought date'   },
+              { v: 'criticality', label: 'Criticality'   },
+              { v: 'expiry',      label: 'Expiry day'    },
+              { v: 'opt_pnl',     label: 'Call P&L'      },
+              { v: 'nb_pnl',      label: 'NiftyBees P&L' },
+              { v: 'total_pnl',   label: 'Total P&L'     }
+            ]; track opt.v) {
+            <button class="sp-opt"
+                    [class.selected]="sortBy() === opt.v"
+                    (click)="setSortBy($any(opt.v))">
+              <span class="sp-opt-label">{{ opt.label }}</span>
+              @if (sortBy() === opt.v) { <span class="sp-opt-tick">✓</span> }
+            </button>
+            }
+          </div>
+
+          <div class="sp-divider"></div>
+
+          <div class="sp-col">
+            @if (sortBy() === 'criticality') {
+            <div class="sp-col-title">Show first</div>
+            @for (b of [
+              { v: 'defend', label: 'Defend'      },
+              { v: 'roll',   label: 'Roll-up'     },
+              { v: 'take',   label: 'Take profit' },
+              { v: 'hold',   label: 'Hold'        }
+            ]; track b.v) {
+            <button class="sp-opt sp-bucket sp-bucket-{{ b.v }}"
+                    [class.selected]="criticalityPriority() === b.v"
+                    (click)="setCriticalityPriority($any(b.v))">
+              <span class="sp-opt-label">{{ b.label }}</span>
+              @if (criticalityPriority() === b.v) { <span class="sp-opt-tick">✓</span> }
+            </button>
+            }
+            } @else {
+            <div class="sp-col-title">Order</div>
+            <button class="sp-opt sp-order"
+                    [class.selected]="sortOrder() === 'desc'"
+                    (click)="sortOrder.set('desc')">
+              <span class="sp-opt-label">Descending</span>
+              @if (sortOrder() === 'desc') { <span class="sp-opt-tick">✓</span> }
+            </button>
+            <button class="sp-opt sp-order"
+                    [class.selected]="sortOrder() === 'asc'"
+                    (click)="sortOrder.set('asc')">
+              <span class="sp-opt-label">Ascending</span>
+              @if (sortOrder() === 'asc') { <span class="sp-opt-tick">✓</span> }
+            </button>
+            }
+          </div>
+        </div>
+        }
+      </div>
+      }
+
+      <span class="hub-section-spacer"></span>
+      <button class="hub-new-pos-btn" (click)="openNewPosition()">
+        <span class="hnpb-plus">+</span> New Position
+      </button>
+    </div>
+
+    @if (hubLoading() && !positions().length) {
+    <div class="cc-loading"><span class="spinner"></span> Loading positions…</div>
+    } @else if (!hubLoading() && activePositions().length === 0) {
+    <div class="empty-state">
+      <div class="es-icon">📈</div>
+      <div class="es-title">No active positions yet</div>
+      <div class="es-sub">Click "+ New Position" to start tracking a covered call.</div>
+      <button class="add-new-btn es-cta" (click)="openNewPosition()">+ New Position</button>
+    </div>
+    } @else {
+
+    <!-- ── Tag filter bar ─────────────────────────────────────────────── -->
+    @if (allActiveTags().length > 0) {
+    <div class="tag-filter-bar">
+      <span class="tfb-label">🏷 Filter by tag</span>
+      <div class="tfb-pills">
+        <button class="tfb-pill tfb-all"
+                [class.active]="selectedTagFilters().size === 0"
+                (click)="clearTagFilters()">
+          All <span class="tfb-pill-count">{{ activePositions().length }}</span>
+        </button>
+        @for (t of allActiveTags(); track t.tag) {
+        <button class="tfb-pill tone-{{ tagTone(t.tag) }}"
+                [class.active]="isTagFilterActive(t.tag)"
+                (click)="toggleTagFilter(t.tag)">
+          #{{ t.tag }}
+          <span class="tfb-pill-count">{{ t.count }}</span>
+        </button>
+        }
+        @if (selectedTagFilters().size > 0) {
+        <button class="tfb-clear" (click)="clearTagFilters()" title="Clear all tag filters">✕ Clear</button>
+        }
+      </div>
+    </div>
+    }
+
+    @if (filteredActivePositions().length === 0) {
+    <div class="empty-state empty-state-tags">
+      <div class="es-icon">🔍</div>
+      <div class="es-title">No positions match the selected tag{{ selectedTagFilters().size > 1 ? 's' : '' }}</div>
+      <div class="es-sub">Clear the filter or pick a different tag to see your positions.</div>
+      <button class="add-new-btn es-cta" (click)="clearTagFilters()">Clear filter</button>
+    </div>
+    } @else {
+    @for (group of groupedActivePositions(); track group.key) {
+      @if (group.label) {
+      <div class="date-group-header date-group-{{ group.tone }}">
+        <span class="dgh-label">{{ group.label }}</span>
+        @if (group.sub) { <span class="dgh-sub">· {{ group.sub }}</span> }
+        <span class="dgh-count">{{ group.positions.length }}</span>
+        <span class="dgh-line"></span>
+      </div>
+      }
+      <div class="positions-grid">
+      @for (pos of group.positions; track pos.id) {
+      <div class="pos-row" [class.expanded]="isPositionExpanded(pos.id)">
+
+        <!-- ── Slim ticker (always visible) — minimal essential info ── -->
+        <div class="pos-row-summary" (click)="togglePositionDetails(pos.id, $event)">
+          <span class="prs-name">{{ pos.name }}</span>
+
+          @if (pos.active_call; as ac) {
+            <span class="prs-strike">{{ ac.strike | number:'1.0-0' }} CE</span>
+            <span class="prs-expiry">{{ fmtExpiry(ac.expiry) }}</span>
+            <span class="prs-dte"
+                  [class.urgent]="(ac.dte ?? 99) <= 3"
+                  [class.soon]="(ac.dte ?? 99) > 3 && (ac.dte ?? 99) <= 7">
+              {{ ac.dte ?? '—' }}d
+            </span>
+            @if (pos.live?.call_delta != null) {
+              <span class="prs-delta"
+                    [class.warn]="(pos.live!.call_delta ?? 0) >= 0.33 && (pos.live!.call_delta ?? 0) < 0.40"
+                    [class.fire]="(pos.live!.call_delta ?? 0) >= 0.40">
+                Δ {{ pos.live?.call_delta | number:'1.2-2' }}
+              </span>
+            }
+          } @else {
+            <span class="prs-no-call">No active call · {{ pos.call_history.length }} cycle{{ pos.call_history.length === 1 ? '' : 's' }}</span>
+          }
+
+          @if (pos.live) {
+            <span class="prs-pnl"
+                  [class.positive]="pos.live.total_pnl >= 0"
+                  [class.negative]="pos.live.total_pnl < 0">
+              {{ fmtRs(pos.live.total_pnl) }}
+            </span>
+          }
+
+          @if (pos.active_call) {
+            @let cb = criticalityBucket(pos);
+            <span class="prs-bucket bucket-{{ cb }}" [title]="bucketHint(cb)">
+              {{ bucketLabel(cb) }}
+            </span>
+          }
+
+          <span class="prs-spacer"></span>
+
+          <button class="prs-info" title="Show details" type="button">
+            {{ isPositionExpanded(pos.id) ? '▾' : 'ⓘ' }}
+          </button>
+          <button class="prs-delete" (click)="deletePosition(pos.id, $event)" title="Delete">✕</button>
+        </div>
+
+        <!-- ── Expanded details — only when ⓘ clicked ───────────────── -->
+        @if (isPositionExpanded(pos.id)) {
+        <div class="pos-row-details">
+
+        <div class="pos-legs">
+          <div class="pos-leg pos-etf-leg">
+            <div class="pl-header">📈 NiftyBees ETF</div>
+            <div class="pl-main">{{ pos.shares | number:'1.0-0' }} shares</div>
+            <div class="pl-sub">Entry ₹{{ pos.niftybees_entry_price | number:'1.2-2' }}
+              @if (pos.live) { → ₹{{ pos.live.niftybees_price | number:'1.2-2' }} }
+            </div>
+            @if (pos.live) {
+            <div class="pl-pnl" [class.positive]="pos.live.etf_pnl >= 0" [class.negative]="pos.live.etf_pnl < 0">
+              {{ fmtRs(pos.live.etf_pnl) }}
+            </div>
+            }
+          </div>
+
+          <div class="pos-leg pos-opt-leg">
+            <div class="pl-header">
+              📉 Short Call
+              @if (pos.live?.call_price_source === 'bs') {
+                <span class="price-source-warn" title="Live quote unavailable — Black-Scholes estimate.">⚠ BS</span>
+              }
+            </div>
+            @if (pos.active_call; as ac) {
+            <div class="pl-main">{{ ac.strike | number:'1.0-0' }} CE</div>
+            <div class="pl-sub">{{ ac.lots }}L · ₹{{ ac.premium_received | number:'1.2-2' }}
+              @if (pos.live?.current_call_price) { → ₹{{ pos.live!.current_call_price | number:'1.2-2' }} }
+            </div>
+            @if ((pos.live?.call_bid ?? 0) > 0 || (pos.live?.call_ask ?? 0) > 0) {
+            <div class="pl-quote">
+              <span class="pq-bid">B {{ pos.live?.call_bid | number:'1.2-2' }}</span>
+              <span class="pq-sep">·</span>
+              <span class="pq-ltp">L {{ pos.live?.call_ltp | number:'1.2-2' }}</span>
+              <span class="pq-sep">·</span>
+              <span class="pq-ask">A {{ pos.live?.call_ask | number:'1.2-2' }}</span>
+            </div>
+            }
+            @if (pos.live?.call_delta !== null && pos.live?.call_delta !== undefined) {
+            <div class="pl-greeks">
+              <span class="pl-delta"
+                    [class.pl-delta-warn]="(pos.live!.call_delta ?? 0) >= 0.33 && (pos.live!.call_delta ?? 0) < 0.40"
+                    [class.pl-delta-fire]="(pos.live!.call_delta ?? 0) >= 0.40"
+                    title="Call delta — when this hits 0.40 the roll-up trigger fires.">
+                Δ {{ pos.live?.call_delta | number:'1.2-2' }}
+              </span>
+              @if (pos.live?.call_iv) {
+              <span class="pl-greek-sep">·</span>
+              <span class="pl-iv" title="Implied volatility for this strike.">
+                IV {{ pos.live?.call_iv | number:'1.1-1' }}%
+              </span>
+              }
+            </div>
+            }
+            @if (pos.live) {
+            <div class="pl-pnl" [class.positive]="pos.live.options_pnl >= 0" [class.negative]="pos.live.options_pnl < 0">
+              {{ fmtRs(pos.live.options_pnl) }}
+            </div>
+            }
+            } @else {
+            <div class="pl-main no-call">No active call</div>
+            <div class="pl-sub">{{ pos.call_history.length }} cycle{{ pos.call_history.length === 1 ? '' : 's' }} done</div>
+            <button class="add-call-btn" (click)="openPosition(pos); $event.stopPropagation()">+ Add call</button>
+            }
+          </div>
+        </div>
+
+        @if (pos.active_call) {
+        <div class="pos-expiry-row">
+          <span class="pos-expiry-label">Expires</span>
+          <span class="pos-expiry-date"
+                [class.pos-expiry-urgent]="(pos.active_call.dte ?? 99) <= 3"
+                [class.pos-expiry-soon]="(pos.active_call.dte ?? 99) > 3 && (pos.active_call.dte ?? 99) <= 7">
+            {{ fmtExpiry(pos.active_call.expiry) }}
+          </span>
+          <span class="pos-dte-pill"
+                [class.pos-dte-urgent]="(pos.active_call.dte ?? 99) <= 3"
+                [class.pos-dte-soon]="(pos.active_call.dte ?? 99) > 3 && (pos.active_call.dte ?? 99) <= 7">
+            {{ pos.active_call.dte ?? '—' }}d left
+          </span>
+        </div>
+        }
+
+        @if (pos.live) {
+        <div class="pos-total-pnl" [class.positive]="pos.live.total_pnl >= 0" [class.negative]="pos.live.total_pnl < 0">
+          <span class="ptp-label">TOTAL</span>
+          <span class="ptp-val">{{ fmtRs(pos.live.total_pnl) }}</span>
+        </div>
+        }
+
+        <div class="pos-footer">
+          <span class="pos-premium">₹{{ fmtK(pos.total_premium_collected) }} premium · {{ pos.call_history.length }} cycle{{ pos.call_history.length === 1 ? '' : 's' }}</span>
+
+          <!-- ── Tag chips + inline editor ─────────────────────────── -->
+          <div class="pos-tags" (click)="$event.stopPropagation()">
+            @for (t of (pos.tags || []); track t) {
+            <span class="pos-tag-chip tone-{{ tagTone(t) }}"
+                  [class.active]="isTagFilterActive(t)"
+                  (click)="toggleTagFilter(t)" [title]="'Filter by #' + t">
+              #{{ t }}
+              <button class="ptc-x" (click)="removeTag(pos, t, $event)" title="Remove tag"
+                      [disabled]="tagSavingFor() === pos.id">×</button>
+            </span>
+            }
+            @if (editingTagsFor() === pos.id) {
+              <input #tagInput type="text" class="pos-tag-input" autofocus
+                     placeholder="add tag…"
+                     [value]="newTagInput()"
+                     (input)="newTagInput.set($any($event.target).value)"
+                     (keydown)="onTagInputKey($event, pos)"
+                     (blur)="closeTagEditor()"
+                     [disabled]="tagSavingFor() === pos.id">
+            } @else if ((pos.tags || []).length < 10) {
+              <button class="pos-tag-add" (click)="openTagEditor(pos.id, $event)" title="Add tag">+ tag</button>
+            }
+          </div>
+        </div>
+
+        <div class="pos-row-open-cta">
+          <button class="prs-open-btn" (click)="openPosition(pos)">Open full view →</button>
+        </div>
+
+        </div>
+        }
+      </div>
+      }
+      </div>
+    }
+    }
+    }
+  </div>
+
+  <!-- ════════ Closed positions (history) ══════════════════════════════════ -->
+  @if (closedPositions().length > 0) {
+  <div class="hub-section">
+    <div class="hub-section-header">
+      <span class="hub-section-title">History</span>
+      <span class="hub-section-count">{{ closedPositions().length }}</span>
+    </div>
+    @for (group of groupedClosedPositions(); track group.key) {
+      @if (group.label) {
+      <div class="date-group-header date-group-{{ group.tone }}">
+        <span class="dgh-label">{{ group.label }}</span>
+        @if (group.sub) { <span class="dgh-sub">· {{ group.sub }}</span> }
+        <span class="dgh-count">{{ group.positions.length }}</span>
+        <span class="dgh-line"></span>
+      </div>
+      }
+      <div class="positions-grid">
+      @for (pos of group.positions; track pos.id) {
+      <div class="pos-card pos-card-closed cc-card">
+        <div class="pos-card-header">
+          <div class="pos-name">{{ pos.name }}</div>
+          <div class="pos-actions">
+            <button class="pos-action-btn delete-btn" (click)="deletePosition(pos.id, $event)" title="Delete">✕</button>
+          </div>
+        </div>
+        <div class="pos-footer">
+          <span class="pos-premium">₹{{ fmtK(pos.total_premium_collected) }} collected · {{ pos.call_history.length }} cycles</span>
+          <span class="pos-date closed-badge">Closed</span>
+        </div>
+      </div>
+      }
+      </div>
+    }
+  </div>
+  }
+
+  } @else {
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- ANALYSIS VIEW (new / detail)                                             -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Navigation bar -->
+  <div class="analysis-nav cc-card">
+    <button class="back-btn" (click)="backToHub()">← Back to Positions</button>
+    <div class="analysis-nav-right">
+      @if (currentView() === 'detail' && selectedPos()) {
+      <span class="analysis-pos-name">{{ selectedPos()!.name }}</span>
+      <button class="ep-edit-btn" (click)="openEntryPriceEditor()" title="Correct your entry Nifty price">✏ Entry</button>
+      }
+      @if (currentView() === 'new' && analysis()) {
+      <button class="save-pos-btn" (click)="openSaveDialog()">Save as Position</button>
+      }
+    </div>
+  </div>
+
+  <!-- ════════ Entry price correction ════════════════════════════════════ -->
+  @if (currentView() === 'detail' && editingEntryPrice()) {
+  <div class="cc-card ep-editor-card">
+    <div class="ep-editor-title">Correct Entry Nifty Price</div>
+    <p class="ep-editor-desc">
+      Enter the actual Nifty level when you <strong>bought the NiftyBees ETF</strong>.
+      This fixes the ENTRY marker, breakeven, and P&amp;L baseline on the graph.
+    </p>
+    <div class="ep-editor-row">
+      <div class="field-group" style="flex:1">
+        <label class="form-label">Nifty level at entry</label>
+        <input class="form-control" type="number" placeholder="e.g. 24350"
+               [ngModel]="entryNiftyInput()"
+               (ngModelChange)="entryNiftyInput.set($event)"
+               (keydown.enter)="saveEntryPrice()" />
+        <div class="ep-editor-hint">
+          @if (entryNiftyInput() && +entryNiftyInput() > 0) {
+            Stored as NiftyBees ₹{{ (+entryNiftyInput() / 100).toFixed(2) }}
+          }
+        </div>
+      </div>
+      <div class="ep-editor-actions">
+        <button class="btn btn-primary" [disabled]="savingEntryPrice()" (click)="saveEntryPrice()">
+          {{ savingEntryPrice() ? 'Saving…' : 'Save' }}
+        </button>
+        <button class="btn btn-ghost" (click)="cancelEntryPriceEditor()">Cancel</button>
+      </div>
+    </div>
+    @if (entryPriceSavedMsg()) {
+    <div class="ep-editor-msg" [class.ep-msg-error]="entryPriceSavedMsg().includes('failed')">
+      {{ entryPriceSavedMsg() }}
+    </div>
+    }
+  </div>
+  }
+  @if (currentView() === 'detail' && entryPriceSavedMsg() && !editingEntryPrice()) {
+  <div class="cc-card ep-saved-toast">✓ {{ entryPriceSavedMsg() }}</div>
+  }
+
+  <!-- ════════ Exit Strategy card · 4-stop engine ═════════════════════════ -->
+  @if (currentView() === 'detail' && selectedPos() && exitStatus(); as es) {
+    @if (es.primary_stop) {
+    <div class="cc-card exit-card es-tone-{{ es.recommended_action.tone }}"
+         [class.es-active-fire]="es.primary_status === 'fired'">
+
+      <!-- ── PRIMARY BANNER ──────────────────────────────────────────── -->
+      <div class="es-banner">
+        <span class="es-icon">
+          @if (es.primary_stop === 'stop3') { 🛡️ }
+          @else if (es.primary_stop === 'stop2') { 🚨 }
+          @else if (es.primary_stop === 'stop1') { 💰 }
+          @else { 🟢 }
+        </span>
+        <div class="es-banner-text">
+          <div class="es-title">
+            @if (es.primary_status === 'fired') { ▶ {{ es.recommended_action.label }} }
+            @else if (es.primary_status === 'armed') { ⚠ ARMED — Watch this stop }
+            @else { ✓ HOLDING — Theta is working }
+          </div>
+          <div class="es-subtitle">{{ es.stops[es.primary_stop].explainer }}</div>
+        </div>
+        <div class="es-banner-right">
+          <span class="es-pill es-pill-{{ es.primary_status }}">{{ es.primary_status | uppercase }}</span>
+          <button class="es-refresh-btn" (click)="loadExitStatus()" [disabled]="exitLoading()" title="Refresh live data">
+            {{ exitLoading() ? '↻' : '⟳' }}
+          </button>
+          @if (exitLastUpdated()) {
+          <span class="es-updated">live · {{ exitLastUpdated() }}</span>
+          }
+        </div>
+      </div>
+
+      <!-- ── IV / VIX / THETA STRIP ──────────────────────────────────── -->
+      <div class="es-iv-strip">
+        <div class="es-iv-cell">
+          <span class="es-iv-lbl">Spot</span>
+          <span class="es-iv-val">{{ es.spot | number:'1.0-0' }}</span>
+        </div>
+        <div class="es-iv-cell">
+          <span class="es-iv-lbl">Strike · DTE</span>
+          <span class="es-iv-val">{{ es.active_call.strike | number:'1.0-0' }} CE · {{ es.active_call.dte }}d</span>
+        </div>
+        <div class="es-iv-cell es-expiry-cell">
+          <span class="es-iv-lbl">Expires on</span>
+          <span class="es-iv-val es-expiry-val"
+                [class.es-expiry-urgent]="es.active_call.dte <= 3"
+                [class.es-expiry-soon]="es.active_call.dte > 3 && es.active_call.dte <= 7">
+            {{ fmtExpiry(es.active_call.expiry) }}
+          </span>
+        </div>
+        @if (es.active_call.delta !== undefined && es.active_call.delta !== null) {
+        <div class="es-iv-cell">
+          <span class="es-iv-lbl">Call Δ (delta)</span>
+          <span class="es-iv-val"
+                [class.positive]="es.active_call.delta < 0.33"
+                [class.es-delta-warn]="es.active_call.delta >= 0.33 && es.active_call.delta < 0.40"
+                [class.negative]="es.active_call.delta >= 0.40">
+            {{ es.active_call.delta | number:'1.2-2' }}
+          </span>
+          <span class="es-iv-tag">
+            @if (es.active_call.delta >= 0.40) { Roll-up fires }
+            @else if (es.active_call.delta >= 0.33) { Approaching trigger }
+            @else { Safe zone (fires at 0.40) }
+          </span>
+        </div>
+        }
+        @if (es.active_call.current_iv) {
+        <div class="es-iv-cell">
+          <span class="es-iv-lbl">Call IV</span>
+          <span class="es-iv-val">{{ es.active_call.current_iv | number:'1.1-1' }}%</span>
+          <span class="es-iv-tag">{{ es.iv_context.label }}</span>
+        </div>
+        }
+        @if (es.iv_context.vix) {
+        <div class="es-iv-cell">
+          <span class="es-iv-lbl">VIX</span>
+          <span class="es-iv-val">{{ es.iv_context.vix | number:'1.1-1' }}</span>
+        </div>
+        }
+        <div class="es-iv-cell">
+          <span class="es-iv-lbl">Theta / day</span>
+          <span class="es-iv-val positive">+₹{{ fmtK(es.active_call.theta_per_day_total) }}</span>
+        </div>
+        <div class="es-iv-cell">
+          <span class="es-iv-lbl">Captured so far</span>
+          <span class="es-iv-val" [class.positive]="es.active_call.mtm_profit > 0" [class.negative]="es.active_call.mtm_loss > 0">
+            {{ es.active_call.mtm_profit > 0 ? '+' : '' }}{{ fmtRs(es.active_call.mtm_profit - es.active_call.mtm_loss) }}
+          </span>
+        </div>
+        <div class="es-iv-explainer">{{ es.iv_context.explainer }}</div>
+      </div>
+
+      <!-- ── 4 STOPS GRID ────────────────────────────────────────────── -->
+      <div class="es-stops-section">
+        <div class="es-stops-title">All 4 stops · live monitoring</div>
+        <div class="es-stops-grid">
+
+          <!-- Stop 1 — Take-Profit -->
+          <div class="es-stop es-stop-{{ es.stops.stop1.status }}"
+               [class.es-stop-primary]="es.primary_stop === 'stop1'">
+            <div class="es-stop-head">
+              <span class="es-stop-num">①</span>
+              <span class="es-stop-name">Take-Profit (60% rule)</span>
+              <button class="es-info-btn" type="button" (click)="toggleStopInfo('stop1')"
+                      [class.active]="expandedStopInfo() === 'stop1'" title="What this checks">ⓘ</button>
+              <span class="es-stop-badge es-badge-{{ es.stops.stop1.status }}">{{ es.stops.stop1.status | uppercase }}</span>
+            </div>
+            <div class="es-stop-body">
+              Call now ₹{{ es.stops.stop1.current_price | number:'1.2-2' }}
+              ({{ es.stops.stop1.current_pct_of_entry | number:'1.0-0' }}% of entry ₹{{ es.active_call.premium_received | number:'1.2-2' }})
+              · captured +₹{{ fmtK(es.stops.stop1.captured_amount) }}
+            </div>
+            <div class="es-progress-bar" [title]="'Max 100% = full premium captured. Stop fires at 60%.'">
+              <div class="es-progress-fill es-fill-good" [style.width.%]="es.stops.stop1.captured_pct"></div>
+              <span class="es-progress-marker es-marker-fire" [style.left.%]="60" title="Fires at 60%"></span>
+            </div>
+            <div class="es-progress-meta">
+              <span>0%</span>
+              <span class="es-progress-fire-label">▲ fires at 60%</span>
+              <span>100% · full decay</span>
+            </div>
+            @if (expandedStopInfo() === 'stop1') {
+              <div class="es-info-panel">
+                <div class="es-info-section">
+                  <div class="es-info-label">🔍 What this checks</div>
+                  <div class="es-info-text">{{ stopInfo.stop1.what }}</div>
+                </div>
+                <div class="es-info-section es-info-good">
+                  <div class="es-info-label">✓ Why it's good</div>
+                  <div class="es-info-text">{{ stopInfo.stop1.why_good }}</div>
+                </div>
+                <div class="es-info-section es-info-warn">
+                  <div class="es-info-label">⚠ Where it may go wrong</div>
+                  <ul class="es-info-list">
+                    @for (r of stopInfo.stop1.risks; track $index) { <li>{{ r }}</li> }
+                  </ul>
+                </div>
+                <div class="es-info-section es-info-bar">
+                  <div class="es-info-label">📊 Progress bar — max value</div>
+                  <div class="es-info-text">{{ stopInfo.stop1.bar_max }}</div>
+                </div>
+                <div class="es-info-formula">
+                  <span class="es-info-label">Fires when</span>
+                  <code>{{ stopInfo.stop1.fires_at }}</code>
+                </div>
+              </div>
+            }
+          </div>
+
+          <!-- Stop 2 — Roll-Up (delta-driven) -->
+          <div class="es-stop es-stop-{{ es.stops.stop2.status }}"
+               [class.es-stop-primary]="es.primary_stop === 'stop2'">
+            <div class="es-stop-head">
+              <span class="es-stop-num">②</span>
+              <span class="es-stop-name">Roll-Up (call delta ≥ {{ es.stops.stop2.delta_threshold ?? 0.40 | number:'1.2-2' }})</span>
+              <button class="es-info-btn" type="button" (click)="toggleStopInfo('stop2')"
+                      [class.active]="expandedStopInfo() === 'stop2'" title="What this checks">ⓘ</button>
+              <span class="es-stop-badge es-badge-{{ es.stops.stop2.status }}">{{ es.stops.stop2.status | uppercase }}</span>
+            </div>
+            <div class="es-stop-body">
+              <!-- PRIMARY trigger condition — delta-based -->
+              <span class="es-cond-tag es-cond-primary"
+                    [class.cond-ok]="es.stops.stop2.cond_delta">
+                {{ es.stops.stop2.cond_delta ? '✓' : '○' }}
+                Δ {{ es.stops.stop2.delta_current ?? 0 | number:'1.2-2' }} / fires at {{ es.stops.stop2.delta_threshold ?? 0.40 | number:'1.2-2' }}
+              </span>
+              <span class="es-cond-tag" [class.cond-ok]="es.stops.stop2.cond_dte">
+                {{ es.stops.stop2.cond_dte ? '✓' : '○' }} DTE {{ es.stops.stop2.dte_current }}d
+              </span>
+              <!-- Informational (legacy) — Nifty / loss context -->
+              <span class="es-cond-tag es-cond-info"
+                    title="Informational — old trigger condition, still useful context">
+                ◐ Nifty {{ es.stops.stop2.spot_current | number:'1.0-0' }}
+                · loss ₹{{ fmtK(es.stops.stop2.loss_current) }}
+              </span>
+            </div>
+            <div class="es-progress-bar" [title]="'Bar fills as call delta climbs from 0 → 0.40 (fire threshold).'">
+              <div class="es-progress-fill es-fill-warn"
+                   [style.width.%]="es.stops.stop2.delta_progress_pct ?? 0"></div>
+              <span class="es-progress-marker es-marker-fire" [style.left.%]="100" title="Fires at delta = 0.40"></span>
+            </div>
+            <div class="es-progress-meta">
+              <span>Δ 0.00 · safe</span>
+              <span>Δ {{ es.stops.stop2.delta_threshold ?? 0.40 | number:'1.2-2' }} · fires ▲</span>
+            </div>
+            @if (expandedStopInfo() === 'stop2') {
+              <div class="es-info-panel">
+                <div class="es-info-section">
+                  <div class="es-info-label">🔍 What this checks</div>
+                  <div class="es-info-text">{{ stopInfo.stop2.what }}</div>
+                </div>
+                <div class="es-info-section es-info-good">
+                  <div class="es-info-label">✓ Why it's good</div>
+                  <div class="es-info-text">{{ stopInfo.stop2.why_good }}</div>
+                </div>
+                <div class="es-info-section es-info-warn">
+                  <div class="es-info-label">⚠ Where it may go wrong</div>
+                  <ul class="es-info-list">
+                    @for (r of stopInfo.stop2.risks; track $index) { <li>{{ r }}</li> }
+                  </ul>
+                </div>
+                <div class="es-info-section es-info-bar">
+                  <div class="es-info-label">📊 Progress bar — max value</div>
+                  <div class="es-info-text">{{ stopInfo.stop2.bar_max }}</div>
+                </div>
+                <div class="es-info-formula">
+                  <span class="es-info-label">Fires when</span>
+                  <code>{{ stopInfo.stop2.fires_at }}</code>
+                </div>
+              </div>
+            }
+          </div>
+
+          <!-- Stop 3 — Assignment Defence -->
+          <div class="es-stop es-stop-{{ es.stops.stop3.status }}"
+               [class.es-stop-primary]="es.primary_stop === 'stop3'">
+            <div class="es-stop-head">
+              <span class="es-stop-num">③</span>
+              <span class="es-stop-name">Assignment Defence (DTE ≤ 1 + ITM)</span>
+              <button class="es-info-btn" type="button" (click)="toggleStopInfo('stop3')"
+                      [class.active]="expandedStopInfo() === 'stop3'" title="What this checks">ⓘ</button>
+              <span class="es-stop-badge es-badge-{{ es.stops.stop3.status }}">{{ es.stops.stop3.status | uppercase }}</span>
+            </div>
+            <div class="es-stop-body">
+              DTE {{ es.stops.stop3.dte }}d ·
+              {{ es.stops.stop3.is_itm ? 'ITM' : 'OTM' }}
+              @if (es.stops.stop3.is_itm) {
+              · intrinsic ₹{{ es.stops.stop3.intrinsic | number:'1.0-0' }}
+              · buyback ₹{{ fmtK(es.stops.stop3.buyback_cost) }}
+              }
+            </div>
+            <div class="es-progress-bar" [title]="'Max 100% = expiry day (DTE 0). Stop fires at DTE ≤ 1 if ITM.'">
+              <div class="es-progress-fill es-fill-danger" [style.width.%]="stop3Progress(es.stops.stop3)"></div>
+              <span class="es-progress-marker es-marker-fire" [style.left.%]="(29/30)*100" title="Fires at DTE ≤ 1"></span>
+            </div>
+            <div class="es-progress-meta">
+              <span>~30d to expiry</span>
+              <span class="es-progress-fire-label">▲ fires at DTE ≤ 1 (if ITM)</span>
+              <span>0d · expiry</span>
+            </div>
+            @if (expandedStopInfo() === 'stop3') {
+              <div class="es-info-panel">
+                <div class="es-info-section">
+                  <div class="es-info-label">🔍 What this checks</div>
+                  <div class="es-info-text">{{ stopInfo.stop3.what }}</div>
+                </div>
+                <div class="es-info-section es-info-good">
+                  <div class="es-info-label">✓ Why it's good</div>
+                  <div class="es-info-text">{{ stopInfo.stop3.why_good }}</div>
+                </div>
+                <div class="es-info-section es-info-warn">
+                  <div class="es-info-label">⚠ Where it may go wrong</div>
+                  <ul class="es-info-list">
+                    @for (r of stopInfo.stop3.risks; track $index) { <li>{{ r }}</li> }
+                  </ul>
+                </div>
+                <div class="es-info-section es-info-bar">
+                  <div class="es-info-label">📊 Progress bar — max value</div>
+                  <div class="es-info-text">{{ stopInfo.stop3.bar_max }}</div>
+                </div>
+                <div class="es-info-formula">
+                  <span class="es-info-label">Fires when</span>
+                  <code>{{ stopInfo.stop3.fires_at }}</code>
+                </div>
+              </div>
+            }
+          </div>
+
+          <!-- Stop 4 — Hold -->
+          <div class="es-stop es-stop-{{ es.stops.stop4.status }}"
+               [class.es-stop-primary]="es.primary_stop === 'stop4'">
+            <div class="es-stop-head">
+              <span class="es-stop-num">④</span>
+              <span class="es-stop-name">Hold (no-action zone)</span>
+              <button class="es-info-btn" type="button" (click)="toggleStopInfo('stop4')"
+                      [class.active]="expandedStopInfo() === 'stop4'" title="What this checks">ⓘ</button>
+              <span class="es-stop-badge es-badge-{{ es.stops.stop4.status }}">{{ es.stops.stop4.status | uppercase }}</span>
+            </div>
+            <div class="es-stop-body">
+              Today's theta: +₹{{ fmtK(es.stops.stop4.todays_theta) }}
+              · captured +₹{{ fmtK(es.stops.stop4.captured_so_far) }}
+              · ₹{{ fmtK(es.stops.stop4.remaining_to_capture) }} left to earn
+            </div>
+            <div class="es-progress-bar" [title]="'Max 100% = full premium captured (call worth ₹0).'">
+              <div class="es-progress-fill es-fill-good" [style.width.%]="stop4Progress(es.stops.stop4)"></div>
+            </div>
+            <div class="es-progress-meta">
+              <span>0% · just opened</span>
+              <span>100% · full premium captured</span>
+            </div>
+            @if (expandedStopInfo() === 'stop4') {
+              <div class="es-info-panel">
+                <div class="es-info-section">
+                  <div class="es-info-label">🔍 What this checks</div>
+                  <div class="es-info-text">{{ stopInfo.stop4.what }}</div>
+                </div>
+                <div class="es-info-section es-info-good">
+                  <div class="es-info-label">✓ Why it's good</div>
+                  <div class="es-info-text">{{ stopInfo.stop4.why_good }}</div>
+                </div>
+                <div class="es-info-section es-info-warn">
+                  <div class="es-info-label">⚠ Where it may go wrong</div>
+                  <ul class="es-info-list">
+                    @for (r of stopInfo.stop4.risks; track $index) { <li>{{ r }}</li> }
+                  </ul>
+                </div>
+                <div class="es-info-section es-info-bar">
+                  <div class="es-info-label">📊 Progress bar — max value</div>
+                  <div class="es-info-text">{{ stopInfo.stop4.bar_max }}</div>
+                </div>
+                <div class="es-info-formula">
+                  <span class="es-info-label">Active when</span>
+                  <code>{{ stopInfo.stop4.fires_at }}</code>
+                </div>
+              </div>
+            }
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── RECOMMENDED ACTION (step-by-step) ──────────────────────── -->
+      <div class="es-action-panel es-tone-{{ es.recommended_action.tone }}">
+        <div class="es-action-head">
+          <span class="es-action-title">▶ What to do now</span>
+          <span class="es-action-kind">{{ es.recommended_action.label }}</span>
+        </div>
+        <ol class="es-steps">
+          @for (step of es.recommended_action.steps; track $index) {
+          <li>{{ step }}</li>
+          }
+        </ol>
+
+        <div class="es-action-buttons">
+          @if (es.recommended_action.kind === 'roll_up') {
+          <button class="es-btn es-btn-primary es-btn-warn"
+                  [disabled]="rollingUp()"
+                  (click)="rollUpNow()">
+            {{ rollingUp() ? 'Rolling…' : '⚡ ' + es.recommended_action.primary_button }}
+          </button>
+          <button class="es-btn es-btn-secondary"
+                  [disabled]="rollingUp()"
+                  (click)="closeCallOnly()">✕ Close Call Only</button>
+          }
+          @else if (es.recommended_action.kind === 'take_profit') {
+          <button class="es-btn es-btn-primary es-btn-good"
+                  [disabled]="rollingUp()"
+                  (click)="takeProfitNow()">
+            {{ rollingUp() ? 'Executing…' : '💰 ' + es.recommended_action.primary_button }}
+          </button>
+          <button class="es-btn es-btn-secondary"
+                  [disabled]="rollingUp()"
+                  (click)="closeCallOnly()">✕ Just Close (no reopen)</button>
+          }
+          @else if (es.recommended_action.kind === 'close_only') {
+          <button class="es-btn es-btn-primary es-btn-danger"
+                  [disabled]="rollingUp()"
+                  (click)="closeCallOnly()">
+            🛡️ {{ es.recommended_action.primary_button }}
+          </button>
+          }
+          @else {
+          <button class="es-btn es-btn-secondary" (click)="loadExitStatus()" [disabled]="exitLoading()">
+            ⟳ Refresh now
+          </button>
+          @if (es.stops.stop2.status !== 'safe' || es.stops.stop1.status !== 'safe') {
+          <button class="es-btn es-btn-secondary"
+                  [disabled]="rollingUp()"
+                  (click)="rollUpNow()">⚡ Force roll-up anyway</button>
+          }
+          }
+        </div>
+      </div>
+
+    </div>
+    }
+  }
+
+  <!-- ── Header (New Position view only) — appears above the pre-market scan -->
+  @if (currentView() === 'new') {
+  <div class="cc-header cc-header-compact">
+    <h1 class="cc-title">Covered Call Builder</h1>
+  </div>
+  }
+
+  <!-- ── Pre-market scan (New Position view only) ─────────────────────── -->
+  @if (currentView() === 'new') {
+  <div class="cc-card premarket-card"
+       [class.pmc-collapsed]="!premktExpanded()"
+       [class.pmc-bg-refresh]="premktRefreshing()">
+    <button class="pmc-toggle" (click)="togglePremktExpanded()">
+      <span class="pmc-toggle-left">
+        <span class="pmc-chevron">{{ premktExpanded() ? '▾' : '▸' }}</span>
+        <span class="pmc-title">Pre-Market Scan</span>
+        @if (premarket(); as pm) {
+          <span class="pmc-signal signal-{{ pm.overall_signal }}">
+            @if (pm.overall_signal === 'go') { ✓ GO }
+            @else if (pm.overall_signal === 'caution') { ⚠ CAUTION }
+            @else { ✕ SKIP }
+          </span>
+        }
+        @if (premktRefreshing()) {
+          <span class="pmc-bg-indicator" title="Refreshing in background">↻</span>
+        }
+      </span>
+      <span class="pmc-toggle-right">
+        @if (!premktExpanded() && !premktLoading()) {
+          <span class="pmc-toggle-hint">Click to scan strikes</span>
+        }
+      </span>
+    </button>
+
+    @if (premktExpanded()) {
+    <div class="pmc-body-wrap">
+
+      <!-- Shared market checks strip — uses chosen-trade's expiry in best mode,
+           selected-expiry in choose-expiry mode. -->
+      @let checks = premktMode() === 'best' ? bestTradeChecks() : premarket();
+      @if (checks; as pm) {
+      <div class="pmc-checks-strip">
+        <div class="pcs-pill" [class.ok]="pm.vix_ok" [class.bad]="!pm.vix_ok">
+          <span class="pcs-icon">{{ pm.vix_ok ? '✓' : '✕' }}</span>
+          <span class="pcs-lbl">VIX</span>
+          <span class="pcs-val">{{ pm.vix | number:'1.1-1' }}</span>
+          <span class="info-icon" title="India VIX — market-wide 30-day implied vol. ≥ 13 is healthy for selling premium.">ⓘ</span>
+        </div>
+        <div class="pcs-pill" [class.ok]="pm.iv_ok" [class.bad]="!pm.iv_ok">
+          <span class="pcs-icon">{{ pm.iv_ok ? '✓' : '✕' }}</span>
+          <span class="pcs-lbl">ATM IV</span>
+          <span class="pcs-val">{{ pm.atm_iv !== null ? (pm.atm_iv | number:'1.1-1') + '%' : '—' }}</span>
+          <span class="info-icon" title="ATM IV for this trade's expiry. Higher IV = richer premium when selling calls.">ⓘ</span>
+        </div>
+        <div class="pcs-pill" [class.ok]="pm.pcr_ok" [class.bad]="!pm.pcr_ok">
+          <span class="pcs-icon">{{ pm.pcr_ok ? '✓' : '✕' }}</span>
+          <span class="pcs-lbl">PCR</span>
+          <span class="pcs-val">{{ pm.pcr | number:'1.2-2' }}</span>
+          <span class="info-icon" title="Put-Call Ratio (OI) for this trade's expiry. > 1.2 = put-heavy (often bullish), < 0.7 = call-heavy (caution).">ⓘ</span>
+        </div>
+        <div class="pcs-score" [class]="'signal-' + pm.overall_signal" title="Market checks satisfied">
+          <strong>{{ pm.checks_passed }}/{{ pm.checks_total }}</strong>
+          <span class="pcs-score-lbl">checks pass</span>
+        </div>
+      </div>
+      }
+
+      <div class="pmc-header-tools">
+        <div class="pmc-mode-toggle" role="tablist">
+          <button class="pmc-mode-btn"
+                  [class.active]="premktMode() === 'best'"
+                  (click)="setPremktMode('best')"
+                  role="tab" [attr.aria-selected]="premktMode() === 'best'">
+            🏆 Best Trade
+          </button>
+          <button class="pmc-mode-btn"
+                  [class.active]="premktMode() === 'expiry'"
+                  (click)="setPremktMode('expiry')"
+                  role="tab" [attr.aria-selected]="premktMode() === 'expiry'">
+            Choose Expiry
+          </button>
+        </div>
+
+        <div class="pmc-mode-toggle pmc-cadence-toggle" role="tablist"
+             title="Monthly: sell 22-DTE calls at 60% TP. Quarterly: sell 60-110-DTE calls at 30% TP — fewer decisions, far-OTM strikes, vega-aware exits.">
+          <button class="pmc-mode-btn"
+                  [class.active]="cadence() === 'monthly'"
+                  (click)="setCadence('monthly')"
+                  role="tab" [attr.aria-selected]="cadence() === 'monthly'">
+            Monthly
+          </button>
+          <button class="pmc-mode-btn"
+                  [class.active]="cadence() === 'quarterly'"
+                  (click)="setCadence('quarterly')"
+                  role="tab" [attr.aria-selected]="cadence() === 'quarterly'">
+            Quarterly
+          </button>
+        </div>
+
+        @if (premktMode() === 'expiry') {
+          <div class="pmf-group">
+            <label class="pmf-label">
+              Expiry
+              <span class="info-icon" title="Pick the expiry to scan. Strike rankings, premium, delta, IV and time-to-50%-decay all recompute against that expiry's chain.">ⓘ</span>
+            </label>
+            <select class="pmf-select"
+                    [ngModel]="premktExpiryFilter()"
+                    (ngModelChange)="premktExpiryFilter.set($event); refreshPremarket()">
+              <option value="">Nearest</option>
+              @for (exp of (premarket()?.expiries ?? []); track exp) {
+                <option [value]="exp">{{ exp }}</option>
+              }
+            </select>
+          </div>
+        }
+      </div>
+
+      <!-- ════════ BEST TRADE MODE (default) — cross-expiry top pick ═══════ -->
+      @if (premktMode() === 'best') {
+        @if (bestTradeLoading() && !bestTrade()) {
+          <div class="cc-loading"><span class="spinner"></span> Scanning all expiries — this takes a few seconds…</div>
+        } @else if (bestTradeError()) {
+          <div class="pmc-error">⚠ {{ bestTradeError() }}</div>
+        } @else if (bestTrade(); as bt) {
+          @if (bt.candidates?.length && bt.candidates[0]; as best) {
+          <div class="pmc-body">
+            <div class="pmc-ranked">
+              <div class="rs-layout">
+                <!-- LEFT: top pick across all expiries -->
+                <div class="rs-featured rs-card-1">
+                  <div class="rs-featured-head">
+                    <span class="rs-featured-medal">🏆</span>
+                    <span class="rs-featured-title">Top pick across {{ bt.expiries_scanned.length }} expiries</span>
+                    <button class="rs-bts-pill rs-bts-pill-btn"
+                            type="button"
+                            [class.open]="isBestStrikeSectionOpen('bts')"
+                            (click)="toggleBestStrikeSection('bts'); $event.stopPropagation()"
+                            title="Click to see what BTS means">
+                      BTS <strong>{{ best.bts | number:'1.3-3' }}</strong>
+                      <span class="rs-bts-q">?</span>
+                    </button>
+                    <span class="rs-rank-num rs-featured-rankbig" [attr.data-rank]="1">#1</span>
+                  </div>
+                  @if (isBestStrikeSectionOpen('bts')) {
+                    <div class="rs-bts-explain">
+                      <strong>BTS — Best-Trade Score.</strong>
+                      Higher is better. It's a composite ranking that multiplies six factors:
+                      <span class="bts-factor">net yield per cycle</span> ×
+                      <span class="bts-factor">safety</span> ×
+                      <span class="bts-factor">liquidity</span> ×
+                      <span class="bts-factor">IV quality</span> ×
+                      <span class="bts-factor">cycle quality</span> ×
+                      <span class="bts-factor">delta quality</span>.
+                      It penalises strikes that look rich on premium alone but trigger early roll-ups,
+                      so the winner is the trade you can actually run cycle after cycle.
+                    </div>
+                  }
+
+                  <div class="rs-featured-primary">
+                    <span class="rs-featured-strike">{{ best.strike | number:'1.0-0' }}</span>
+                    <span class="rs-card-otm">{{ best.otm_pct | number:'1.1-1' }}% OTM</span>
+                    <span class="rs-featured-prem">₹{{ best.premium | number:'1.2-2' }}</span>
+                  </div>
+
+                  <div class="bt-expiry-row">
+                    <span class="bt-expiry-pill">{{ best.expiry }} · {{ best.dte }}d</span>
+                    <span class="bt-expiry-rank">#{{ best.expiry_rank }} within expiry</span>
+                  </div>
+
+
+                  <!-- Full breakdown: collapsible sub-sections -->
+                  <div class="rs-breakdown">
+                    <div class="rs-bd-title">Full breakdown</div>
+
+                    <button class="rs-bd-row" type="button"
+                            [class.open]="isBestStrikeSectionOpen('details')"
+                            (click)="toggleBestStrikeSection('details')">
+                      <span class="rs-bd-chev">{{ isBestStrikeSectionOpen('details') ? '▾' : '▸' }}</span>
+                      <span class="rs-bd-label">Trade details</span>
+                    </button>
+                    @if (isBestStrikeSectionOpen('details')) {
+                      <div class="rs-bd-content">
+                        <div class="rs-card-metrics">
+                          <span class="rs-days" title="Days for this option's premium to decay to 50%.">~{{ best.days_to_50pct }}d to 50%</span>
+                          <span class="rs-card-dot">·</span>
+                          <span class="rs-yield" title="Annualised yield at 50% capture exit.">≈{{ best.early_yield_pct | number:'1.1-1' }}% p.a.</span>
+                          <span class="rs-card-dot">·</span>
+                          <span class="rs-prob" title="Probability call stays OTM during holding window.">{{ best.prob_safe_pct | number:'1.0-0' }}% safe</span>
+                        </div>
+                        <div class="rs-card-pills">
+                          <span class="rs-pill" [class]="'risk-' + best.assignment_risk">{{ best.assignment_risk }} risk</span>
+                          <span class="rs-pill" [class]="'liq-' + best.liquidity">{{ best.liquidity }} liq</span>
+                        </div>
+                        <div class="rs-summary-line">{{ best.summary }}</div>
+                      </div>
+                    }
+
+                    <button class="rs-bd-row" type="button"
+                            [class.open]="isBestStrikeSectionOpen('metrics')"
+                            (click)="toggleBestStrikeSection('metrics')">
+                      <span class="rs-bd-chev">{{ isBestStrikeSectionOpen('metrics') ? '▾' : '▸' }}</span>
+                      <span class="rs-bd-label">Metrics</span>
+                    </button>
+                    @if (isBestStrikeSectionOpen('metrics')) {
+                      <div class="rs-stats-grid">
+                        <div class="rs-stat"><div class="rs-stat-lbl">Days to 50% capture</div><div class="rs-stat-val">~{{ best.days_to_50pct }}d</div></div>
+                        <div class="rs-stat"><div class="rs-stat-lbl">Early-exit yield (p.a.)</div><div class="rs-stat-val">{{ best.early_yield_pct | number:'1.1-1' }}%</div></div>
+                        <div class="rs-stat"><div class="rs-stat-lbl">Hold-to-expiry yield</div><div class="rs-stat-val">{{ best.hold_yield_pct | number:'1.1-1' }}%</div></div>
+                        <div class="rs-stat"><div class="rs-stat-lbl">Premium / day</div><div class="rs-stat-val">₹{{ best.premium_per_day | number:'1.2-2' }}</div></div>
+                        <div class="rs-stat"><div class="rs-stat-lbl">Safe-exit probability</div><div class="rs-stat-val">{{ best.prob_safe_pct | number:'1.0-0' }}%</div></div>
+                        <div class="rs-stat"><div class="rs-stat-lbl">Delta</div><div class="rs-stat-val">{{ best.delta | number:'1.2-2' }}</div></div>
+                        <div class="rs-stat"><div class="rs-stat-lbl">IV (this strike)</div><div class="rs-stat-val">{{ best.iv | number:'1.1-1' }}%</div></div>
+                        <div class="rs-stat"><div class="rs-stat-lbl">Open Interest</div><div class="rs-stat-val">{{ best.oi >= 1000 ? fmtK(best.oi) : (best.oi | number:'1.0-0') }}</div></div>
+                      </div>
+                    }
+
+                    @if (best.why_good?.length) {
+                      <button class="rs-bd-row" type="button"
+                              [class.open]="isBestStrikeSectionOpen('why')"
+                              (click)="toggleBestStrikeSection('why')">
+                        <span class="rs-bd-chev">{{ isBestStrikeSectionOpen('why') ? '▾' : '▸' }}</span>
+                        <span class="rs-bd-label">✓ Why this strike scores well</span>
+                      </button>
+                      @if (isBestStrikeSectionOpen('why')) {
+                        <div class="rs-why rs-why-good">
+                          <ul>@for (g of best.why_good; track $index) { <li>{{ g }}</li> }</ul>
+                        </div>
+                      }
+                    }
+
+                    @if (best.why_caution?.length) {
+                      <button class="rs-bd-row" type="button"
+                              [class.open]="isBestStrikeSectionOpen('tradeoffs')"
+                              (click)="toggleBestStrikeSection('tradeoffs')">
+                        <span class="rs-bd-chev">{{ isBestStrikeSectionOpen('tradeoffs') ? '▾' : '▸' }}</span>
+                        <span class="rs-bd-label">⚠ Trade-offs to know</span>
+                      </button>
+                      @if (isBestStrikeSectionOpen('tradeoffs')) {
+                        <div class="rs-why rs-why-caution">
+                          <ul>@for (c of best.why_caution; track $index) { <li>{{ c }}</li> }</ul>
+                        </div>
+                      }
+                    }
+                  </div>
+                </div>
+
+                <!-- RIGHT: cross-expiry alternatives -->
+                <div class="rs-side-col">
+                  @if (bt.candidates.length > 1) {
+                    <div class="rs-side-ranks">
+                      @for (rs of bt.candidates.slice(1, 4); track rs.strike + '-' + rs.expiry; let i = $index) {
+                      <div class="rs-mini-card"
+                           [class.rs-card-2]="i === 0"
+                           [class.rs-card-3]="i === 1">
+                        <button class="rs-mini-btn" (click)="useBestCandidate(rs)">
+                          <div class="rs-mini-rank">
+                            <span class="rs-rank-num" [attr.data-rank]="rs.global_rank">#{{ rs.global_rank }}</span>
+                          </div>
+                          <div class="rs-mini-body">
+                            <div class="rs-mini-row">
+                              <span class="rs-mini-strike">{{ rs.strike | number:'1.0-0' }}</span>
+                              <span class="rs-mini-otm">{{ rs.otm_pct | number:'1.1-1' }}% OTM</span>
+                              <span class="rs-mini-prem">₹{{ rs.premium | number:'1.2-2' }}</span>
+                              <span class="rs-bts-pill rs-bts-pill-mini" title="BTS score">BTS {{ rs.bts | number:'1.3-3' }}</span>
+                            </div>
+                            <div class="bt-alt-expiry">{{ rs.expiry }} · {{ rs.dte }}d</div>
+                            <div class="rs-mini-meta">
+                              <span class="rs-yield">≈{{ rs.early_yield_pct | number:'1.1-1' }}% p.a.</span>
+                              <span class="rs-card-dot">·</span>
+                              <span class="rs-prob">{{ rs.prob_safe_pct | number:'1.0-0' }}% safe</span>
+                              <span class="rs-card-dot">·</span>
+                              <span class="rs-pill rs-pill-mini" [class]="'risk-' + rs.assignment_risk">{{ rs.assignment_risk }}</span>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
+                      }
+                    </div>
+                  }
+
+                  <button class="rs-side-build-btn" (click)="useBestCandidate(best)">
+                    Build at {{ best.strike | number:'1.0-0' }} · {{ best.expiry }} →
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          }
+        }
+      }
+
+      <!-- ════════ CHOOSE EXPIRY MODE — pinned-expiry strike rankings ═══════ -->
+      @if (premktMode() === 'expiry') {
+      @if (premktLoading() && !premarket()) {
+      <div class="cc-loading"><span class="spinner"></span> Scanning market…</div>
+      } @else if (premarket(); as pm) {
+      <div class="pmc-body">
+
+        <!-- ════════ Strike rankings + market checks (two-col layout) ═════ -->
+        @if (pm.ranked_strikes?.length) {
+        <div class="pmc-ranked">
+          <div class="pmc-ranked-header">
+            <span class="pmc-rec-label">
+              Strike rankings · {{ pm.expiry }}
+              <span class="info-icon" title="Scored for early-exit: exit when the option loses 50% of its value. Score = annualised yield × P(stays OTM) × liquidity. Higher rank = better risk-adjusted income velocity.">ⓘ</span>
+            </span>
+          </div>
+
+          <div class="rs-layout">
+            <!-- ── LEFT: best strike (#1) — full details, always shown ── -->
+            @if (pm.ranked_strikes[0]; as best) {
+            <div class="rs-featured rs-card-1">
+              <div class="rs-featured-head">
+                <span class="rs-featured-medal">🏆</span>
+                <span class="rs-featured-title">Best Strike · Full Details</span>
+                <span class="rs-rank-num rs-featured-rankbig" [attr.data-rank]="1">#1</span>
+              </div>
+
+              <div class="rs-featured-primary">
+                <span class="rs-featured-strike">{{ best.strike | number:'1.0-0' }}</span>
+                <span class="rs-card-otm">{{ best.otm_pct | number:'1.1-1' }}% OTM</span>
+                <span class="rs-featured-prem">₹{{ best.premium | number:'1.2-2' }}</span>
+              </div>
+
+              <div class="rs-card-metrics">
+                <span class="rs-days" title="Days until option decays to 50% of current premium — your exit point.">~{{ best.days_to_50pct }}d to 50%</span>
+                <span class="rs-card-dot">·</span>
+                <span class="rs-yield" title="Annualised yield if you exit at 50% capture.">≈{{ best.early_yield_pct | number:'1.1-1' }}% p.a.</span>
+                <span class="rs-card-dot">·</span>
+                <span class="rs-prob" title="Probability the call stays OTM for your holding window.">{{ best.prob_safe_pct | number:'1.0-0' }}% safe</span>
+              </div>
+
+              <div class="rs-card-pills">
+                <span class="rs-pill" [class]="'risk-' + best.assignment_risk" title="Assignment risk (delta-based).">{{ best.assignment_risk }} risk</span>
+                <span class="rs-pill" [class]="'liq-' + best.liquidity" title="Liquidity from OI.">{{ best.liquidity }} liq</span>
+              </div>
+
+              <div class="rs-summary-line">{{ best.summary }}</div>
+
+              <button class="rs-details-toggle"
+                      (click)="toggleBestStrikeDetails()"
+                      [class.open]="bestStrikeDetailsOpen()"
+                      type="button">
+                <span class="rs-dt-chev">{{ bestStrikeDetailsOpen() ? '▾' : '▸' }}</span>
+                {{ bestStrikeDetailsOpen() ? 'Hide full breakdown' : 'Show full breakdown' }}
+              </button>
+
+              @if (bestStrikeDetailsOpen()) {
+                <div class="rs-stats-grid">
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Days to 50% capture <span class="info-icon" title="Black-Scholes estimate: days until premium decays to half its value at flat Nifty.">ⓘ</span></div>
+                    <div class="rs-stat-val">~{{ best.days_to_50pct }}d</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Early-exit yield (p.a.) <span class="info-icon" title="(premium × 0.5 / spot) × 365 / days_to_50 — what you actually earn per year at 50% exit.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ best.early_yield_pct | number:'1.1-1' }}%</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Hold-to-expiry yield <span class="info-icon" title="Annualised yield held to expiry — usually lower per-day than early exit.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ best.hold_yield_pct | number:'1.1-1' }}%</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Premium / day <span class="info-icon" title="₹ of theta decay per day over the early-exit window.">ⓘ</span></div>
+                    <div class="rs-stat-val">₹{{ best.premium_per_day | number:'1.2-2' }}</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Safe-exit probability <span class="info-icon" title="Prob call stays OTM throughout holding window — uses 2·Δ·√(τ/T) touch proxy.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ best.prob_safe_pct | number:'1.0-0' }}%</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Delta <span class="info-icon" title="Δ ≈ prob of finishing ITM. Lower Δ = safer, smaller premium.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ best.delta | number:'1.2-2' }}</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">IV (this strike) <span class="info-icon" title="Implied vol for this exact strike — higher IV means richer premium.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ best.iv | number:'1.1-1' }}%</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Open Interest <span class="info-icon" title=">10k = excellent liquidity. <1k = thin, expect wide spreads.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ best.oi >= 1000 ? fmtK(best.oi) : (best.oi | number:'1.0-0') }}</div>
+                  </div>
+                </div>
+
+                @if (best.why_good?.length) {
+                <div class="rs-why rs-why-good">
+                  <div class="rs-why-title">✓ Why this strike scores well</div>
+                  <ul>@for (g of best.why_good; track $index) { <li>{{ g }}</li> }</ul>
+                </div>
+                }
+                @if (best.why_caution?.length) {
+                <div class="rs-why rs-why-caution">
+                  <div class="rs-why-title">⚠ Trade-offs to know</div>
+                  <ul>@for (c of best.why_caution; track $index) { <li>{{ c }}</li> }</ul>
+                </div>
+                }
+              }
+
+            </div>
+            }
+
+            <!-- ── RIGHT: #2/#3 mini cards + view more (market checks are in the shared top strip) ── -->
+            <div class="rs-side-col">
+
+              <!-- #2 + #3 compact cards -->
+              @if (pm.ranked_strikes.length > 1) {
+              <div class="rs-side-ranks">
+                @for (rs of pm.ranked_strikes.slice(1, 3); track rs.strike; let i = $index) {
+                <div class="rs-mini-card"
+                     [class.rs-card-2]="rs.rank === 2"
+                     [class.rs-card-3]="rs.rank === 3"
+                     [class.rs-mini-open]="expandedRankIdx() === (i + 1)">
+                  <button class="rs-mini-btn" (click)="toggleRankExpand(i + 1)">
+                    <div class="rs-mini-rank">
+                      <span class="rs-rank-num" [attr.data-rank]="rs.rank">#{{ rs.rank }}</span>
+                    </div>
+                    <div class="rs-mini-body">
+                      <div class="rs-mini-row">
+                        <span class="rs-mini-strike">{{ rs.strike | number:'1.0-0' }}</span>
+                        <span class="rs-mini-otm">{{ rs.otm_pct | number:'1.1-1' }}% OTM</span>
+                        <span class="rs-mini-prem">₹{{ rs.premium | number:'1.2-2' }}</span>
+                      </div>
+                      <div class="rs-mini-meta">
+                        <span class="rs-yield">≈{{ rs.early_yield_pct | number:'1.1-1' }}% p.a.</span>
+                        <span class="rs-card-dot">·</span>
+                        <span class="rs-prob">{{ rs.prob_safe_pct | number:'1.0-0' }}% safe</span>
+                        <span class="rs-card-dot">·</span>
+                        <span class="rs-pill rs-pill-mini" [class]="'risk-' + rs.assignment_risk">{{ rs.assignment_risk }}</span>
+                      </div>
+                    </div>
+                    <span class="rs-mini-chev">{{ expandedRankIdx() === (i + 1) ? '▾' : '▸' }}</span>
+                  </button>
+
+                  @if (expandedRankIdx() === (i + 1)) {
+                  <div class="rs-detail rs-detail-mini">
+                    <div class="rs-summary-line">{{ rs.summary }}</div>
+                    <div class="rs-stats-grid rs-stats-mini">
+                      <div class="rs-stat">
+                        <div class="rs-stat-lbl">Days to 50%</div>
+                        <div class="rs-stat-val">~{{ rs.days_to_50pct }}d</div>
+                      </div>
+                      <div class="rs-stat">
+                        <div class="rs-stat-lbl">Early yield</div>
+                        <div class="rs-stat-val">{{ rs.early_yield_pct | number:'1.1-1' }}%</div>
+                      </div>
+                      <div class="rs-stat">
+                        <div class="rs-stat-lbl">Hold yield</div>
+                        <div class="rs-stat-val">{{ rs.hold_yield_pct | number:'1.1-1' }}%</div>
+                      </div>
+                      <div class="rs-stat">
+                        <div class="rs-stat-lbl">Premium/day</div>
+                        <div class="rs-stat-val">₹{{ rs.premium_per_day | number:'1.2-2' }}</div>
+                      </div>
+                      <div class="rs-stat">
+                        <div class="rs-stat-lbl">Safe-exit %</div>
+                        <div class="rs-stat-val">{{ rs.prob_safe_pct | number:'1.0-0' }}%</div>
+                      </div>
+                      <div class="rs-stat">
+                        <div class="rs-stat-lbl">Delta</div>
+                        <div class="rs-stat-val">{{ rs.delta | number:'1.2-2' }}</div>
+                      </div>
+                      <div class="rs-stat">
+                        <div class="rs-stat-lbl">IV</div>
+                        <div class="rs-stat-val">{{ rs.iv | number:'1.1-1' }}%</div>
+                      </div>
+                      <div class="rs-stat">
+                        <div class="rs-stat-lbl">OI</div>
+                        <div class="rs-stat-val">{{ rs.oi >= 1000 ? fmtK(rs.oi) : (rs.oi | number:'1.0-0') }}</div>
+                      </div>
+                    </div>
+                    @if (rs.why_good?.length) {
+                    <div class="rs-why rs-why-good">
+                      <div class="rs-why-title">✓ Why it scores here</div>
+                      <ul>@for (g of rs.why_good; track $index) { <li>{{ g }}</li> }</ul>
+                    </div>
+                    }
+                    @if (rs.why_caution?.length) {
+                    <div class="rs-why rs-why-caution">
+                      <div class="rs-why-title">⚠ Trade-offs</div>
+                      <ul>@for (c of rs.why_caution; track $index) { <li>{{ c }}</li> }</ul>
+                    </div>
+                    }
+                    <div class="rs-actions">
+                      <button class="use-rec-btn" (click)="useRankedStrike(rs.strike, pm.expiry)">Build at {{ rs.strike | number:'1.0-0' }} →</button>
+                    </div>
+                  </div>
+                  }
+                </div>
+                }
+              </div>
+              }
+
+              <!-- View more -->
+              @if (pm.ranked_strikes.length > 3) {
+              <button class="rs-show-more-btn" (click)="toggleShowAllStrikes()">
+                @if (showAllStrikes()) { ▴ Hide remaining }
+                @else { ▾ View {{ pm.ranked_strikes.length - 3 }} more }
+              </button>
+              }
+
+              <!-- Build at best strike — pinned to bottom -->
+              @if (pm.ranked_strikes[0]; as best) {
+              <button class="rs-side-build-btn" (click)="useRankedStrike(best.strike, pm.expiry)">
+                Build at {{ best.strike | number:'1.0-0' }} →
+              </button>
+              }
+            </div>
+          </div>
+
+          <!-- ── Remaining strikes (4+) — revealed by "Show more" ──────── -->
+          @if (showAllStrikes()) {
+          <div class="rs-list rs-extra-list">
+            @for (rs of pm.ranked_strikes.slice(3); track rs.strike; let i = $index) {
+            <div class="rs-row" [class.rs-expanded]="expandedRankIdx() === (i + 3)">
+
+              <button class="rs-summary" (click)="toggleRankExpand(i + 3)">
+                <span class="rs-strike">{{ rs.strike | number:'1.0-0' }}</span>
+                <span class="rs-otm">{{ rs.otm_pct | number:'1.1-1' }}% OTM</span>
+                <span class="rs-prem">₹{{ rs.premium | number:'1.2-2' }}</span>
+                <span class="rs-days" title="Days to 50% premium decay.">~{{ rs.days_to_50pct }}d to 50%</span>
+                <span class="rs-yield" title="Annualised yield at 50% exit.">≈{{ rs.early_yield_pct | number:'1.1-1' }}% p.a.</span>
+                <span class="rs-prob" title="Safe-exit probability.">{{ rs.prob_safe_pct | number:'1.0-0' }}% safe</span>
+                <span class="rs-pill" [class]="'risk-' + rs.assignment_risk">{{ rs.assignment_risk }}</span>
+                <span class="rs-rank-right">#{{ rs.rank }}</span>
+                <span class="rs-chev">{{ expandedRankIdx() === (i + 3) ? '▾' : '▸' }}</span>
+              </button>
+
+              @if (expandedRankIdx() === (i + 3)) {
+              <div class="rs-detail">
+                <div class="rs-summary-line">{{ rs.summary }}</div>
+                <div class="rs-stats-grid">
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Days to 50% <span class="info-icon" title="BS estimate: days to 50% premium decay at flat Nifty.">ⓘ</span></div>
+                    <div class="rs-stat-val">~{{ rs.days_to_50pct }}d</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Early yield (p.a.) <span class="info-icon" title="Annualised return at 50% capture exit.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ rs.early_yield_pct | number:'1.1-1' }}%</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Hold yield <span class="info-icon" title="Annualised yield held to expiry.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ rs.hold_yield_pct | number:'1.1-1' }}%</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Premium/day <span class="info-icon" title="₹ theta decay per day.">ⓘ</span></div>
+                    <div class="rs-stat-val">₹{{ rs.premium_per_day | number:'1.2-2' }}</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Safe-exit % <span class="info-icon" title="Prob call stays OTM during holding window.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ rs.prob_safe_pct | number:'1.0-0' }}%</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">Delta <span class="info-icon" title="Lower = safer, smaller premium.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ rs.delta | number:'1.2-2' }}</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">IV <span class="info-icon" title="Implied vol for this strike.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ rs.iv | number:'1.1-1' }}%</div>
+                  </div>
+                  <div class="rs-stat">
+                    <div class="rs-stat-lbl">OI <span class="info-icon" title=">10k = good liquidity.">ⓘ</span></div>
+                    <div class="rs-stat-val">{{ rs.oi >= 1000 ? fmtK(rs.oi) : (rs.oi | number:'1.0-0') }}</div>
+                  </div>
+                </div>
+                @if (rs.why_good?.length) {
+                <div class="rs-why rs-why-good">
+                  <div class="rs-why-title">✓ Why it scores here</div>
+                  <ul>@for (g of rs.why_good; track $index) { <li>{{ g }}</li> }</ul>
+                </div>
+                }
+                @if (rs.why_caution?.length) {
+                <div class="rs-why rs-why-caution">
+                  <div class="rs-why-title">⚠ Trade-offs</div>
+                  <ul>@for (c of rs.why_caution; track $index) { <li>{{ c }}</li> }</ul>
+                </div>
+                }
+                <div class="rs-actions">
+                  <button class="use-rec-btn" (click)="useRankedStrike(rs.strike, pm.expiry)">Build at {{ rs.strike | number:'1.0-0' }} →</button>
+                </div>
+              </div>
+              }
+
+            </div>
+            }
+          </div>
+          }
+
+        </div>
+        }
+
+      </div>
+      } @else {
+      <div class="pmc-error">Could not load market data. Make sure the backend is running.</div>
+      }
+      }
+    </div>
+    }
+  </div>
+  }
+
+
+  @if (error()) {
+  <div class="cc-error">⚠ {{ error() }}</div>
+  }
+  @if (loading()) {
+  <div class="cc-loading"><span class="spinner"></span> Loading Nifty chain…</div>
+  }
+
+  @if (setup() && !loading()) {
+  <div class="cc-body" [class.cc-body-detail]="currentView() === 'detail'">
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- LEFT PANEL — Configuration                                           -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="cc-left">
+
+    @if (currentView() === 'new') {
+
+      <!-- Config card -->
+      <div class="cc-card config-card">
+
+        <div class="config-section">
+          <label class="cfg-label">Expiry</label>
+          <select class="form-control expiry-select"
+                  [ngModel]="selectedExpiry()"
+                  (ngModelChange)="onExpiryChange($event)">
+            @for (exp of expiries(); track exp) {
+              <option [value]="exp">{{ exp }}</option>
+            }
+          </select>
+          <div class="cfg-hint">{{ expiries().length }} expiries available</div>
+        </div>
+
+        <div class="config-section">
+          <label class="cfg-label">Lots to sell</label>
+          <div class="lots-stepper">
+            <button class="step-btn" (click)="onLotsChange((lots()-1).toString())">−</button>
+            <input type="number" class="lots-input"
+                   [ngModel]="lots()" (ngModelChange)="onLotsChange($event.toString())"
+                   min="1" max="100" />
+            <button class="step-btn" (click)="onLotsChange((lots()+1).toString())">+</button>
+          </div>
+          <div class="cfg-hint">1 lot = {{ setup()?.lot_size }} units · {{ lots() * (setup()?.lot_size ?? 0) }} total units</div>
+        </div>
+
+      </div>
+
+      <!-- Strike picker (collapsed by default) -->
+      <div class="cc-card strike-card" [class.collapsed]="!strikePickerOpen()">
+        <button class="strike-header strike-header-btn" type="button" (click)="toggleStrikePicker()">
+          <span class="sh-chev">{{ strikePickerOpen() ? '▾' : '▸' }}</span>
+          <span class="sh-title">Select call to sell</span>
+          @if (selectedStrike()) {
+            <span class="sh-selected">· {{ selectedStrike() | number:'1.0-0' }} CE</span>
+          }
+          <span class="sh-sub">{{ strikePickerOpen() ? 'Click a row to analyze' : 'Click to expand' }}</span>
+        </button>
+
+        @if (strikePickerOpen()) {
+        <div class="strike-table-wrap">
+          <table class="strike-table">
+            <thead>
+              <tr>
+                <th>Strike</th>
+                <th>Dist %</th>
+                <th>Bid ₹</th>
+                <th>Δ</th>
+                <th>IV</th>
+                <th>OI</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of calls(); track c.strike) {
+              <tr class="strike-row"
+                  [class.selected]="selectedStrike() === c.strike"
+                  [class.atm-row]="c.is_atm"
+                  (click)="selectStrike(c.strike)">
+                <td class="st-strike">
+                  {{ c.strike | number:'1.0-0' }}
+                  @if (c.is_atm) { <span class="atm-badge">ATM</span> }
+                </td>
+                <td class="st-dist" [class]="'dist-' + distanceTier(c.distance_pct)">
+                  {{ c.distance_pct > 0 ? '+' : '' }}{{ c.distance_pct | number:'1.1-1' }}%
+                </td>
+                <td class="st-prem">{{ (c.bid > 0 ? c.bid : c.premium) | number:'1.1-1' }}</td>
+                <td class="st-delta" [class]="deltaTier(c.delta)">
+                  {{ c.delta !== null ? (c.delta | number:'1.2-2') : '—' }}
+                </td>
+                <td class="st-iv">{{ c.iv !== null ? (c.iv | number:'1.0-0') + '%' : '—' }}</td>
+                <td class="st-oi">{{ c.oi >= 1000 ? fmtK(c.oi) : (c.oi | number:'1.0-0') }}</td>
+              </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        }
+      </div>
+
+      <!-- Compact expiry-scenarios card — appears below strike picker.
+           Auto-updates when hedge overlay is toggled on/off. -->
+      @if (analysis() && compactScenarios().length) {
+      @let _sc = compactScenarios();
+      @let _hedgeOn = _sc[0].hedge_active;
+      <div class="cc-card mini-sc-card">
+        <div class="mini-sc-head">
+          <span class="mini-sc-title">Expiry scenarios</span>
+          @if (_hedgeOn) {
+            <span class="mini-sc-tag mini-sc-tag-hedge">+ HEDGE</span>
+          } @else {
+            <span class="mini-sc-tag">CC only</span>
+          }
+          <div class="mini-sc-gran" role="tablist">
+            <button class="msg-btn"
+                    [class.active]="scenarioGranularity() === 'coarse'"
+                    (click)="setScenarioGranularity('coarse')"
+                    title="Headline moves only">
+              Coarse
+            </button>
+            <button class="msg-btn"
+                    [class.active]="scenarioGranularity() === 'fine'"
+                    (click)="setScenarioGranularity('fine')"
+                    title="±1, ±2 increments for closer inspection">
+              Fine
+            </button>
+          </div>
+          <button class="mini-sc-breakdown-btn"
+                  [class.active]="scenarioBreakdown()"
+                  (click)="toggleScenarioBreakdown()"
+                  title="Show how much each leg (Nifty 50 ETF vs Call) contributes">
+            {{ scenarioBreakdown() ? '◾ Split' : '+ Split' }}
+          </button>
+        </div>
+        @let _bd = scenarioBreakdown();
+        <div class="mini-sc-scroll">
+        <table class="mini-sc-table" [class.compact]="_bd || _hedgeOn">
+          <thead>
+            <tr>
+              <th>Move</th>
+              <th>Nifty</th>
+              @if (_bd) {
+                <th class="ms-th-pnl" title="Nifty 50 ETF (NiftyBees) leg">N50</th>
+                <th class="ms-th-pnl" title="Short Call leg">Call</th>
+              }
+              <th class="ms-th-pnl">{{ _bd ? 'Total' : 'P&L' }}</th>
+              @if (_hedgeOn) { <th class="ms-th-pnl">Hedge</th> }
+            </tr>
+          </thead>
+          <tbody>
+            @for (sc of _sc; track sc.pct) {
+              @let val = _hedgeOn ? sc.combined_pnl : sc.total_pnl;
+              <tr [class.is-loss]="val < 0"
+                  [class.is-flat]="sc.pct === 0"
+                  [class.is-capped]="sc.is_capped && val >= 0 && sc.pct !== 0">
+                <td class="ms-move">{{ sc.label }}</td>
+                <td class="ms-nifty">{{ sc.nifty | number:'1.0-0' }}</td>
+                @if (_bd) {
+                  <td class="ms-leg"
+                      [class.positive]="sc.niftybees_pnl >= 0"
+                      [class.negative]="sc.niftybees_pnl < 0"
+                      [title]="fmtRs(sc.niftybees_pnl)">
+                    {{ sc.niftybees_pnl >= 0 ? '+' : '−' }}₹{{ fmtK(sc.niftybees_pnl < 0 ? -sc.niftybees_pnl : sc.niftybees_pnl) }}
+                  </td>
+                  <td class="ms-leg"
+                      [class.positive]="sc.call_pnl >= 0"
+                      [class.negative]="sc.call_pnl < 0"
+                      [title]="fmtRs(sc.call_pnl)">
+                    {{ sc.call_pnl >= 0 ? '+' : '−' }}₹{{ fmtK(sc.call_pnl < 0 ? -sc.call_pnl : sc.call_pnl) }}
+                  </td>
+                }
+                <td class="ms-pnl" [class.positive]="val >= 0" [class.negative]="val < 0"
+                    [title]="fmtRs(val)">
+                  {{ val >= 0 ? '+' : '−' }}₹{{ fmtK(val < 0 ? -val : val) }}
+                </td>
+                @if (_hedgeOn) {
+                  <td class="ms-hedge"
+                      [class.positive]="sc.hedge_pnl >= 0"
+                      [class.negative]="sc.hedge_pnl < 0"
+                      [title]="fmtRs(sc.hedge_pnl)">
+                    {{ sc.hedge_pnl >= 0 ? '+' : '−' }}₹{{ fmtK(sc.hedge_pnl < 0 ? -sc.hedge_pnl : sc.hedge_pnl) }}
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+        </div>
+      </div>
+      }
+
+    } @else {
+    <!-- ════════ Detail view left panel: Position Overview ═══════════════ -->
+    @if (selectedPos(); as pos) {
+
+      <!-- Live P&L summary card -->
+      <div class="cc-card pos-pnl-card"
+           [class.pos-pnl-pos]="(detailLivePnl() ?? 0) >= 0"
+           [class.pos-pnl-neg]="(detailLivePnl() ?? 0) < 0">
+        <div class="ppnl-label">Live total P&amp;L</div>
+        <div class="ppnl-val">
+          @if (detailLivePnl() !== null) { {{ fmtRs(detailLivePnl()!) }}
+          } @else { — }
+        </div>
+        @if (pos.live) {
+        <div class="ppnl-breakdown">
+          <span [class.positive]="pos.live.etf_pnl >= 0" [class.negative]="pos.live.etf_pnl < 0">
+            ETF {{ fmtRs(pos.live.etf_pnl) }}
+          </span>
+          <span class="ppnl-sep">·</span>
+          <span [class.positive]="pos.live.options_pnl >= 0" [class.negative]="pos.live.options_pnl < 0">
+            Call {{ fmtRs(pos.live.options_pnl) }}
+          </span>
+        </div>
+        @if (pos.live.nifty_spot) {
+        <div class="ppnl-spot">Nifty {{ pos.live.nifty_spot | number:'1.0-0' }} · NB ₹{{ pos.live.niftybees_price | number:'1.2-2' }}</div>
+        }
+        }
+      </div>
+
+      <!-- P&L Scenarios at expiry (replaces position-details card) -->
+      @if (analysis(); as a) {
+      <div class="cc-card det-sc-card">
+        <div class="det-sc-head">
+          <div class="det-sc-title">P&amp;L Scenarios at Expiry</div>
+          <div class="det-sc-sub">
+            Spot {{ a.spot | number:'1.0-0' }} · {{ a.strike | number:'1.0-0' }} CE · BE {{ a.breakeven | number:'1.0-0' }}
+          </div>
+        </div>
+        <div class="det-sc-wrap">
+          <table class="det-sc-table">
+            <thead>
+              <tr>
+                <th>Move</th>
+                <th>Nifty</th>
+                <th>NiftyBees</th>
+                <th>Call</th>
+                <th class="det-sc-total">Total P&amp;L</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (sc of a.scenarios; track sc.pct) {
+              <tr [class.det-sc-loss]="sc.is_loss"
+                  [class.det-sc-capped]="sc.is_capped && !sc.is_loss"
+                  [class.det-sc-entry]="sc.is_at_entry">
+                <td class="det-sc-label"
+                    [class.positive]="!sc.is_loss" [class.negative]="sc.is_loss">
+                  {{ sc.label }}
+                </td>
+                <td class="det-sc-nifty">{{ sc.nifty | number:'1.0-0' }}</td>
+                <td [class.positive]="sc.niftybees_pnl >= 0" [class.negative]="sc.niftybees_pnl < 0">
+                  {{ fmtRs(sc.niftybees_pnl) }}
+                </td>
+                <td [class.positive]="sc.call_pnl >= 0" [class.negative]="sc.call_pnl < 0">
+                  {{ fmtRs(sc.call_pnl) }}
+                </td>
+                <td class="det-sc-total"
+                    [class.positive]="sc.total_pnl >= 0" [class.negative]="sc.total_pnl < 0">
+                  <strong>{{ fmtRs(sc.total_pnl) }}</strong>
+                </td>
+              </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+      } @else if (analyzing() || loading()) {
+      <div class="cc-card det-sc-card det-sc-loading">
+        <span class="spinner"></span> Loading scenarios…
+      </div>
+      }
+    }
+    }
+
+    </div><!-- /cc-left -->
+
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <!-- RIGHT PANEL — Analysis                                               -->
+    <!-- ════════════════════════════════════════════════════════════════════ -->
+    <div class="cc-right">
+
+      @if (analyzing()) {
+      <div class="cc-analyzing"><span class="spinner"></span> Recalculating…</div>
+      }
+
+      <!-- ── Payoff graph — always rendered in detail view so it's the
+               first thing the user sees when they open a saved position.
+               In new-position view it stays inside the analysis guard below. ──── -->
+      @if (currentView() === 'detail') {
+        @if (analysis(); as a) {
+        <div class="cc-card graph-card det-graph-first">
+          <div class="graph-header">
+            <div>
+              <div class="graph-title">P&amp;L at Expiry — Your Position</div>
+              <div class="graph-sub">
+                ENTRY {{ a.entry_nifty | number:'1.0-0' }}
+                · Strike {{ a.strike | number:'1.0-0' }} CE
+                · Break-even {{ a.breakeven | number:'1.0-0' }}
+                · Spot now {{ a.spot | number:'1.0-0' }}
+              </div>
+            </div>
+            <div class="chart-mode-toggle"
+                 title="Combined = single line · Stock + Option = breakdown by leg">
+              <button class="cmt-btn" [class.active]="chartMode() === 'combined'"
+                      (click)="setChartMode('combined')">Combined</button>
+              <button class="cmt-btn" [class.active]="chartMode() === 'breakdown'"
+                      (click)="setChartMode('breakdown')">Stock + Option</button>
+            </div>
+          </div>
+
+          @if (chartMode() === 'combined') {
+          <div class="graph-legend">
+            <span class="gl-item"><span class="gl-dot" style="background:#ef4444"></span>Loss</span>
+            <span class="gl-item"><span class="gl-dot" style="background:#10b981"></span>Profit</span>
+            <span class="gl-item"><span class="gl-dot" style="background:#818cf8"></span>Capped</span>
+            <span class="gl-item"><span class="gl-dash"></span>Target date (BS)</span>
+            <span class="gl-item"><span class="gl-vline" style="background:rgba(139,92,246,0.85)"></span>Entry</span>
+            <span class="gl-item"><span class="gl-line" style="background:rgba(16,185,129,0.7)"></span>TP target</span>
+            <span class="gl-item"><span class="gl-line" style="background:#06b6d4;opacity:0.8"></span>Exit now</span>
+            <span class="gl-item"><span class="gl-dot" style="background:#10b981;width:10px;height:10px;border-radius:50%;display:inline-block"></span>You are here</span>
+            @if (hedgeOverlayMode() === 'overlay' && hedgeOverlayHedge()) {
+              <span class="gl-item"><span class="gl-dash" style="background:#14b8a6"></span>CC + Hedge (dotted)</span>
+            }
+          </div>
+          } @else {
+          <div class="graph-legend">
+            <span class="gl-item"><span class="gl-dot" style="background:#60a5fa"></span>NiftyBees ETF P&L</span>
+            <span class="gl-item"><span class="gl-dot" style="background:#f59e0b"></span>Short Call P&L</span>
+            @if (hedgeOverlayMode() === 'overlay' && hedgeOverlayHedge()) {
+              <span class="gl-item"><span class="gl-line" style="background:#14b8a6"></span>Hedge Put P&L</span>
+            }
+            <span class="gl-item"><span class="gl-line" style="background:rgba(40,50,80,0.35)"></span>Combined total</span>
+            <span class="gl-item"><span class="gl-vline" style="background:rgba(139,92,246,0.85)"></span>Entry</span>
+            <span class="gl-item"><span class="gl-line" style="background:rgba(16,185,129,0.7)"></span>TP target</span>
+            <span class="gl-item"><span class="gl-line" style="background:#06b6d4;opacity:0.8"></span>Exit now</span>
+          </div>
+          }
+
+          <div class="graph-wrap">
+            <canvas #payoffCanvas class="payoff-canvas"></canvas>
+            <canvas #overlayCanvas class="overlay-canvas"
+                    (mousemove)="onCanvasMouseMove($event)"
+                    (mouseleave)="onCanvasMouseLeave()"
+                    (click)="onCanvasClick($event)">
+            </canvas>
+            @if (tooltipVisible()) {
+            <div class="chart-tooltip" [style.left.px]="tooltipX()" [style.top.px]="tooltipY()">
+              <div class="ct-nifty">Nifty {{ tooltipData()?.nifty | number:'1.0-0' }}</div>
+              <div class="ct-section-label">
+                @if ((tooltipData()?.targetDFN ?? 0) === 0) { Today · live estimate }
+                @else if ((tooltipData()?.targetDFN ?? 0) >= a.dte) { At expiry (BS) }
+                @else { Day +{{ tooltipData()?.targetDFN }} · Black-Scholes }
+              </div>
+              <div class="ct-row">
+                <span class="ct-leg"><span class="ct-leg-dot" style="background:#60a5fa"></span>NiftyBees</span>
+                <span [class.positive]="(tooltipData()?.targetNbPnl ?? 0) >= 0"
+                      [class.negative]="(tooltipData()?.targetNbPnl ?? 0) < 0">
+                  {{ fmtRs(tooltipData()?.targetNbPnl ?? 0) }}
+                </span>
+              </div>
+              <div class="ct-row">
+                <span class="ct-leg"><span class="ct-leg-dot" style="background:#f59e0b"></span>Option (BS)</span>
+                <span [class.positive]="(tooltipData()?.targetCallPnl ?? 0) >= 0"
+                      [class.negative]="(tooltipData()?.targetCallPnl ?? 0) < 0">
+                  {{ fmtRs(tooltipData()?.targetCallPnl ?? 0) }}
+                </span>
+              </div>
+              <div class="ct-sep"></div>
+              <div class="ct-row ct-total">
+                <span class="ct-leg">Total</span>
+                <span class="ct-pnl"
+                      [class.positive]="(tooltipData()?.targetPnl ?? 0) >= 0"
+                      [class.negative]="(tooltipData()?.targetPnl ?? 0) < 0">
+                  {{ fmtRs(tooltipData()?.targetPnl ?? 0) }}
+                </span>
+              </div>
+              @if ((tooltipData()?.targetDFN ?? 0) < a.dte) {
+              <div class="ct-exp-ref">
+                <span class="ct-exp-label">At expiry</span>
+                <span [class.positive]="(tooltipData()?.pnl ?? 0) >= 0"
+                      [class.negative]="(tooltipData()?.pnl ?? 0) < 0">
+                  {{ fmtRs(tooltipData()?.pnl ?? 0) }}
+                </span>
+              </div>
+              }
+
+              <!-- Phase 2C — hedge rows (only when overlay is on) -->
+              @if (tooltipData()?.hedgeIsActive) {
+                <div class="ct-sep"></div>
+                <div class="ct-row ct-hedge">
+                  <span class="ct-leg"><span class="ct-leg-dot" style="background:#14b8a6"></span>Hedge {{ tooltipData()?.hedgeStrike | number:'1.0-0' }} PE</span>
+                  <span [class.positive]="(tooltipData()?.hedgePnl ?? 0) >= 0"
+                        [class.negative]="(tooltipData()?.hedgePnl ?? 0) < 0">
+                    {{ fmtRs(tooltipData()?.hedgePnl ?? 0) }}
+                  </span>
+                </div>
+                <div class="ct-row ct-total ct-cchedge">
+                  <span class="ct-leg">CC + Hedge</span>
+                  <span class="ct-pnl"
+                        [class.positive]="(tooltipData()?.cchedgePnl ?? 0) >= 0"
+                        [class.negative]="(tooltipData()?.cchedgePnl ?? 0) < 0">
+                    {{ fmtRs(tooltipData()?.cchedgePnl ?? 0) }}
+                  </span>
+                </div>
+              }
+
+              <div class="ct-zone" [class]="'ct-zone-' + tooltipData()?.zone">
+                {{ tooltipData()?.zone?.toUpperCase() }}
+              </div>
+            </div>
+            }
+          </div>
+
+          <!-- ── Target date / Nifty controls (full — same as new-position view) ── -->
+          <div class="target-controls">
+            <div class="tc-left-col">
+              <div class="tc-date-chips">
+                <button class="tc-chip" type="button"
+                        [class.active]="targetDaysFromNow() === 0"
+                        (click)="targetDaysFromNow.set(0)">Today</button>
+                @if (a.dte >= 1) {
+                <button class="tc-chip" type="button"
+                        [class.active]="targetDaysFromNow() === 1"
+                        (click)="targetDaysFromNow.set(1)">+1d</button>
+                }
+                @if (a.dte >= 3) {
+                <button class="tc-chip" type="button"
+                        [class.active]="targetDaysFromNow() === 3"
+                        (click)="targetDaysFromNow.set(3)">+3d</button>
+                }
+                @if (a.dte >= 7) {
+                <button class="tc-chip" type="button"
+                        [class.active]="targetDaysFromNow() === 7"
+                        (click)="targetDaysFromNow.set(7)">+1w</button>
+                }
+                <button class="tc-chip" type="button"
+                        [class.active]="targetDaysFromNow() >= a.dte"
+                        (click)="targetDaysFromNow.set(a.dte)">Exp · {{ a.dte }}d</button>
+                <input type="number" class="tc-day-input"
+                       [min]="0" [max]="a.dte" placeholder="d"
+                       title="Custom day offset (0 to {{ a.dte }})"
+                       [ngModel]="targetDaysFromNow() || null"
+                       (ngModelChange)="onTargetDaysChange($event)" />
+              </div>
+
+              <span class="tc-divider"></span>
+
+              <div class="tc-zoom-group">
+                <button class="tc-zoom-btn" type="button"
+                        [class.active]="chartZoom() === 'in'"
+                        (click)="chartZoom.set('in')"
+                        title="Zoom around current spot (±7%)">⊕ In</button>
+                <button class="tc-zoom-btn" type="button"
+                        [class.active]="chartZoom() === 'out'"
+                        (click)="chartZoom.set('out')"
+                        title="Show full payoff range (max Y)">⊖ Out</button>
+              </div>
+
+              <span class="tc-divider"></span>
+
+              <select class="tc-hedge-select"
+                      [class.active]="hedgeOverlayMode() === 'overlay'"
+                      [disabled]="openHedgesCount() === 0"
+                      [ngModel]="hedgeOverlayMode() === 'overlay' ? hedgeOverlayId() : ''"
+                      (ngModelChange)="onHedgePick($event)"
+                      [title]="openHedgesCount() === 0 ? 'No hedges available — start one in /hedges' : 'Pick a hedge to overlay on the payoff'">
+                <option value="">🛡️ {{ openHedgesCount() === 0 ? 'No hedges' : 'Choose hedge' }}</option>
+                @for (h of openHedges(); track h.id) {
+                  <option [value]="h.id">{{ h.strike | number:'1.0-0' }} PE · {{ h.expiry }}</option>
+                }
+              </select>
+
+              @if (positionAlerts(); as pa) {
+              <span class="tc-divider"></span>
+              <div class="tc-margin" [class.tc-margin-warn]="pa.callIsITM"
+                   [title]="pa.callIsITM ? 'Pledge securities or add funds' : 'Margin cushion is intact'">
+                @if (pa.callIsITM) {
+                <span class="tc-margin-val tc-margin-warn-val">⚠ ₹{{ pa.extraMargin | number:'1.0-0' }} margin needed</span>
+                } @else {
+                <span class="tc-margin-val tc-margin-ok">✓ ₹0 extra margin</span>
+                }
+              </div>
+              }
+            </div>
+
+            <div class="tc-right-col">
+              <div class="tc-nifty-col">
+                <label class="tc-lbl">Nifty Price <span class="tc-hint">(blank = live)</span></label>
+                <input type="number" class="form-control tc-nifty-input"
+                       [placeholder]="a.spot.toFixed(0)"
+                       [ngModel]="targetNifty() > 0 ? targetNifty() : null"
+                       (ngModelChange)="onTargetNiftyChange($event?.toString() ?? '')">
+              </div>
+              <div class="tc-pnl-col"
+                   [class.positive]="(targetPnl() ?? 0) >= 0"
+                   [class.negative]="(targetPnl() ?? 0) < 0">
+                <div class="tc-pnl-label">
+                  Est. P&L
+                  @if (targetDaysFromNow() > 0) {
+                    <span class="tc-bs-badge">Black-Scholes</span>
+                  }
+                </div>
+                <div class="tc-pnl-val">
+                  {{ targetPnl() !== null ? fmtRs(targetPnl()!) : '—' }}
+                </div>
+                @if (targetNifty() > 0) {
+                <div class="tc-pnl-sub">at Nifty {{ targetNifty() | number:'1.0-0' }}</div>
+                }
+              </div>
+            </div>
+          </div>
+
+          <!-- Avg-down hint -->
+          @if (positionAlerts(); as pa) {
+            @if (pa.nbIsDown) {
+            <div class="inline-alerts">
+              <div class="ia-strip ia-warn">
+                <span class="ia-icon">💡</span>
+                <span class="ia-label">NiftyBees ▼ {{ pa.nbPctChange | number:'1.1-1' }}% — avg down:</span>
+                <span class="ia-amount">{{ pa.avgDownShares | number:'1.0-0' }} shares @ ₹{{ pa.currentNbPrice | number:'1.2-2' }}</span>
+                <span class="ia-sep">·</span>
+                <span class="ia-hint">Cost ₹{{ pa.avgDownCost | number:'1.0-0' }} · New avg ₹{{ pa.newAvgPrice | number:'1.2-2' }}</span>
+              </div>
+            </div>
+            }
+          }
+          <!-- Live call price indicator for monitoring mode -->
+          @if (a.call_price_source) {
+          <div class="det-live-call-strip">
+            <span class="dlcs-label">Current call price</span>
+            <span class="dlcs-price">₹{{ a.current_call_price | number:'1.2-2' }}</span>
+            @if (a.call_price_source === 'bs') {
+            <span class="dlcs-badge bs">⚠ BS estimate — strike outside today's chain</span>
+            } @else {
+            <span class="dlcs-badge live">● Live</span>
+            }
+            <span class="dlcs-sep">·</span>
+            <span class="dlcs-label">Entry premium</span>
+            <span class="dlcs-price">₹{{ a.premium | number:'1.2-2' }}</span>
+            <span class="dlcs-sep">·</span>
+            <span class="dlcs-mtm"
+                  [class.positive]="(a.premium - a.current_call_price) >= 0"
+                  [class.negative]="(a.premium - a.current_call_price) < 0">
+              MTM: {{ fmtRs((a.premium - a.current_call_price) * a.lots * a.lot_size) }}
+            </span>
+          </div>
+          }
+        </div>
+        } @else if (error()) {
+        <div class="cc-card graph-card det-graph-first det-graph-loading">
+          <div class="graph-title">P&amp;L at Expiry — Your Position</div>
+          <div class="det-graph-skeleton det-graph-error">
+            <span class="det-graph-error-icon">⚠</span>
+            <div>{{ error() }}</div>
+            <button class="btn btn-ghost" style="margin-top:10px" (click)="loadSetup()">↻ Retry</button>
+          </div>
+        </div>
+        } @else {
+        <!-- Loading skeleton shown immediately when a position is opened -->
+        <div class="cc-card graph-card det-graph-first det-graph-loading">
+          <div class="graph-title">P&amp;L at Expiry — Your Position</div>
+          <div class="det-graph-skeleton">
+            <span class="spinner"></span>
+            Loading payoff chart for {{ selectedPos()?.name }}…
+          </div>
+        </div>
+        }
+      }
+
+      @if (analysis(); as a) {
+
+      <!-- ── Trade summary bar (new position only) ──────────────────────── -->
+      @if (currentView() === 'new') {
+      <div class="cc-card summary-bar">
+        <div class="sb-item highlight">
+          <div class="sb-lbl">Shares to buy</div>
+          <div class="sb-val">{{ a.shares | number:'1.0-0' }}</div>
+          <div class="sb-sub">NiftyBees @ ₹{{ a.niftybees_price | number:'1.2-2' }}</div>
+        </div>
+        <div class="sb-divider"></div>
+        <div class="sb-item">
+          <div class="sb-lbl">NiftyBees cost</div>
+          <div class="sb-val">₹{{ fmtK(a.niftybees_cost) }}</div>
+          <div class="sb-sub">{{ a.shares | number:'1.0-0' }} × ₹{{ a.niftybees_price | number:'1.2-2' }}</div>
+        </div>
+        <div class="sb-divider"></div>
+        <div class="sb-item green">
+          <div class="sb-lbl">Premium in</div>
+          <div class="sb-val positive">+₹{{ fmtK(a.premium_total) }}</div>
+          <div class="sb-sub">₹{{ a.premium | number:'1.2-2' }} bid × {{ a.lots * a.lot_size }}</div>
+        </div>
+        <div class="sb-divider"></div>
+        <div class="sb-item"
+             title="SPAN + ELM margin held by the broker for selling the short call (≈13% of strike notional per lot).
+Pledging NiftyBees as collateral can reduce this to ~₹0 — without pledging, you need this much free cash.">
+          <div class="sb-lbl">Margin to sell call</div>
+          <div class="sb-val">₹{{ fmtK(shortCallMargin()) }}</div>
+          <div class="sb-sub">{{ a.lots }} lot × {{ a.lot_size }} × ₹{{ a.strike | number:'1.0-0' }} × 13%</div>
+        </div>
+      </div>
+      }
+
+      <!-- ── Payoff graph (new position view only — detail view has its own above) ── -->
+      @if (currentView() === 'new') {
+      <div class="cc-card graph-card">
+        <div class="graph-header">
+          <div>
+            <div class="graph-title">P&amp;L at Expiry</div>
+            <div class="graph-sub">Hover to inspect · BE {{ a.breakeven | number:'1.0-0' }} · K {{ a.strike | number:'1.0-0' }}</div>
+          </div>
+          <div class="chart-mode-toggle"
+               title="Combined = single line · Stock + Option = breakdown by leg">
+            <button class="cmt-btn" [class.active]="chartMode() === 'combined'"
+                    (click)="setChartMode('combined')">Combined</button>
+            <button class="cmt-btn" [class.active]="chartMode() === 'breakdown'"
+                    (click)="setChartMode('breakdown')">Stock + Option</button>
+          </div>
+        </div>
+
+        @if (chartMode() === 'combined') {
+        <div class="graph-legend">
+          <span class="gl-item"><span class="gl-dot" style="background:#ef4444"></span>Loss</span>
+          <span class="gl-item"><span class="gl-dot" style="background:#10b981"></span>Profit</span>
+          <span class="gl-item"><span class="gl-dot" style="background:#818cf8"></span>Capped</span>
+          <span class="gl-item"><span class="gl-dash"></span>Target date (BS)</span>
+          @if (hedgeOverlayMode() === 'overlay' && hedgeOverlayHedge()) {
+            <span class="gl-item"><span class="gl-dash" style="background:#14b8a6"></span>CC + Hedge (dotted)</span>
+          }
+        </div>
+        } @else {
+        <div class="graph-legend">
+          <span class="gl-item"><span class="gl-dot" style="background:#60a5fa"></span>NiftyBees ETF P&L</span>
+          <span class="gl-item"><span class="gl-dot" style="background:#f59e0b"></span>Short Call P&L</span>
+          @if (hedgeOverlayMode() === 'overlay' && hedgeOverlayHedge()) {
+            <span class="gl-item"><span class="gl-line" style="background:#14b8a6"></span>Hedge Put P&L</span>
+          }
+          <span class="gl-item"><span class="gl-line" style="background:rgba(40,50,80,0.35)"></span>Combined total</span>
+          <span class="gl-item"><span class="gl-dash"></span>Target date (BS)</span>
+        </div>
+        }
+
+        <div class="graph-wrap">
+          <canvas #payoffCanvas class="payoff-canvas"></canvas>
+          <canvas #overlayCanvas class="overlay-canvas"
+                  (mousemove)="onCanvasMouseMove($event)"
+                  (mouseleave)="onCanvasMouseLeave()"
+                  (click)="onCanvasClick($event)">
+          </canvas>
+          @if (tooltipVisible()) {
+          <div class="chart-tooltip" [style.left.px]="tooltipX()" [style.top.px]="tooltipY()">
+            <div class="ct-nifty">Nifty {{ tooltipData()?.nifty | number:'1.0-0' }}</div>
+
+            <div class="ct-section-label">
+              @if ((tooltipData()?.targetDFN ?? 0) === 0) { Today · live estimate }
+              @else if ((tooltipData()?.targetDFN ?? 0) >= a.dte) { At expiry (BS) }
+              @else { Day +{{ tooltipData()?.targetDFN }} · Black-Scholes }
+            </div>
+            <div class="ct-row">
+              <span class="ct-leg"><span class="ct-leg-dot" style="background:#60a5fa"></span>NiftyBees</span>
+              <span [class.positive]="(tooltipData()?.targetNbPnl ?? 0) >= 0"
+                    [class.negative]="(tooltipData()?.targetNbPnl ?? 0) < 0">
+                {{ fmtRs(tooltipData()?.targetNbPnl ?? 0) }}
+              </span>
+            </div>
+            <div class="ct-row">
+              <span class="ct-leg"><span class="ct-leg-dot" style="background:#f59e0b"></span>Option (BS)</span>
+              <span [class.positive]="(tooltipData()?.targetCallPnl ?? 0) >= 0"
+                    [class.negative]="(tooltipData()?.targetCallPnl ?? 0) < 0">
+                {{ fmtRs(tooltipData()?.targetCallPnl ?? 0) }}
+              </span>
+            </div>
+            <div class="ct-sep"></div>
+            <div class="ct-row ct-total">
+              <span class="ct-leg">Total</span>
+              <span class="ct-pnl"
+                    [class.positive]="(tooltipData()?.targetPnl ?? 0) >= 0"
+                    [class.negative]="(tooltipData()?.targetPnl ?? 0) < 0">
+                {{ fmtRs(tooltipData()?.targetPnl ?? 0) }}
+              </span>
+            </div>
+
+            @if ((tooltipData()?.targetDFN ?? 0) < a.dte) {
+            <div class="ct-exp-ref">
+              <span class="ct-exp-label">At expiry</span>
+              <span [class.positive]="(tooltipData()?.pnl ?? 0) >= 0"
+                    [class.negative]="(tooltipData()?.pnl ?? 0) < 0">
+                {{ fmtRs(tooltipData()?.pnl ?? 0) }}
+              </span>
+            </div>
+            }
+
+            <!-- Phase 2C — hedge rows (only when overlay is on) -->
+            @if (tooltipData()?.hedgeIsActive) {
+              <div class="ct-sep"></div>
+              <div class="ct-row ct-hedge">
+                <span class="ct-leg"><span class="ct-leg-dot" style="background:#14b8a6"></span>Hedge {{ tooltipData()?.hedgeStrike | number:'1.0-0' }} PE</span>
+                <span [class.positive]="(tooltipData()?.hedgePnl ?? 0) >= 0"
+                      [class.negative]="(tooltipData()?.hedgePnl ?? 0) < 0">
+                  {{ fmtRs(tooltipData()?.hedgePnl ?? 0) }}
+                </span>
+              </div>
+              <div class="ct-row ct-total ct-cchedge">
+                <span class="ct-leg">CC + Hedge</span>
+                <span class="ct-pnl"
+                      [class.positive]="(tooltipData()?.cchedgePnl ?? 0) >= 0"
+                      [class.negative]="(tooltipData()?.cchedgePnl ?? 0) < 0">
+                  {{ fmtRs(tooltipData()?.cchedgePnl ?? 0) }}
+                </span>
+              </div>
+            }
+
+            <div class="ct-zone" [class]="'ct-zone-' + tooltipData()?.zone">
+              {{ tooltipData()?.zone?.toUpperCase() }}
+            </div>
+          </div>
+          }
+        </div>
+
+        <!-- ── Target date / Nifty controls ──────────────────────────────── -->
+        <div class="target-controls">
+          <!-- LEFT: date chips + zoom + margin — all in a single row -->
+          <div class="tc-left-col">
+            <div class="tc-date-chips">
+              <button class="tc-chip" type="button"
+                      [class.active]="targetDaysFromNow() === 0"
+                      (click)="targetDaysFromNow.set(0)">Today</button>
+              @if (a.dte >= 1) {
+              <button class="tc-chip" type="button"
+                      [class.active]="targetDaysFromNow() === 1"
+                      (click)="targetDaysFromNow.set(1)">+1d</button>
+              }
+              @if (a.dte >= 3) {
+              <button class="tc-chip" type="button"
+                      [class.active]="targetDaysFromNow() === 3"
+                      (click)="targetDaysFromNow.set(3)">+3d</button>
+              }
+              @if (a.dte >= 7) {
+              <button class="tc-chip" type="button"
+                      [class.active]="targetDaysFromNow() === 7"
+                      (click)="targetDaysFromNow.set(7)">+1w</button>
+              }
+              <button class="tc-chip" type="button"
+                      [class.active]="targetDaysFromNow() >= a.dte"
+                      (click)="targetDaysFromNow.set(a.dte)">Exp · {{ a.dte }}d</button>
+              <input type="number" class="tc-day-input"
+                     [min]="0" [max]="a.dte" placeholder="d"
+                     title="Custom day offset (0 to {{ a.dte }})"
+                     [ngModel]="targetDaysFromNow() || null"
+                     (ngModelChange)="onTargetDaysChange($event)" />
+            </div>
+
+            <span class="tc-divider"></span>
+
+            <div class="tc-zoom-group">
+              <button class="tc-zoom-btn" type="button"
+                      [class.active]="chartZoom() === 'in'"
+                      (click)="chartZoom.set('in')"
+                      title="Zoom around current spot (±7%)">⊕ In</button>
+              <button class="tc-zoom-btn" type="button"
+                      [class.active]="chartZoom() === 'out'"
+                      (click)="chartZoom.set('out')"
+                      title="Show full payoff range (max Y)">⊖ Out</button>
+            </div>
+
+            <span class="tc-divider"></span>
+
+            <select class="tc-hedge-select"
+                    [class.active]="hedgeOverlayMode() === 'overlay'"
+                    [disabled]="openHedgesCount() === 0"
+                    [ngModel]="hedgeOverlayMode() === 'overlay' ? hedgeOverlayId() : ''"
+                    (ngModelChange)="onHedgePick($event)"
+                    [title]="openHedgesCount() === 0 ? 'No hedges available — start one in /hedges' : 'Pick a hedge to overlay on the payoff'">
+              <option value="">🛡️ {{ openHedgesCount() === 0 ? 'No hedges' : 'Choose hedge' }}</option>
+              @for (h of openHedges(); track h.id) {
+                <option [value]="h.id">{{ h.strike | number:'1.0-0' }} PE · {{ h.expiry }}</option>
+              }
+            </select>
+
+            @if (positionAlerts(); as pa) {
+            <span class="tc-divider"></span>
+            <div class="tc-margin" [class.tc-margin-warn]="pa.callIsITM"
+                 [title]="pa.callIsITM ? 'Pledge securities or add funds' : 'Margin cushion is intact'">
+              @if (pa.callIsITM) {
+              <span class="tc-margin-val tc-margin-warn-val">⚠ ₹{{ pa.extraMargin | number:'1.0-0' }} margin needed</span>
+              } @else {
+              <span class="tc-margin-val tc-margin-ok">✓ ₹0 extra margin</span>
+              }
+            </div>
+            }
+          </div>
+
+          <!-- RIGHT: Nifty input + Est P&L -->
+          <div class="tc-right-col">
+            <div class="tc-nifty-col">
+              <label class="tc-lbl">Nifty Price <span class="tc-hint">(blank = live)</span></label>
+              <input type="number" class="form-control tc-nifty-input"
+                     [placeholder]="a.spot.toFixed(0)"
+                     [ngModel]="targetNifty() > 0 ? targetNifty() : null"
+                     (ngModelChange)="onTargetNiftyChange($event?.toString() ?? '')">
+            </div>
+
+            <div class="tc-pnl-col"
+                 [class.positive]="(targetPnl() ?? 0) >= 0"
+                 [class.negative]="(targetPnl() ?? 0) < 0">
+              <div class="tc-pnl-label">
+                Est. P&L
+                @if (targetDaysFromNow() > 0) {
+                  <span class="tc-bs-badge">Black-Scholes</span>
+                }
+              </div>
+              <div class="tc-pnl-val">
+                {{ targetPnl() !== null ? fmtRs(targetPnl()!) : '—' }}
+              </div>
+              @if (targetNifty() > 0) {
+              <div class="tc-pnl-sub">at Nifty {{ targetNifty() | number:'1.0-0' }}</div>
+              }
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Inline alerts: only avg-down hint stays here (margin moved up) -->
+        @if (positionAlerts(); as pa) {
+          @if (pa.nbIsDown) {
+          <div class="inline-alerts">
+            <div class="ia-strip ia-warn">
+              <span class="ia-icon">💡</span>
+              <span class="ia-label">NiftyBees ▼ {{ pa.nbPctChange | number:'1.1-1' }}% — avg down:</span>
+              <span class="ia-amount">{{ pa.avgDownShares | number:'1.0-0' }} shares @ ₹{{ pa.currentNbPrice | number:'1.2-2' }}</span>
+              <span class="ia-sep">·</span>
+              <span class="ia-hint">Cost ₹{{ pa.avgDownCost | number:'1.0-0' }} · New avg ₹{{ pa.newAvgPrice | number:'1.2-2' }}</span>
+            </div>
+          </div>
+          }
+        }
+      </div>
+      } <!-- /if currentView === 'new' for old graph-card -->
+
+      }<!-- /analysis -->
+
+    </div><!-- /cc-right -->
+
+  </div><!-- /cc-body -->
+  }<!-- /setup && !loading -->
+
+  }<!-- /else analysis view -->
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!-- MODALS                                                                   -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Save position dialog -->
+  @if (saveDialogOpen()) {
+  <div class="modal-overlay" (click)="cancelSave()">
+    <div class="modal-box" (click)="$event.stopPropagation()">
+      <div class="modal-title">Save as Position</div>
+      <div class="modal-body">
+        <label class="cfg-label">Position name</label>
+        <input class="form-control" type="text"
+               [ngModel]="saveName()" (ngModelChange)="saveName.set($event)"
+               placeholder="e.g. Nifty CC — May 2026"
+               (keydown.enter)="confirmSavePosition()"
+               autofocus>
+        <div class="cfg-hint">This will track the ETF and the active call as a single position.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" (click)="cancelSave()">Cancel</button>
+        <button class="modal-confirm-btn" (click)="confirmSavePosition()" [disabled]="savingPosition()">
+          {{ savingPosition() ? 'Saving…' : 'Save Position' }}
+        </button>
+      </div>
+    </div>
+  </div>
+  }
+
+  <!-- ════════ Close call dialog · rich form (records what you did) ═══════ -->
+  @if (closeCallOpen()) {
+  <div class="modal-overlay" (click)="cancelCloseCall()">
+    <div class="modal-box close-modal" (click)="$event.stopPropagation()">
+      <div class="modal-title">
+        Close Cycle
+        @if (closeCallContext(); as ctx) {
+        <span class="close-modal-sub">{{ ctx.name }}
+          @if (ctx.active_call) { · {{ ctx.active_call.strike | number:'1.0-0' }} CE · {{ ctx.active_call.expiry }} }
+        </span>
+        }
+      </div>
+      <div class="modal-body close-modal-body">
+
+        <!-- ─ Step 1: Buyback price + close-kind ──────────────────────── -->
+        <div class="close-section">
+          <div class="close-section-title">1. Option leg — what happened</div>
+          <div class="close-grid">
+            <div class="close-field">
+              <label class="cfg-label">Buyback price (₹)
+                <span class="info-icon" title="What you paid to close the short call. 0 = expired worthless.">ⓘ</span>
+              </label>
+              <input class="form-control" type="number" min="0" step="0.05"
+                     [ngModel]="closeCallPrice()" (ngModelChange)="closeCallPrice.set($event)"
+                     placeholder="e.g. 35.50" autofocus>
+              @if (closeCallContext()?.active_call_live) {
+              <div class="cfg-hint">Live last: ₹{{ closeCallContext()?.active_call_live?.current_price | number:'1.2-2' }}</div>
+              }
+            </div>
+
+            <div class="close-field">
+              <label class="cfg-label">Close type</label>
+              <div class="close-chips">
+                <button class="close-chip" type="button"
+                        [class.active]="closeCallKind() === 'expired_worthless'"
+                        (click)="closeCallKind.set('expired_worthless')">
+                  ⏱ Expired worthless
+                </button>
+                <button class="close-chip" type="button"
+                        [class.active]="closeCallKind() === 'closed_at_profit'"
+                        (click)="closeCallKind.set('closed_at_profit')">
+                  💰 Take-profit close
+                </button>
+                <button class="close-chip" type="button"
+                        [class.active]="closeCallKind() === 'closed_at_loss'"
+                        (click)="closeCallKind.set('closed_at_loss')">
+                  🚨 Defensive close (loss)
+                </button>
+                <button class="close-chip" type="button"
+                        [class.active]="closeCallKind() === 'rolled'"
+                        (click)="closeCallKind.set('rolled')">
+                  🔄 Rolled
+                </button>
+                <button class="close-chip" type="button"
+                        [class.active]="closeCallKind() === 'assigned'"
+                        (click)="closeCallKind.set('assigned')">
+                  🛡️ Assigned
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─ Step 2: NiftyBees action ───────────────────────────────── -->
+        <div class="close-section">
+          <div class="close-section-title">2. NiftyBees leg — what did you do</div>
+          <div class="close-chips close-chips-block">
+            <button class="close-chip" type="button"
+                    [class.active]="closeNbAction() === 'held_all'"
+                    (click)="closeNbAction.set('held_all')">
+              ✓ Held all (default)
+            </button>
+            <button class="close-chip" type="button"
+                    [class.active]="closeNbAction() === 'sold_partial'"
+                    (click)="closeNbAction.set('sold_partial')">
+              ◐ Sold a fraction
+            </button>
+            <button class="close-chip" type="button"
+                    [class.active]="closeNbAction() === 'sold_all'"
+                    (click)="closeNbAction.set('sold_all')">
+              ● Sold all (close position)
+            </button>
+          </div>
+
+          @if (closeNbAction() !== 'held_all') {
+          <div class="close-grid close-nb-row">
+            <div class="close-field">
+              <label class="cfg-label">NB shares sold</label>
+              <input class="form-control" type="number" min="1" step="1"
+                     [ngModel]="closeNbShares()" (ngModelChange)="closeNbShares.set($event)"
+                     [placeholder]="closeCallContext()?.shares ?? 'shares'">
+              @if (closeCallContext()?.shares) {
+              <div class="cfg-hint">You currently hold {{ closeCallContext()?.shares | number:'1.0-0' }} NB shares</div>
+              }
+            </div>
+            <div class="close-field">
+              <label class="cfg-label">Sell price (₹/share)</label>
+              <input class="form-control" type="number" min="0" step="0.01"
+                     [ngModel]="closeNbSellPrice()" (ngModelChange)="closeNbSellPrice.set($event)"
+                     [placeholder]="closeCallContext()?.live?.niftybees_price ? closeCallContext()?.live?.niftybees_price : 'NB price'">
+              @if (closeCallContext()?.live?.niftybees_price) {
+              <div class="cfg-hint">Live NB: ₹{{ closeCallContext()?.live?.niftybees_price | number:'1.2-2' }}</div>
+              }
+            </div>
+          </div>
+          }
+        </div>
+
+        <!-- ─ Step 3: Notes (optional) ────────────────────────────────── -->
+        <div class="close-section">
+          <div class="close-section-title">3. Notes <span class="cfg-hint">(optional)</span></div>
+          <textarea class="form-control close-notes" rows="2"
+                    [ngModel]="closeNotes()" (ngModelChange)="closeNotes.set($event)"
+                    placeholder="e.g. Rolled because Nifty rallied past strike — switching to higher strike for next week."></textarea>
+        </div>
+
+        <!-- ─ Live P&L preview ────────────────────────────────────────── -->
+        <div class="close-preview">
+          <div class="close-preview-title">P&L preview if you confirm</div>
+          <div class="close-preview-grid">
+            <div class="cpp-cell">
+              <div class="cpp-lbl">Option realised</div>
+              <div class="cpp-val" [class.positive]="closePreviewOptionPnl() >= 0" [class.negative]="closePreviewOptionPnl() < 0">
+                {{ fmtRs(closePreviewOptionPnl()) }}
+              </div>
+            </div>
+            <div class="cpp-cell">
+              <div class="cpp-lbl">NB realised</div>
+              <div class="cpp-val" [class.positive]="closePreviewNbPnl() >= 0" [class.negative]="closePreviewNbPnl() < 0">
+                {{ fmtRs(closePreviewNbPnl()) }}
+              </div>
+            </div>
+            <div class="cpp-cell cpp-total">
+              <div class="cpp-lbl">Total realised</div>
+              <div class="cpp-val" [class.positive]="closePreviewTotal() >= 0" [class.negative]="closePreviewTotal() < 0">
+                {{ fmtRs(closePreviewTotal()) }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" (click)="cancelCloseCall()">Cancel</button>
+        <button class="modal-confirm-btn" (click)="submitCloseCall()"
+                [disabled]="closeCallLoading() || closeCallPrice() === ''">
+          {{ closeCallLoading() ? 'Closing…' : 'Confirm Close' }}
+        </button>
+      </div>
+    </div>
+  </div>
+  }
+
+  <!-- ════════ Best Trade modal — cross-expiry top picks ════════════════════ -->
+  @if (bestTradeOpen()) {
+  <div class="modal-overlay" (click)="closeBestTrade()">
+    <div class="modal-box bt-modal" (click)="$event.stopPropagation()">
+      <div class="bt-modal-header">
+        <span class="modal-title">🏆 Best Trade · Cross-Expiry</span>
+        <button class="bt-info-btn"
+                [class.active]="bestTradeRationaleOpen()"
+                (click)="toggleBestTradeRationale()"
+                title="See the math and the rationale behind this ranking.">
+          ⓘ How is this chosen?
+        </button>
+        <button class="bt-close-btn" (click)="closeBestTrade()">✕</button>
+      </div>
+      <div class="modal-body bt-body">
+
+        <!-- Rationale panel — toggled by header info button. Lives outside the
+             load-state conditional so it works during loading and on errors. -->
+        @if (bestTradeRationaleOpen()) {
+        <div class="bt-rationale">
+          <div class="bt-rat-head">
+            <span class="bt-rat-icon">📐</span>
+            <span class="bt-rat-title">How the best trade is chosen — BTS scoring</span>
+          </div>
+          <div class="bt-rat-formula">
+            <span class="bt-rat-formula-lbl">BTS:</span>
+            <code>NetYieldPerCycle × Safety × Liquidity × IVQuality × CycleQuality × DeltaQuality</code>
+          </div>
+          <div class="bt-rat-grid">
+            <div class="bt-rat-item">
+              <div class="bt-rat-name">net_yield_per_cycle_pct</div>
+              <div class="bt-rat-eq"><code>(0.6 × premium − friction) / spot × 100</code></div>
+              <div class="bt-rat-desc">% of capital captured in <strong>one cycle</strong> at 60% TP, after subtracting friction (~₹3K/cycle). NOT annualised — so weeklies don't get a free "high yield" just because they cycle faster.</div>
+            </div>
+            <div class="bt-rat-item">
+              <div class="bt-rat-name">Safety</div>
+              <div class="bt-rat-eq"><code>max(0.05, 1 − 2·|Δ|·√(days_to_50 / dte))</code></div>
+              <div class="bt-rat-desc">Reflection-principle proxy for the probability the call stays OTM during the holding window. Uses delta as the closing-ITM probability and discounts for path risk.</div>
+            </div>
+            <div class="bt-rat-item">
+              <div class="bt-rat-name">Liquidity</div>
+              <div class="bt-rat-eq"><code>0.5 + 0.5 × min(OI / 10000, 1)</code></div>
+              <div class="bt-rat-desc">Floor 0.5, cap 1.0. Penalises thin OI where wide spreads + slippage erode the cycle's edge.</div>
+            </div>
+            <div class="bt-rat-item">
+              <div class="bt-rat-name">IVQuality</div>
+              <div class="bt-rat-eq"><code>clip(ATM_IV / VIX, 0.8, 1.3)</code></div>
+              <div class="bt-rat-desc">Rewards selling vol when chain is RICH vs market regime. ATM_IV ≥ VIX ⇒ rich (favourable). ATM_IV &lt; VIX ⇒ cheap (unfavourable).</div>
+            </div>
+            <div class="bt-rat-item">
+              <div class="bt-rat-name">CycleQuality</div>
+              <div class="bt-rat-eq"><code>DTE bell curve: 1d-4d=0.40 · 5d-13d=0.70 · 14d-21d=0.95 · 22d-35d=1.00 · 36d-50d=0.85 · 51d-90d=0.65 · 90d+=0.40</code></div>
+              <div class="bt-rat-desc"><strong>Monthly (22-35 DTE) is the sweet spot at 1.00×.</strong> Weeklies penalised at 0.40× (high gamma + friction). Long-dated (>90d) penalised at 0.40× (vega bombs).</div>
+            </div>
+            <div class="bt-rat-item">
+              <div class="bt-rat-name">DeltaQuality</div>
+              <div class="bt-rat-eq"><code>Δ ≤ 0.18=0.50 · 0.18-0.22=0.75 · 0.22-0.30=1.00 · 0.30-0.35=0.80 · 0.35-0.40=0.55 · ≥0.40=0.30</code></div>
+              <div class="bt-rat-desc"><strong>Δ 0.22-0.30 is the ideal entry band at 1.00×.</strong> Higher-delta strikes (≥ 0.35) get penalised at 0.55-0.30× because they would whip-fire the Δ 0.40 roll-up trigger on any rally — premium gets given back as roll friction.</div>
+            </div>
+          </div>
+          <div class="bt-rat-note">
+            <strong>Why monthlies now win:</strong>
+            OLD score used <code>365/days_to_50</code> annualisation that inflated weeklies. BTS uses <strong>per-cycle yield × cycle_quality penalty</strong>. Weeklies now dampened by 0.40×, monthlies stay at 1.00×.
+          </div>
+          <div class="bt-rat-note">
+            <strong>Why high-delta strikes now lose:</strong>
+            Old algorithm let high-delta strikes win on premium alone. New algorithm penalises Δ ≥ 0.35 at 0.55-0.30× because they trigger the Δ 0.40 roll-up almost immediately — the rich premium gets given back as roll friction within 1-2 cycles. Rolling at near-ATM costs much more than rolling at Δ 0.40 OTM.
+          </div>
+          <div class="bt-rat-note">
+            <strong>Tie-breaker:</strong>
+            When BTS scores are close, prefer the strike inside Δ 0.25-0.30 (<code>in_entry_band = true</code>) — more breathing room before the Δ 0.40 roll-up fires.
+          </div>
+          <div class="bt-rat-note">
+            <strong>Note on the score field:</strong>
+            The <code>score</code> field below is the legacy formula kept for back-compat. The actual ranking now uses <code>bts</code>. If candidates seem mis-ranked vs their `score` values, that's expected — sort by BTS, not score.
+          </div>
+        </div>
+        }
+
+        @if (bestTradeLoading()) {
+          <div class="cc-loading">
+            <span class="spinner"></span>
+            Scanning every strike across 4 expiries — this takes a few seconds…
+          </div>
+        } @else if (bestTradeError()) {
+          <div class="bt-error">⚠ {{ bestTradeError() }}</div>
+          <button class="pmf-refresh-btn" (click)="refreshBestTrade()">↻ Retry</button>
+        } @else if (bestTrade(); as bt) {
+
+          <div class="bt-meta">
+            <span>Spot {{ bt.spot | number:'1.0-0' }}</span>
+            <span>·</span>
+            <span>VIX {{ bt.vix | number:'1.1-1' }}</span>
+            <span>·</span>
+            <span>Scanned {{ bt.total_scanned | number:'1.0-0' }} strikes across {{ bt.expiries_scanned.length }} expiries</span>
+            <span>·</span>
+            <span class="bt-meta-rule">1 pick per expiry — best strike of each</span>
+            <button class="bt-refresh" (click)="refreshBestTrade()" title="Re-scan now.">↻</button>
+          </div>
+
+          @if (bt.candidates?.length) {
+          <div class="bt-layout">
+            <!-- LEFT: best across all expiries -->
+            @if (bt.candidates[0]; as best) {
+            <div class="rs-featured rs-card-1 bt-best">
+              <div class="rs-featured-head">
+                <span class="rs-featured-medal">🏆</span>
+                <span class="rs-featured-title">Top pick — best across {{ bt.expiries_scanned.length }} expiries</span>
+                <span class="bt-score bt-score-best"
+                      title="BTS (Best-Trade Score) — composite ranking. Higher is better. Hover the rationale (📐) for the full formula.">
+                  BTS <strong>{{ best.bts | number:'1.3-3' }}</strong>
+                </span>
+                <span class="rs-rank-num rs-featured-rankbig" [attr.data-rank]="1">#1</span>
+              </div>
+
+              <div class="rs-featured-primary">
+                <span class="rs-featured-strike">{{ best.strike | number:'1.0-0' }}</span>
+                <span class="rs-card-otm">{{ best.otm_pct | number:'1.1-1' }}% OTM</span>
+                <span class="rs-featured-prem">₹{{ best.premium | number:'1.2-2' }}</span>
+              </div>
+
+              <div class="bt-expiry-row">
+                <span class="bt-expiry-pill">{{ best.expiry }} · {{ best.dte }}d</span>
+                <span class="bt-expiry-rank">#{{ best.expiry_rank }} within expiry</span>
+              </div>
+
+              <div class="rs-card-metrics">
+                <span class="rs-days" title="Days for this option's premium to decay to 50%.">~{{ best.days_to_50pct }}d to 50%</span>
+                <span class="rs-card-dot">·</span>
+                <span class="rs-yield" title="Annualised yield at 50% capture exit.">≈{{ best.early_yield_pct | number:'1.1-1' }}% p.a.</span>
+                <span class="rs-card-dot">·</span>
+                <span class="rs-prob" title="Probability call stays OTM during the holding window.">{{ best.prob_safe_pct | number:'1.0-0' }}% safe</span>
+              </div>
+
+              <div class="rs-card-pills">
+                <span class="rs-pill" [class]="'risk-' + best.assignment_risk">{{ best.assignment_risk }} risk</span>
+                <span class="rs-pill" [class]="'liq-' + best.liquidity">{{ best.liquidity }} liq</span>
+              </div>
+
+              <div class="rs-summary-line">{{ best.summary }}</div>
+
+              <div class="rs-stats-grid">
+                <div class="rs-stat">
+                  <div class="rs-stat-lbl">Days to 50% capture</div>
+                  <div class="rs-stat-val">~{{ best.days_to_50pct }}d</div>
+                </div>
+                <div class="rs-stat">
+                  <div class="rs-stat-lbl">Early-exit yield (p.a.)</div>
+                  <div class="rs-stat-val">{{ best.early_yield_pct | number:'1.1-1' }}%</div>
+                </div>
+                <div class="rs-stat">
+                  <div class="rs-stat-lbl">Hold yield (p.a.)</div>
+                  <div class="rs-stat-val">{{ best.hold_yield_pct | number:'1.1-1' }}%</div>
+                </div>
+                <div class="rs-stat">
+                  <div class="rs-stat-lbl">Premium / day</div>
+                  <div class="rs-stat-val">₹{{ best.premium_per_day | number:'1.2-2' }}</div>
+                </div>
+                <div class="rs-stat">
+                  <div class="rs-stat-lbl">Safe-exit %</div>
+                  <div class="rs-stat-val">{{ best.prob_safe_pct | number:'1.0-0' }}%</div>
+                </div>
+                <div class="rs-stat">
+                  <div class="rs-stat-lbl">Delta</div>
+                  <div class="rs-stat-val">{{ best.delta | number:'1.2-2' }}</div>
+                </div>
+                <div class="rs-stat">
+                  <div class="rs-stat-lbl">IV</div>
+                  <div class="rs-stat-val">{{ best.iv | number:'1.1-1' }}%</div>
+                </div>
+                <div class="rs-stat">
+                  <div class="rs-stat-lbl">Open Interest</div>
+                  <div class="rs-stat-val">{{ best.oi >= 1000 ? fmtK(best.oi) : (best.oi | number:'1.0-0') }}</div>
+                </div>
+              </div>
+
+              @if (best.why_good?.length) {
+              <div class="rs-why rs-why-good">
+                <div class="rs-why-title">✓ Why this trade scores best</div>
+                <ul>@for (g of best.why_good; track $index) { <li>{{ g }}</li> }</ul>
+              </div>
+              }
+              @if (best.why_caution?.length) {
+              <div class="rs-why rs-why-caution">
+                <div class="rs-why-title">⚠ Trade-offs</div>
+                <ul>@for (c of best.why_caution; track $index) { <li>{{ c }}</li> }</ul>
+              </div>
+              }
+
+              <button class="rs-side-build-btn bt-build-best" (click)="useBestCandidate(best)">
+                Build at {{ best.strike | number:'1.0-0' }} · {{ best.expiry }} →
+              </button>
+            </div>
+            }
+          </div>
+
+          <!-- ════════ PRIMARY: same-expiry alternatives (most likely what you'll trade) -->
+          @if (bt.same_expiry_alternatives?.length && bt.candidates[0]; as _) {
+          <div class="bt-same-expiry">
+            <div class="bt-side-title">
+              📌 Other strikes within {{ bt.candidates[0].expiry }} · {{ bt.candidates[0].dte }}d
+              <span class="bt-same-hint">(same expiry as the top pick — most relevant alternatives)</span>
+            </div>
+            <div class="bt-same-grid">
+              @for (rs of bt.same_expiry_alternatives; track rs.strike) {
+              <button class="bt-same-card" (click)="useBestCandidate(rs)">
+                <div class="bt-same-topright">
+                  <span class="bt-score bt-score-mini" title="BTS — Best-Trade Score (higher is better).">
+                    BTS {{ rs.bts | number:'1.3-3' }}
+                  </span>
+                  <span class="bt-same-rank">#{{ rs.expiry_rank }}</span>
+                </div>
+                <div class="bt-same-strike">{{ rs.strike | number:'1.0-0' }}</div>
+                <div class="bt-same-otm">{{ rs.otm_pct | number:'1.1-1' }}% OTM · ₹{{ rs.premium | number:'1.2-2' }}</div>
+                <div class="bt-same-meta">
+                  <span>≈{{ rs.early_yield_pct | number:'1.1-1' }}% p.a.</span>
+                  <span class="rs-card-dot">·</span>
+                  <span>{{ rs.prob_safe_pct | number:'1.0-0' }}% safe</span>
+                  @if (rs.delta != null) {
+                    <span class="rs-card-dot">·</span>
+                    <span>Δ {{ rs.delta | number:'1.2-2' }}</span>
+                  }
+                </div>
+              </button>
+              }
+            </div>
+          </div>
+          }
+
+          <!-- ════════ SECONDARY: cross-expiry comparison (other expiries) -->
+          @if (bt.candidates.length > 1) {
+          <div class="bt-cross-expiry">
+            <div class="bt-side-title bt-side-title-secondary">
+              📊 Cross-expiry comparison
+              <span class="bt-same-hint">(best of other expiries — for context only, the same-expiry options above are usually preferable)</span>
+            </div>
+            @for (rs of bt.candidates.slice(1); track rs.strike + '-' + rs.expiry; let i = $index) {
+            <div class="rs-mini-card bt-alt"
+                 [class.rs-card-2]="i === 0"
+                 [class.rs-card-3]="i === 1"
+                 [class.rs-mini-open]="bestTradeAltIdx() === i">
+              <button class="rs-mini-btn" (click)="toggleBestTradeAlt(i)">
+                <div class="rs-mini-rank">
+                  <span class="rs-rank-num" [attr.data-rank]="rs.global_rank">#{{ rs.global_rank }}</span>
+                </div>
+                <div class="rs-mini-body">
+                  <div class="rs-mini-row">
+                    <span class="rs-mini-strike">{{ rs.strike | number:'1.0-0' }}</span>
+                    <span class="rs-mini-otm">{{ rs.otm_pct | number:'1.1-1' }}% OTM</span>
+                    <span class="rs-mini-prem">₹{{ rs.premium | number:'1.2-2' }}</span>
+                    <span class="bt-score bt-score-mini"
+                          title="BTS — net per-cycle yield × safety × liquidity × IV quality × cycle quality × delta quality.">
+                      BTS {{ rs.bts | number:'1.3-3' }}
+                    </span>
+                  </div>
+                  <div class="bt-alt-expiry">{{ rs.expiry }} · {{ rs.dte }}d</div>
+                  <div class="rs-mini-meta">
+                    <span class="rs-yield">≈{{ rs.early_yield_pct | number:'1.1-1' }}% p.a.</span>
+                    <span class="rs-card-dot">·</span>
+                    <span class="rs-prob">{{ rs.prob_safe_pct | number:'1.0-0' }}% safe</span>
+                    <span class="rs-card-dot">·</span>
+                    <span class="rs-pill rs-pill-mini" [class]="'risk-' + rs.assignment_risk">{{ rs.assignment_risk }}</span>
+                  </div>
+                </div>
+                <span class="rs-mini-chev">{{ bestTradeAltIdx() === i ? '▾' : '▸' }}</span>
+              </button>
+
+              @if (bestTradeAltIdx() === i) {
+              <div class="rs-detail rs-detail-mini">
+                <div class="rs-summary-line">{{ rs.summary }}</div>
+                <div class="rs-stats-grid rs-stats-mini">
+                  <div class="rs-stat"><div class="rs-stat-lbl">Days to 50%</div><div class="rs-stat-val">~{{ rs.days_to_50pct }}d</div></div>
+                  <div class="rs-stat"><div class="rs-stat-lbl">Early yield</div><div class="rs-stat-val">{{ rs.early_yield_pct | number:'1.1-1' }}%</div></div>
+                  <div class="rs-stat"><div class="rs-stat-lbl">Hold yield</div><div class="rs-stat-val">{{ rs.hold_yield_pct | number:'1.1-1' }}%</div></div>
+                  <div class="rs-stat"><div class="rs-stat-lbl">Premium/day</div><div class="rs-stat-val">₹{{ rs.premium_per_day | number:'1.2-2' }}</div></div>
+                  <div class="rs-stat"><div class="rs-stat-lbl">Delta</div><div class="rs-stat-val">{{ rs.delta | number:'1.2-2' }}</div></div>
+                  <div class="rs-stat"><div class="rs-stat-lbl">IV</div><div class="rs-stat-val">{{ rs.iv | number:'1.1-1' }}%</div></div>
+                </div>
+                <div class="rs-actions">
+                  <button class="use-rec-btn" (click)="useBestCandidate(rs)">
+                    Build at {{ rs.strike | number:'1.0-0' }} · {{ rs.expiry }} →
+                  </button>
+                </div>
+              </div>
+              }
+            </div>
+            }
+          </div>
+          }
+          } @else {
+            <div class="bt-error">No tradeable strikes found across the scanned expiries.</div>
+          }
+        }
+
+      </div>
+    </div>
+  </div>
+  }
+
+</div>

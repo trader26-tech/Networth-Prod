@@ -1,0 +1,226 @@
+<div class="nw">
+  <!-- Header -->
+  <header class="nw-head">
+    <div>
+      <h1>Net Worth</h1>
+      <p class="sub">Your complete asset picture — value, growth & income across everyone.</p>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" (click)="openAdd()">＋ Add asset</button>
+      <a class="btn primary" routerLink="/networth/import">⬆ Import Excel</a>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <div class="state">Loading…</div>
+  } @else if (error()) {
+    <div class="state err">{{ error() }}</div>
+  } @else if (!hasData()) {
+    <!-- Empty state -->
+    <div class="empty">
+      <div class="empty-card">
+        <div class="big">🪙</div>
+        <h2>Let's build your net-worth picture</h2>
+        <p>Import your assets spreadsheet — pick a sheet, map the columns, assign owners,
+           and it's cached for instant dashboards. Or add an asset by hand.</p>
+        <div class="actions center">
+          <a class="btn primary" routerLink="/networth/import">⬆ Import your Excel</a>
+          <button class="btn ghost" (click)="openAdd()">＋ Add manually</button>
+        </div>
+      </div>
+    </div>
+  } @else {
+    <!-- Hero stats -->
+    <section class="hero">
+      <div class="hero-main">
+        <span class="lbl">Total Net Worth</span>
+        <span class="val">{{ inr(summary()!.net_worth, false) }}</span>
+        <span class="val-c">{{ inr(summary()!.net_worth) }}</span>
+      </div>
+      <div class="hero-stats">
+        <div class="hs"><span>Assets</span><b>{{ inr(summary()!.total_assets) }}</b></div>
+        <div class="hs"><span>Liabilities</span><b class="neg">{{ inr(summary()!.total_liabilities) }}</b></div>
+        <div class="hs"><span>Monthly income</span><b class="pos">{{ inr(summary()!.monthly_income) }}</b></div>
+        <div class="hs"><span>Annual income</span><b class="pos">{{ inr(summary()!.annual_income) }}</b></div>
+        <div class="hs"><span>Blended CAGR</span><b>{{ cagrPct(summary()!.weighted_cagr) }}</b></div>
+      </div>
+    </section>
+
+    <div class="grid2">
+      <!-- Allocation -->
+      <section class="panel">
+        <h3>Allocation by asset class</h3>
+        <div class="bar">
+          @for (c of allocSegments(); track c.asset_class) {
+            <span class="seg" [style.width.%]="pct(c.value)" [style.background]="classColor(c.asset_class)"
+                  [title]="c.label + ' · ' + inr(c.value)"></span>
+          }
+        </div>
+        <table class="mini">
+          <thead><tr><th>Class</th><th>Value</th><th>%</th><th>CAGR</th><th>Monthly</th><th></th></tr></thead>
+          <tbody>
+            @for (c of summary()!.by_class; track c.asset_class) {
+              <tr [class.liab]="c.liability">
+                <td><span class="dot" [style.background]="classColor(c.asset_class)"></span>{{ c.label }}
+                  <span class="cnt">{{ c.asset_count }}</span></td>
+                <td class="num">{{ inr(c.value) }}</td>
+                <td class="num">{{ c.liability ? '—' : c.pct + '%' }}</td>
+                <td class="num">{{ cagrPct(c.cagr) }}</td>
+                <td class="num pos">{{ c.monthly_income ? inr(c.monthly_income) : '—' }}</td>
+                <td class="num"><button class="clearbtn" (click)="removeClass(c.asset_class, $event)"
+                      [title]="'Delete all ' + c.label">Clear</button></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </section>
+
+      <!-- People -->
+      <section class="panel">
+        <h3>By person</h3>
+        <div class="people">
+          @for (p of summary()!.by_person; track p.person) {
+            <div class="pcard" [style.border-left-color]="personColor(p.person)">
+              <div class="pname">{{ p.person }}</div>
+              <div class="pval">{{ inr(p.value) }}</div>
+              <div class="pmeta">
+                <span>{{ p.pct }}% of net worth</span>
+                @if (p.monthly_income) { <span class="pos">{{ inr(p.monthly_income) }}/mo</span> }
+              </div>
+              <div class="pbar"><span [style.width.%]="p.pct" [style.background]="personColor(p.person)"></span></div>
+            </div>
+          }
+        </div>
+      </section>
+    </div>
+
+    <!-- Assets table -->
+    <section class="panel">
+      <div class="panel-head">
+        <h3>All assets <span class="count">{{ assets().length }}</span></h3>
+        @if (assets().length) {
+          <button class="clearbtn danger" (click)="removeAll()">Clear all</button>
+        }
+      </div>
+      <table class="assets">
+        <thead>
+          <tr><th>Asset</th><th>Class</th><th class="num">Value</th><th class="num">CAGR</th>
+              <th class="num">Monthly</th><th>Owners</th><th>Risk</th><th></th></tr>
+        </thead>
+        <tbody>
+          @for (a of assets(); track a.id) {
+            <tr class="row" (click)="select(a)" [class.open]="selected()?.id === a.id">
+              <td class="name">{{ a.name }}</td>
+              <td><span class="chip" [style.background]="classColor(a.asset_class) + '22'"
+                        [style.color]="classColor(a.asset_class)">{{ classLabel(a.asset_class) }}</span></td>
+              <td class="num">{{ inr(a.current_value) }}</td>
+              <td class="num">{{ cagrPct(a.cagr) }}</td>
+              <td class="num pos">{{ a.monthly_income ? inr(a.monthly_income) : '—' }}</td>
+              <td class="owners">{{ ownerLabel(a) }}</td>
+              <td><span class="risk" [class]="a.risk">{{ a.risk }}</span></td>
+              <td><button class="del" (click)="remove(a, $event)" title="Delete">✕</button></td>
+            </tr>
+            @if (selected()?.id === a.id && draft(); as d) {
+              <tr class="detail">
+                <td colspan="8" (click)="$event.stopPropagation()">
+                  <div class="detail-grid">
+                    <div class="edit">
+                      <h4>Edit details</h4>
+                      <div class="efields">
+                        <label class="wide">Name<input [(ngModel)]="d.name"></label>
+                        <label>Class
+                          <select [(ngModel)]="d.asset_class">
+                            @for (c of meta()?.asset_classes; track c.key) { <option [value]="c.key">{{ c.label }}</option> }
+                          </select>
+                        </label>
+                        <label>Owner
+                          @if (d.multiOwner) {
+                            <input disabled [value]="ownerLabel(a)" title="Split ownership — edit in a later release">
+                          } @else {
+                            <select [(ngModel)]="d.ownerName">
+                              @for (p of people(); track p.name) { <option [value]="p.name">{{ p.name }}</option> }
+                            </select>
+                          }
+                        </label>
+                        <label>Invested<input type="number" [(ngModel)]="d.invested_value" placeholder="cost / purchase"></label>
+                        <label>Current value<input type="number" [(ngModel)]="d.current_value"></label>
+                        <label>Purchase date<input type="date" [(ngModel)]="d.purchase_date"></label>
+                        <label>{{ incomeLabel(d.asset_class) }}<input type="number" [(ngModel)]="d.monthly_income"></label>
+                        <label>CAGR %<input type="number" step="0.1" [(ngModel)]="d.cagrPct" placeholder="e.g. 12"></label>
+                        <label>Risk
+                          <select [(ngModel)]="d.risk">
+                            @for (r of meta()?.risk_levels; track r) { <option [value]="r">{{ r }}</option> }
+                          </select>
+                        </label>
+                        <label class="wide">Notes<input [(ngModel)]="d.notes" placeholder="optional"></label>
+                      </div>
+                      @if (draftGain() !== null) {
+                        <div class="gain-row">Gain:
+                          <b [class.pos]="draftGain()! >= 0" [class.neg]="draftGain()! < 0">{{ inr(draftGain(), false) }}</b>
+                        </div>
+                      }
+                      <div class="edit-actions">
+                        <button class="btn danger" (click)="remove(a, $event)">🗑 Delete asset</button>
+                        <span class="spacer"></span>
+                        <button class="btn ghost" (click)="cancelEdit()">Cancel</button>
+                        <button class="btn primary" (click)="saveEdit()" [disabled]="saving()">
+                          {{ saving() ? 'Saving…' : 'Save changes' }}
+                        </button>
+                      </div>
+                    </div>
+                    <div class="tax">
+                      <h4>Estimated tax if you withdraw now</h4>
+                      @if (estTax(a); as t) {
+                        <div class="tax-amt">{{ inr(t.amount, false) }}</div>
+                        <div class="tax-rate">{{ t.label }}</div>
+                        <p class="tax-note">{{ t.note }}</p>
+                        <p class="disclaimer">Rough estimate — not tax advice. Full Indian
+                          capital-gains / slab logic comes in the tax phase.</p>
+                      } @else {
+                        <p class="muted">Tax estimate not available for this asset class yet.</p>
+                      }
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </section>
+  }
+
+  <!-- Add asset modal -->
+  @if (showAdd()) {
+    <div class="modal-bg" (click)="showAdd.set(false)">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <h3>Add asset</h3>
+        <label>Name<input [(ngModel)]="newAsset().name" placeholder="e.g. HDFC FD #1"></label>
+        <div class="r2">
+          <label>Class
+            <select [(ngModel)]="newAsset().asset_class">
+              @for (c of meta()?.asset_classes; track c.key) { <option [value]="c.key">{{ c.label }}</option> }
+            </select>
+          </label>
+          <label>Owner
+            <select [(ngModel)]="newAsset().ownerName">
+              @for (p of people(); track p.name) { <option [value]="p.name">{{ p.name }}</option> }
+            </select>
+          </label>
+        </div>
+        <div class="r2">
+          <label>Current value<input type="number" [(ngModel)]="newAsset().current_value"></label>
+          <label>Invested<input type="number" [(ngModel)]="newAsset().invested_value"></label>
+        </div>
+        <div class="r2">
+          <label>Monthly income<input type="number" [(ngModel)]="newAsset().monthly_income"></label>
+          <label>CAGR (decimal, e.g. 0.12)<input type="number" step="0.01" [(ngModel)]="newAsset().cagr"></label>
+        </div>
+        <div class="modal-actions">
+          <button class="btn ghost" (click)="showAdd.set(false)">Cancel</button>
+          <button class="btn primary" (click)="saveAdd()">Save</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

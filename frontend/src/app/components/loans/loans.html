@@ -1,0 +1,493 @@
+<div class="land-head">
+  <div>
+    <h1>Liabilities</h1>
+    <p class="sub">Every loan you owe — home, personal, vehicle, foreign. The <b>outstanding balance</b> is subtracted from your net worth, and the <b>monthly EMI</b> counts against your income. Foreign-currency loans (e.g. KWD) are converted to ₹ live. Pre-close any loan to drop it from both.</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" (click)="openAdd()">＋ Add loan</button>
+  </div>
+</div>
+
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head">
+      <span class="ni">⚙︎</span>
+      <div>
+        <strong>One-time setup — create the Supabase table</strong>
+        <p>Paste the SQL from <b>SUPABASE.md → "Liabilities (loans) table"</b> into <b>Supabase → SQL Editor → Run</b>, then hit retry. (It works via a local file until then.)</p>
+      </div>
+    </div>
+    <div class="notice-actions"><button class="btn primary" (click)="reload()">I've run it — retry</button></div>
+  </div>
+}
+
+@if (error()) { <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div> }
+@if (loading()) { <div class="state">Loading loans…</div> }
+
+<!-- Hero -->
+@if (!loading() && hasData() && data(); as s) {
+  <div class="hero">
+    <div class="hero-main">
+      <span class="hero-label">Total owed · outstanding</span>
+      <span class="hero-value">{{ inr(s.total_outstanding_inr) }}
+        @if (s.total_original_inr > 0) {
+          <sub class="hero-borrow" title="Total amount originally borrowed across all loans">of {{ inr(s.total_original_inr) }} borrowed</sub>
+        }
+      </span>
+      <span class="hero-exact">{{ inrFull(s.total_outstanding_inr) }} · {{ s.active_count }} active loan{{ s.active_count === 1 ? '' : 's' }}@if (s.has_foreign) { · incl. foreign, live ₹ }</span>
+
+      <div class="hero-stats">
+        <div class="hs"><span class="k">EMI / month</span><span class="v neg">{{ inr(s.total_emi_monthly_inr) }}</span></div>
+        <div class="hs"><span class="k">EMI / year</span><span class="v">{{ inr(s.total_emi_monthly_inr * 12) }}</span></div>
+        <div class="hs"><span class="k">Borrowed</span><span class="v">{{ inr(s.total_original_inr) }}</span></div>
+        @if (s.repaid_pct != null) {
+          <div class="hs"><span class="k">Repaid</span><span class="v pos">{{ pct(s.repaid_pct) }}</span></div>
+        }
+      </div>
+      @if (s.repaid_pct != null) {
+        <div class="hero-bar"><span [style.width.%]="s.repaid_pct * 100"></span></div>
+      }
+    </div>
+  </div>
+
+  <!-- View switch: loan cards ⇄ repayment timeline -->
+  <div class="view-switch">
+    <div class="seg">
+      <button [class.on]="view() === 'repayments'" (click)="view.set('repayments')">Repayments <small>timeline</small></button>
+      <button [class.on]="view() === 'loans'" (click)="view.set('loans')">Loans <small>{{ activeItems().length }}</small></button>
+    </div>
+    @if (view() === 'repayments' && pendingTotal() > 0) {
+      <span class="vs-pending" title="Installments already due but not marked paid">◷ {{ inr(pendingTotal()) }} to pay</span>
+    }
+  </div>
+}
+
+<!-- Empty -->
+@if (!loading() && !hasData()) {
+  <div class="empty">
+    <div class="empty-card">
+      <div class="big">🏦</div>
+      <h2>No loans tracked yet</h2>
+      <p>Add a loan — lender, type, outstanding balance, interest rate and EMI. It'll be subtracted from your net worth and its EMI from your income. Foreign-currency loans convert to ₹ automatically.</p>
+      <button class="btn primary" (click)="openAdd()">＋ Add your first loan</button>
+    </div>
+  </div>
+}
+
+<!-- Real ₹-adjusted interest cost — foreign-currency loans -->
+@if (!loading() && view() === 'loans' && fxGraphs().length) {
+  @for (g of fxGraphs(); track g.loan.id) {
+    <div class="fxcost-card" [class.open]="isFxOpen(g.loan.id)">
+      <button class="fxc-head" type="button" (click)="toggleFx(g.loan.id)" [attr.aria-expanded]="isFxOpen(g.loan.id)">
+        <div class="fxc-title">
+          <h2>What you're really paying · {{ g.loan.lender }}</h2>
+          <span class="fxc-sub">You borrowed in <b>{{ g.fx.currency }}</b> but earn in ₹ — the rupee's slide makes this loan cost more.
+            <b class="fxc-more">{{ isFxOpen(g.loan.id) ? 'Hide the breakdown' : 'See the month-by-month ₹ cost' }} {{ isFxOpen(g.loan.id) ? '▾' : '›' }}</b>
+          </span>
+        </div>
+        <div class="fxc-headline">
+          <span class="fxc-eff">{{ g.fx.effective_rate }}%</span>
+          <span class="fxc-eff-k">effective rate in ₹</span>
+        </div>
+      </button>
+
+      @if (isFxOpen(g.loan.id)) {
+      <div class="fxc-body">
+        <!-- LEFT: the currency-slide chart — pure CSS, hoverable (no SVG) -->
+        <div class="fxc-chart">
+          @let hi = fxHover()[g.loan.id];
+          @let hp = hi != null ? g.geom.pts[hi] : g.geom.nowPt;
+          <div class="fxc-plot" (mousemove)="onFxMove($event, g)" (mouseleave)="clearFxHover(g.loan.id)">
+            <!-- gridlines + y % labels -->
+            @for (gl of g.geom.grid; track gl.v) {
+              <div class="fxc-grid" [style.top.%]="gl.tPct" [style.left.%]="g.geom.gridLeftPct" [style.width.%]="g.geom.gridWPct"></div>
+              <span class="fxc-ytick" [style.top.%]="gl.tPct" [style.width.%]="g.geom.gridLeftPct">{{ gl.v > 0 ? '+' : '' }}{{ gl.v }}%</span>
+            }
+            <!-- zero baseline (the day you borrowed) -->
+            <div class="fxc-zero" [style.top.%]="g.geom.zeroPct" [style.left.%]="g.geom.gridLeftPct" [style.width.%]="g.geom.gridWPct"></div>
+            <!-- area fill (clip-path polygon) -->
+            <div class="fxc-area" [style.clip-path]="g.geom.areaClip" [style.-webkit-clip-path]="g.geom.areaClip"></div>
+            <!-- line as rotated segments -->
+            @for (sg of g.geom.segs; track $index) {
+              <div class="fxc-seg" [style.left.%]="sg.lPct" [style.top.%]="sg.tPct" [style.width.%]="sg.wPct"
+                   [style.transform]="'translateY(-50%) rotate(' + sg.angle + 'deg)'"></div>
+            }
+            <!-- crosshair + dots -->
+            <div class="fxc-cross" [style.left.%]="hp.lPct" [style.top.%]="g.geom.plotTopPct" [style.height.%]="g.geom.plotBotPct - g.geom.plotTopPct"></div>
+            <div class="fxc-start" [style.left.%]="g.geom.startPt.lPct" [style.top.%]="g.geom.startPt.tPct"></div>
+            <div class="fxc-dot" [style.left.%]="hp.lPct" [style.top.%]="hp.tPct"></div>
+          </div>
+          <div class="fxc-xaxis">
+            @for (lb of g.geom.xlabels; track lb.lPct) {
+              <span class="fxc-xl" [style.left.%]="lb.lPct">{{ lb.t }}</span>
+            }
+          </div>
+          <!-- hover readout -->
+          <div class="fxc-tip">
+            <span class="ft-m">{{ hp.label }}</span>
+            <span class="ft-r">1 {{ g.fx.currency }} = <b>₹{{ hp.fxLabel }}</b></span>
+            <span class="ft-c" [class.up]="hp.cost >= 0">₹ cost {{ hp.cost >= 0 ? '+' : '' }}{{ hp.cost | number:'1.1-1' }}%</span>
+          </div>
+        </div>
+
+        <!-- RIGHT: the read-out / understanding -->
+        <div class="fxc-insights">
+          <div class="fxi-row"><span class="fxi-k">Sticker rate</span><span class="fxi-v">{{ g.fx.nominal_rate }}%</span></div>
+          <div class="fxi-row"><span class="fxi-k">+ ₹ depreciation <em>/yr</em></span><span class="fxi-v neg">+{{ g.fx.currency_drag }}%</span></div>
+          <div class="fxi-row eff"><span class="fxi-k">= Real rate in ₹</span><span class="fxi-v big">{{ g.fx.effective_rate }}%</span></div>
+
+          <div class="fxi-div"></div>
+
+          <div class="fxi-row"><span class="fxi-k">{{ g.fx.currency }} / ₹ since you borrowed</span>
+            <span class="fxi-v">{{ g.fx.fx_start }} → {{ g.fx.fx_now }} <b class="up">+{{ g.fx.fx_change_pct }}%</b></span></div>
+          <div class="fxi-row"><span class="fxi-k">Extra you now owe <em>vs day one</em></span>
+            <span class="fxi-v neg">{{ inr(extraFxCost(g.loan, g.fx)) }}</span></div>
+
+          <p class="fxi-note">The rupee has fallen <b>{{ g.fx.fx_change_pct }}%</b> against the {{ g.fx.currency }} since {{ monthLabel(g.fx.start_month || '') }} — so every {{ g.fx.currency }} you repay costs more rupees than the one you borrowed. That's the real cost, on top of the {{ g.fx.nominal_rate }}% interest.</p>
+          <span class="fxi-src">Currency path: USD/₹ history × live {{ g.fx.currency }} peg · to today</span>
+        </div>
+      </div>
+      }
+    </div>
+  }
+}
+
+<!-- Active loans -->
+@if (!loading() && view() === 'loans' && activeItems().length) {
+  <div class="cards">
+    @for (it of activeItems(); track it.id) {
+      <div class="lcard" [class.open]="expandedId() === it.id">
+        <div class="lc-top" (click)="toggle(it)">
+          <span class="lc-logo" [attr.data-t]="it.loan_type">{{ initials(it.lender) }}</span>
+          <div class="lc-id">
+            <b class="lc-lender">{{ it.lender }}</b>
+            <span class="lc-sub">{{ it.loan_type }}@if (it.owner) { · {{ it.owner }} }@if (it.is_foreign) { · <span class="cur-chip">{{ it.currency }}</span> }</span>
+          </div>
+          <div class="lc-out">
+            <span class="lc-out-v">{{ inr(it.outstanding_inr) }}</span>
+            @if (it.is_foreign) { <span class="lc-out-native">{{ native(it, it.outstanding_principal) }}</span> }
+            @if (it.original_inr > 0) { <span class="lc-out-borrow">of {{ inr(it.original_inr) }} borrowed</span> }
+            <span class="lc-out-k">outstanding</span>
+          </div>
+        </div>
+
+        <div class="lc-bar" [attr.title]="pct(it.progress) + ' repaid'">
+          <span [style.width.%]="it.progress * 100"></span>
+        </div>
+
+        <div class="lc-meta">
+          <div class="m"><i>EMI</i><b>{{ native(it, it.emi_amount) }}<small>/{{ it.emi_frequency === 'monthly' ? 'mo' : it.emi_frequency }}</small></b></div>
+          <div class="m"><i>Rate</i><b>{{ it.interest_rate != null ? it.interest_rate + '%' : '—' }}</b></div>
+          <div class="m"><i>Repaid</i><b class="pos">{{ pct(it.progress) }}</b></div>
+          @if (it.installments_remaining != null) { <div class="m"><i>Left</i><b>{{ it.installments_remaining }}<small> EMIs</small></b></div> }
+          @if (it.next_installment_date) { <div class="m"><i>Next</i><b class="sm">{{ fmtDate(it.next_installment_date) }}</b></div> }
+          @if (it.maturity_date) { <div class="m"><i>Ends</i><b class="sm">{{ fmtDate(it.maturity_date) }}</b></div> }
+        </div>
+
+        <div class="lc-actions">
+          <button class="btn xs ghost" (click)="toggle(it)">{{ expandedId() === it.id ? 'Close' : 'Edit' }}</button>
+          <button class="btn xs preclose" (click)="preclose(it)" [disabled]="preclosingId() === it.id">
+            {{ preclosingId() === it.id ? '…' : '✓ Pre-close' }}
+          </button>
+        </div>
+
+        @if (expandedId() === it.id && editDraft(); as d) {
+          <div class="lc-edit">
+            <div class="edit-grid">
+              <label class="fld"><span>Owner</span><input [ngModel]="d.owner" (ngModelChange)="d.owner = $event" placeholder="e.g. Dad"></label>
+              <label class="fld"><span>Lender *</span><input [ngModel]="d.lender" (ngModelChange)="d.lender = $event" placeholder="e.g. ICICI Bank"></label>
+              <label class="fld"><span>Type</span>
+                <select [ngModel]="d.loan_type" (ngModelChange)="d.loan_type = $event">
+                  @for (t of LOAN_TYPES; track t) { <option [value]="t">{{ t }}</option> }
+                </select>
+              </label>
+              <label class="fld"><span>Currency</span>
+                <select [ngModel]="d.currency" (ngModelChange)="d.currency = $event">
+                  @for (c of CURRENCIES; track c) { <option [value]="c">{{ c }}</option> }
+                </select>
+              </label>
+              <label class="fld"><span>Original amount</span><input type="number" [ngModel]="d.original_amount" (ngModelChange)="d.original_amount = $event"></label>
+              <label class="fld"><span>Outstanding principal</span><input type="number" [ngModel]="d.outstanding_principal" (ngModelChange)="d.outstanding_principal = $event"></label>
+              <label class="fld"><span>Interest rate (% p.a.)</span><input type="number" step="0.05" [ngModel]="d.interest_rate" (ngModelChange)="d.interest_rate = $event"></label>
+              <label class="fld"><span>EMI amount</span><input type="number" [ngModel]="d.emi_amount" (ngModelChange)="d.emi_amount = $event"></label>
+              <label class="fld"><span>EMI frequency</span>
+                <select [ngModel]="d.emi_frequency" (ngModelChange)="d.emi_frequency = $event">
+                  @for (f of FREQS; track f.v) { <option [value]="f.v">{{ f.label }}</option> }
+                </select>
+              </label>
+              <label class="fld"><span>Account no.</span><input [ngModel]="d.account_no" (ngModelChange)="d.account_no = $event"></label>
+              <label class="fld"><span>Start date</span><input type="date" [ngModel]="d.start_date" (ngModelChange)="d.start_date = $event"></label>
+              <label class="fld"><span>Maturity date</span><input type="date" [ngModel]="d.maturity_date" (ngModelChange)="d.maturity_date = $event"></label>
+              <label class="fld"><span>Next installment</span><input type="date" [ngModel]="d.next_installment_date" (ngModelChange)="d.next_installment_date = $event"></label>
+              <label class="fld"><span>EMIs paid</span><input type="number" [ngModel]="d.installments_paid" (ngModelChange)="d.installments_paid = $event"></label>
+              <label class="fld"><span>EMIs remaining</span><input type="number" [ngModel]="d.installments_remaining" (ngModelChange)="d.installments_remaining = $event"></label>
+              <label class="fld span2"><span>Note</span><textarea rows="2" [ngModel]="d.note" (ngModelChange)="d.note = $event"></textarea></label>
+            </div>
+            <div class="parcel-actions">
+              <button class="btn danger" (click)="remove(it)">Delete</button>
+              <div class="spacer"></div>
+              <button class="btn ghost" (click)="toggle(it)">Cancel</button>
+              <button class="btn primary" (click)="saveEdit(it)" [disabled]="saving() || !d.lender.trim()">{{ saving() ? 'Saving…' : 'Save changes' }}</button>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+}
+
+<!-- Pre-closed loans -->
+@if (!loading() && view() === 'loans' && closedItems().length) {
+  <div class="closed-sec">
+    <h3 class="closed-h">Pre-closed <span>{{ closedItems().length }}</span></h3>
+    <div class="closed-list">
+      @for (it of closedItems(); track it.id) {
+        <div class="closed-row">
+          <span class="cr-logo done">{{ initials(it.lender) }}</span>
+          <div class="cr-id"><b>{{ it.lender }}</b><small>{{ it.loan_type }}@if (it.owner) { · {{ it.owner }} }</small></div>
+          <span class="cr-orig">borrowed {{ inr(it.original_inr) }}</span>
+          @if (it.closed_on) { <span class="cr-date">closed {{ fmtDate(it.closed_on) }}</span> }
+          <span class="cr-badge">✓ Cleared</span>
+          <button class="btn xs ghost" (click)="reopen(it)" [disabled]="preclosingId() === it.id">Reopen</button>
+          <button class="trash sm" (click)="remove(it)" title="Delete">✕</button>
+        </div>
+      }
+    </div>
+  </div>
+}
+
+<!-- ══ REPAYMENTS VIEW — timeline + calendar ══ -->
+@if (!loading() && view() === 'repayments' && hasData()) {
+  @if (repayChart(); as rc) {
+    <div class="rep-chart-card">
+      <div class="rcc-head">
+        <div>
+          <h2>Repayment timeline</h2>
+          <span class="rcc-sub">Each bar is a month's EMIs across every loan — <b class="k-paid">paid</b> vs <b class="k-due">still due</b>. <b>Click a bar</b> to open that month below.</span>
+        </div>
+        <div class="rcc-legend">
+          <span class="rl"><i class="d-paid"></i>Paid</span>
+          <span class="rl"><i class="d-due"></i>Due</span>
+        </div>
+      </div>
+
+      <div class="rep-timeline-wrap">
+        <div class="rep-chart">
+          @for (m of rc.months; track m.month) {
+            <div class="rc-col" [class.sel]="m.month === activeMonth()" (click)="selectBar(m.month)" [title]="m.label + ' · ' + inr(m.total) + ' — click for details'">
+              <div class="rc-bar">
+                @if (m.dueH > 0) { <div class="rc-seg due" [style.height.%]="m.dueH"></div> }
+                @if (m.paidH > 0) { <div class="rc-seg paid" [style.height.%]="m.paidH"></div> }
+              </div>
+            </div>
+          }
+        </div>
+        <div class="rc-axis">
+          @for (y of rc.years; track y.year) { <span class="rc-yr" [style.flex]="y.count">{{ y.year }}</span> }
+        </div>
+      </div>
+
+      <!-- Selected-month breakdown — calendar (left) · loans due (right) -->
+      @if (monthDetail(); as md) {
+        <div class="mi-panel">
+          <div class="mi-head">
+            <button class="mm-nav" (click)="stepActiveMonth(-1)" [disabled]="!canStepActive(-1)" title="Previous month" aria-label="Previous month">‹</button>
+            <div class="mi-when">
+              <span class="mi-title">{{ md.label }}</span>
+              <span class="mi-sub">{{ md.payCount }} installment{{ md.payCount === 1 ? '' : 's' }} · {{ inr(md.total) }} due</span>
+            </div>
+            <div class="mi-total">
+              <b>{{ inr(md.paid) }}</b>
+              <small>paid of {{ inr(md.total) }}</small>
+            </div>
+            <button class="mm-nav" (click)="stepActiveMonth(1)" [disabled]="!canStepActive(1)" title="Next month" aria-label="Next month">›</button>
+          </div>
+
+          <div class="mi-grid">
+            <!-- LEFT: money-by-day calendar — tap a day to mark paid -->
+            <div class="mi-col">
+              <div class="mi-col-h with-key">
+                <span>Repayments by day <small class="mm-caltip">tap a day to mark paid</small></span>
+              </div>
+              <div class="mm-cal-dow">@for (d of dow; track $index) { <span>{{ d }}</span> }</div>
+              <div class="mm-cal">
+                @for (c of md.cells; track $index) {
+                  @if (c) {
+                    @if (c.count > 0) {
+                      <button type="button" class="mm-day has has-tip" [ngClass]="c.tone" [class.today]="c.isToday"
+                              (click)="openDay(md.month, c.day)" [attr.data-tip]="statusTip(c)">
+                        <span class="mm-dnum">{{ c.day }}</span>
+                        <span class="mm-damt">{{ inrShort(c.total) }}</span>
+                      </button>
+                    } @else {
+                      <div class="mm-day" [class.today]="c.isToday"><span class="mm-dnum">{{ c.day }}</span></div>
+                    }
+                  } @else { <div class="mm-day empty"></div> }
+                }
+              </div>
+              <div class="mm-cal-legend">
+                <span class="ml bs-l3"></span><span>Paid</span>
+                <span class="ml-sep"></span>
+                <span class="ml yl3"></span><span>Due</span>
+                <span class="ml-sep"></span>
+                <span class="ml rd3"></span><span>Unpaid</span>
+                <span class="ml-sep"></span>
+                <span class="ml mx3"></span><span>Partly</span>
+              </div>
+            </div>
+
+            <!-- RIGHT: loans due this month, each with pre-close · share bar -->
+            <div class="mi-col mi-right">
+             <div class="mi-right-inner">
+              <div class="mi-col-h">Due this month</div>
+              <div class="mi-people">
+                @for (l of md.loans; track l.loan_id) {
+                  <div class="mi-loan" [ngClass]="'st-' + l.status">
+                    <div class="mi-loan-row">
+                      <span class="mi-loan-dot" [style.background]="loanColor(l.loan_id)"></span>
+                      <div class="mi-loan-id">
+                        <b>{{ l.lender }}</b>
+                        <small>{{ l.loan_type }}@if (l.owner) { · {{ l.owner }} }@if (l.currency !== 'INR') { · {{ l.currency }} }</small>
+                      </div>
+                      <div class="mi-loan-amt">
+                        <b>{{ inr(l.inr) }}</b>
+                        @if (l.currency !== 'INR' && l.native != null) { <small>{{ l.currency }} {{ l.native }}</small> }
+                      </div>
+                    </div>
+                    <div class="mi-loan-foot">
+                      <span class="mi-st3" role="group" aria-label="Status">
+                        <button class="r" [class.on]="l.status === 'paid'" (click)="setPayStatus(l.loan_id, l.date, 'paid')" title="Paid">✓ Paid</button>
+                        <button class="p" [class.on]="l.status === 'pending'" (click)="setPayStatus(l.loan_id, l.date, 'pending')" title="Due">◷ Due</button>
+                        <button class="n" [class.on]="l.status === 'unpaid'" (click)="setPayStatus(l.loan_id, l.date, 'unpaid')" title="Unpaid">✕</button>
+                      </span>
+                      <button class="btn xs preclose" (click)="preclose(loanById(l.loan_id)!)" [disabled]="preclosingId() === l.loan_id" title="Foreclose this loan">
+                        {{ preclosingId() === l.loan_id ? '…' : 'Pre-close' }}
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <div class="mi-col-h mi-share-h">Share of this month</div>
+              <div class="mm-bar">
+                @for (l of md.loans; track l.loan_id) {
+                  <span class="mm-seg has-tip" [style.width.%]="l.pct * 100" [style.background]="loanColor(l.loan_id)"
+                        [attr.data-tip]="l.lender + ' · ' + inr(l.inr) + ' · ' + ((l.pct * 100) | number:'1.0-0') + '%'"></span>
+                }
+              </div>
+              <div class="mm-legend">
+                @for (l of md.loans; track l.loan_id) {
+                  <div class="mm-leg">
+                    <span class="mm-dot" [style.background]="loanColor(l.loan_id)"></span>
+                    <span class="mm-leg-iss" [title]="l.lender">{{ l.lender }}</span>
+                    <span class="mm-leg-val">{{ inr(l.inr) }}</span>
+                  </div>
+                }
+              </div>
+             </div>
+            </div>
+          </div>
+        </div>
+      }
+    </div>
+  } @else {
+    <div class="empty"><div class="empty-card"><div class="big">🗓️</div><h2>No repayment schedule yet</h2>
+      <p>Add an EMI amount and the next installment date to a loan and its repayment ladder appears here — month by month, with a calendar you can mark paid.</p></div></div>
+  }
+}
+
+<!-- Day modal — mark each installment paid / due / unpaid -->
+@if (showDay()) {
+  <div class="bs-modal-back" (click)="showDay.set(false)">
+    <div class="bs-modal" (click)="$event.stopPropagation()">
+      <div class="bs-modal-head">
+        <div class="bs-modal-when">
+          <h3>{{ dayLabelFull() }}</h3>
+          <span class="bs-modal-sub">{{ dayTotals().count }} installment{{ dayTotals().count === 1 ? '' : 's' }} · {{ inr(dayTotals().total) }}</span>
+        </div>
+        <button class="bs-modal-x" (click)="showDay.set(false)" aria-label="Close">✕</button>
+      </div>
+
+      <div class="bs-day-summary">
+        <span class="ds got"><i>Paid</i><b>{{ inr(dayTotals().paid) }}</b></span>
+        <span class="ds due"><i>Due</i><b>{{ inr(dayTotals().due) }}</b></span>
+        @if (dayTotals().unpaid > 0) { <span class="ds no"><i>Unpaid</i><b>{{ inr(dayTotals().unpaid) }}</b></span> }
+      </div>
+
+      <div class="bs-day-list">
+        @for (p of dayPayments(); track $index) {
+          <div class="bs-dl-row" [ngClass]="'st-' + p.status">
+            <div class="bs-dl-main">
+              <b class="bs-dl-iss" [title]="p.lender">{{ p.lender }}</b>
+              <span class="bs-dl-acct">{{ p.loan_type }}@if (p.owner) { · {{ p.owner }} }</span>
+            </div>
+            <div class="bs-dl-right">
+              <span class="bs-dl-amt">{{ inr(p.inr) }}@if (p.currency !== 'INR' && p.native != null) { <small class="bs-dl-nat">{{ p.currency }} {{ p.native }}</small> }</span>
+              <span class="bs-st3" role="group" aria-label="Status">
+                <button class="r" [class.on]="p.status === 'paid'" (click)="setPayStatus(p.loan_id, dayKey(), 'paid')" title="Paid">✓</button>
+                <button class="p" [class.on]="p.status === 'pending'" (click)="setPayStatus(p.loan_id, dayKey(), 'pending')" title="Due">◷</button>
+                <button class="n" [class.on]="p.status === 'unpaid'" (click)="setPayStatus(p.loan_id, dayKey(), 'unpaid')" title="Unpaid">✕</button>
+              </span>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="bs-modal-actions">
+        <button class="btn" (click)="markAllDay('paid')">✓ Mark all paid</button>
+        <button class="btn primary" (click)="showDay.set(false)">Done</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Add modal -->
+@if (showAdd()) {
+  <div class="modal-back" (click)="closeAdd()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-head"><h3>Add loan</h3><button class="x" (click)="closeAdd()">✕</button></div>
+      <div class="edit-grid">
+        <label class="fld"><span>Owner</span><input [ngModel]="addDraft().owner" (ngModelChange)="addDraft().owner = $event" placeholder="e.g. Dad"></label>
+        <label class="fld"><span>Lender *</span><input [ngModel]="addDraft().lender" (ngModelChange)="addDraft().lender = $event" placeholder="e.g. ICICI Bank"></label>
+        <label class="fld"><span>Type</span>
+          <select [ngModel]="addDraft().loan_type" (ngModelChange)="addDraft().loan_type = $event">
+            @for (t of LOAN_TYPES; track t) { <option [value]="t">{{ t }}</option> }
+          </select>
+        </label>
+        <label class="fld"><span>Currency</span>
+          <select [ngModel]="addDraft().currency" (ngModelChange)="addDraft().currency = $event">
+            @for (c of CURRENCIES; track c) { <option [value]="c">{{ c }}</option> }
+          </select>
+        </label>
+        <label class="fld"><span>Original amount</span><input type="number" [ngModel]="addDraft().original_amount" (ngModelChange)="addDraft().original_amount = $event"></label>
+        <label class="fld"><span>Outstanding principal</span><input type="number" [ngModel]="addDraft().outstanding_principal" (ngModelChange)="addDraft().outstanding_principal = $event"></label>
+        <label class="fld"><span>Interest rate (% p.a.)</span><input type="number" step="0.05" [ngModel]="addDraft().interest_rate" (ngModelChange)="addDraft().interest_rate = $event"></label>
+        <label class="fld"><span>EMI amount</span><input type="number" [ngModel]="addDraft().emi_amount" (ngModelChange)="addDraft().emi_amount = $event"></label>
+        <label class="fld"><span>EMI frequency</span>
+          <select [ngModel]="addDraft().emi_frequency" (ngModelChange)="addDraft().emi_frequency = $event">
+            @for (f of FREQS; track f.v) { <option [value]="f.v">{{ f.label }}</option> }
+          </select>
+        </label>
+        <label class="fld"><span>Account no.</span><input [ngModel]="addDraft().account_no" (ngModelChange)="addDraft().account_no = $event"></label>
+        <label class="fld"><span>Start date</span><input type="date" [ngModel]="addDraft().start_date" (ngModelChange)="addDraft().start_date = $event"></label>
+        <label class="fld"><span>Maturity date</span><input type="date" [ngModel]="addDraft().maturity_date" (ngModelChange)="addDraft().maturity_date = $event"></label>
+        <label class="fld span2"><span>Note</span><textarea rows="2" [ngModel]="addDraft().note" (ngModelChange)="addDraft().note = $event"></textarea></label>
+      </div>
+      <p class="cagr-note">Outstanding is subtracted from net worth; the EMI counts against income. Foreign currencies convert to ₹ at the live rate.</p>
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="closeAdd()">Cancel</button>
+        <button class="btn primary" (click)="submitAdd()" [disabled]="adding() || !addDraft().lender.trim()">{{ adding() ? 'Saving…' : 'Save loan' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Undo toast -->
+@if (pendingDelete(); as pd) {
+  <div class="undo-toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+    <span>Deleted <b>{{ pd.item.lender }}</b> loan</span>
+    <button class="undo-btn" (click)="undoDelete()">Undo</button>
+    <button class="undo-x" (click)="finalizeDelete()" title="Dismiss">✕</button>
+  </div>
+}

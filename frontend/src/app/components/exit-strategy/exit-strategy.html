@@ -1,0 +1,371 @@
+<div class="ex-page">
+
+  <!-- ════════ Header ════════════════════════════════════════════════════ -->
+  <header class="ex-header">
+    <div>
+      <h1 class="ex-title">Exit Strategy</h1>
+      <p class="ex-sub">
+        Upload your broker holdings export — we'll match each stock to the
+        Scorecard universe and rank them by an <b>exit conviction</b> built from
+        pledge, leverage, liquidity, FII flow, and your scorecard composite.
+        Two-signal rule: a stock isn't tagged <b>EXIT</b> unless 2+ hard flags
+        fire — so you don't sell good stocks on a single noisy data point.
+      </p>
+    </div>
+    <div class="ex-actions">
+      <label class="ex-upload-btn" [class.uploading]="uploading()">
+        @if (uploading()) { Analyzing… } @else { ⬆ Upload Holdings }
+        <input type="file" accept=".xlsx,.xls,.csv" (change)="onUploadChange($event)" hidden>
+      </label>
+    </div>
+  </header>
+
+  @if (error()) { <div class="ex-error">⚠ {{ error() }}</div> }
+
+  <!-- ════════ Empty state ═══════════════════════════════════════════════ -->
+  @if (!result() && !loading() && !error()) {
+    <div class="ex-empty">
+      <div class="ex-empty-icon">📋</div>
+      <h2>Drop your broker holdings file</h2>
+      <p>Accepted formats: <b>.xlsx</b>, <b>.xls</b>, <b>.csv</b> with columns like:</p>
+      <div class="ex-cols">
+        <span>SHARE</span><span>Total Qty</span><span>Avg CMP</span>
+        <span>Current Value</span><span>P/L In %</span><span>Weight</span>
+      </div>
+      <p class="ex-empty-tip">We auto-detect column names. As long as a stock name column is present, we'll handle it. Position weight is computed from current value if you don't have a Weight column.</p>
+      <p class="ex-empty-warn">Make sure you've uploaded your Tickertape CSV in the <b>Scorecard</b> page first — the exit engine needs that data to evaluate each stock.</p>
+    </div>
+  }
+
+  @if (loading() && !result()) {
+    <div class="ex-loading">
+      <div class="ex-spinner"></div>
+      <div>Matching holdings against {{ '5000+' }} stocks…</div>
+    </div>
+  }
+
+  <!-- ════════ Result ═══════════════════════════════════════════════════ -->
+  @if (result(); as r) {
+    @if (r.available) {
+
+      <!-- KPI strip -->
+      <div class="ex-kpis">
+        <div class="ex-kpi ex-kpi-main">
+          <div class="ex-kpi-lbl">Total holdings</div>
+          <div class="ex-kpi-val">{{ r.total }}</div>
+          <div class="ex-kpi-sub">{{ r.matched }} matched · {{ r.total - r.matched }} unknown</div>
+        </div>
+        <div class="ex-kpi ex-kpi-total-val">
+          <div class="ex-kpi-lbl">Portfolio value</div>
+          <div class="ex-kpi-val">{{ fmtRs(totalValue()) }}</div>
+        </div>
+        <div class="ex-kpi ex-kpi-flagged">
+          <div class="ex-kpi-lbl">Flagged ₹ at risk</div>
+          <div class="ex-kpi-val">{{ fmtRs(flaggedValue()) }}</div>
+          <div class="ex-kpi-sub">{{ fmtPct(flaggedPct(), 1) }} of portfolio</div>
+        </div>
+
+        <!-- Tier counts -->
+        @for (tier of TIERS; track tier.key) {
+          @if (tierCounts()[tier.key] > 0) {
+            <button class="ex-tier-card"
+                    [class.active]="tierFilter() === tier.key"
+                    [style.borderColor]="tier.color"
+                    [style.background]="tier.bg"
+                    (click)="setTier(tier.key)">
+              <div class="ex-tier-count" [style.color]="tier.color">
+                {{ tierCounts()[tier.key] }}
+              </div>
+              <div class="ex-tier-label" [style.color]="tier.color">{{ tier.label }}</div>
+              <div class="ex-tier-sub">{{ tier.sub }}</div>
+            </button>
+          }
+        }
+      </div>
+
+      <!-- Filters -->
+      <div class="ex-filters">
+        <div class="ex-filter-group">
+          <span class="ex-filter-label">Show</span>
+          <button class="ex-pill" [class.active]="tierFilter() === 'all'" (click)="setTier('all')">All</button>
+          @for (tier of TIERS.slice(0, 4); track tier.key) {
+            <button class="ex-pill" [class.active]="tierFilter() === tier.key" (click)="setTier(tier.key)">
+              {{ tier.label }}
+            </button>
+          }
+        </div>
+        <label class="ex-checkbox">
+          <input type="checkbox" [ngModel]="hideKeep()" (ngModelChange)="hideKeep.set($event)">
+          Hide KEEP
+        </label>
+        <input type="text" class="ex-search" placeholder="Search name/ticker/sector…"
+               [ngModel]="search()" (ngModelChange)="search.set($event)">
+      </div>
+
+      <!-- Ranked table -->
+      <div class="ex-card ex-table-card">
+        <div class="ex-table-wrap">
+          <table class="ex-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Stock</th>
+                <th>Sub-Sector</th>
+                <th class="right">Value</th>
+                <th class="right">P/L</th>
+                <th class="right">Weight</th>
+                <th>Composite</th>
+                <th class="ex-conv-col">Exit Conviction</th>
+                <th>Top reasons</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of filteredRows(); track $index) {
+                <tr class="ex-row" [class]="'tier-' + row.tier" (click)="openDetail(row)">
+                  <td class="ex-rank">{{ $index + 1 }}</td>
+                  <td class="ex-stock">
+                    <div class="ex-stock-name">
+                      {{ row.name || row.share }}
+                      @if (row.tier === 'exit' || row.tier === 'review') {
+                        <span class="ex-tier-badge" [style.background]="tierMeta(row.tier).color">
+                          {{ tierMeta(row.tier).label }}
+                        </span>
+                      }
+                    </div>
+                    @if (row.ticker) { <div class="ex-stock-tk">{{ row.ticker }}</div> }
+                  </td>
+                  <td class="ex-sub">{{ row.sub_sector || '—' }}</td>
+                  <td class="right">{{ fmtRs(row.current_value) }}</td>
+                  <td class="right" [class.pos]="row.pl_pct >= 0" [class.neg]="row.pl_pct < 0">
+                    {{ fmtPct(row.pl_pct) }}
+                  </td>
+                  <td class="right">{{ row.weight_pct != null ? row.weight_pct.toFixed(2) + '%' : '—' }}</td>
+                  <td>
+                    @if (row.composite != null) {
+                      <div class="ex-comp-pill" [class]="scoreClass(row.composite)">{{ fmtScore(row.composite) }}</div>
+                    } @else {
+                      <span class="ex-dim">—</span>
+                    }
+                  </td>
+                  <td class="ex-conv-col">
+                    @if (row.conviction != null) {
+                      <div class="ex-conv-bar">
+                        <div class="ex-conv-fill" [class]="convictionClass(row.conviction)"
+                             [style.width.%]="convictionPct(row.conviction)"></div>
+                        <span class="ex-conv-val">{{ row.conviction }}</span>
+                      </div>
+                    } @else {
+                      <span class="ex-dim">—</span>
+                    }
+                  </td>
+                  <td class="ex-reasons-cell">
+                    @if (row.reasons?.length) {
+                      <div class="ex-reasons-mini">
+                        @for (rsn of row.reasons.slice(0, 2); track $index) {
+                          <span class="ex-reason-chip" [class]="severityClass(rsn.severity)">
+                            {{ rsn.category }}
+                          </span>
+                        }
+                        @if (row.reasons.length > 2) {
+                          <span class="ex-reason-more">+{{ row.reasons.length - 2 }}</span>
+                        }
+                      </div>
+                    } @else {
+                      <span class="ex-dim">—</span>
+                    }
+                  </td>
+                </tr>
+              }
+              @if (!filteredRows().length) {
+                <tr><td colspan="9" class="ex-empty-row">No holdings match these filters.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    } @else {
+      <!-- Have a result, but scorecard not available -->
+      <div class="ex-empty">
+        <div class="ex-empty-icon">⚠</div>
+        <h2>Scorecard data missing</h2>
+        <p>{{ r.error }}</p>
+        <p class="ex-empty-tip">Go to <b>Scorecard</b> → upload your Tickertape CSV (27 columns), then come back here.</p>
+      </div>
+    }
+  }
+</div>
+
+<!-- ════════ Detail modal ════════════════════════════════════════════════ -->
+@if (selected(); as s) {
+  <div class="ex-modal-overlay" (click)="closeDetail()">
+    <div class="ex-modal" (click)="$event.stopPropagation()">
+      <header class="ex-modal-head" [style.borderColor]="tierMeta(s.tier).color">
+        <div>
+          <h2>
+            {{ s.name || s.share }}
+            @if (s.ticker) { <span class="ex-tk">{{ s.ticker }}</span> }
+          </h2>
+          <div class="ex-detail-meta">
+            <span>{{ s.sub_sector || '—' }}</span>
+            @if (s.market_cap) { <span>· {{ fmtMcap(s.market_cap) }}</span> }
+          </div>
+        </div>
+        <button class="ex-modal-close" (click)="closeDetail()">×</button>
+      </header>
+
+      <div class="ex-modal-body">
+
+        <!-- Top: tier + conviction headline -->
+        <div class="ex-headline">
+          <div class="ex-headline-tier" [style.background]="tierMeta(s.tier).bg"
+                                        [style.color]="tierMeta(s.tier).color"
+                                        [style.borderColor]="tierMeta(s.tier).color">
+            <div class="ex-headline-label">{{ tierMeta(s.tier).label }}</div>
+            <div class="ex-headline-sub">{{ tierMeta(s.tier).sub }}</div>
+          </div>
+          @if (s.conviction != null) {
+            <div class="ex-headline-conv">
+              <div class="ex-headline-num" [class]="convictionClass(s.conviction)">{{ s.conviction }}</div>
+              <div class="ex-headline-num-lbl">Exit conviction</div>
+            </div>
+          }
+          <div class="ex-headline-position">
+            <div class="ex-headline-row">
+              <span>Position size</span>
+              <b>{{ s.weight_pct != null ? s.weight_pct.toFixed(2) + '%' : '—' }}</b>
+            </div>
+            <div class="ex-headline-row">
+              <span>Current value</span>
+              <b>{{ fmtRs(s.current_value) }}</b>
+            </div>
+            <div class="ex-headline-row">
+              <span>P/L</span>
+              <b [class.pos]="s.pl_pct >= 0" [class.neg]="s.pl_pct < 0">{{ fmtPct(s.pl_pct) }}</b>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reasons -->
+        @if (s.reasons?.length) {
+          <h3 class="ex-h3">Why this score</h3>
+          <ul class="ex-reasons-list">
+            @for (rsn of s.reasons; track $index) {
+              <li class="ex-reason" [class]="'kind-' + rsn.kind + ' ' + severityClass(rsn.severity)">
+                <span class="ex-reason-icon">
+                  @switch (rsn.kind) {
+                    @case ('hard')     { ⛔ }
+                    @case ('soft')     { ⚠ }
+                    @case ('position') { 📊 }
+                    @case ('info')     { ℹ }
+                    @default           { • }
+                  }
+                </span>
+                <div class="ex-reason-body">
+                  <div class="ex-reason-cat">{{ rsn.category }}</div>
+                  <div class="ex-reason-msg">{{ rsn.msg }}</div>
+                </div>
+                <span class="ex-reason-sev">{{ rsn.severity }}</span>
+              </li>
+            }
+          </ul>
+        }
+
+        <!-- Signal grid -->
+        @if (s.signals) {
+          <h3 class="ex-h3">Raw signals</h3>
+          <div class="ex-signals-grid">
+            <div class="ex-signal">
+              <div class="ex-signal-lbl">Scorecard composite</div>
+              <div class="ex-signal-val" [class]="scoreClass(s.signals.composite)">{{ fmtScore(s.signals.composite) }}</div>
+            </div>
+            <div class="ex-signal">
+              <div class="ex-signal-lbl">Pledged %</div>
+              <div class="ex-signal-val"
+                   [class.bad]="s.signals.pledge >= 25"
+                   [class.warn]="s.signals.pledge >= 10 && s.signals.pledge < 25">
+                {{ s.signals.pledge != null ? s.signals.pledge.toFixed(1) + '%' : '—' }}
+              </div>
+            </div>
+            <div class="ex-signal">
+              <div class="ex-signal-lbl">Promoter %</div>
+              <div class="ex-signal-val"
+                   [class.bad]="s.signals.promoter != null && s.signals.promoter < 20"
+                   [class.good]="s.signals.promoter >= 50">
+                {{ s.signals.promoter != null ? s.signals.promoter.toFixed(1) + '%' : '—' }}
+              </div>
+            </div>
+            <div class="ex-signal">
+              <div class="ex-signal-lbl">FII Δ 6M</div>
+              <div class="ex-signal-val"
+                   [class.bad]="s.signals.fii_change_6m <= -2"
+                   [class.warn]="s.signals.fii_change_6m <= -1 && s.signals.fii_change_6m > -2"
+                   [class.good]="s.signals.fii_change_6m >= 1">
+                {{ fmtPct(s.signals.fii_change_6m) }}
+              </div>
+            </div>
+            <div class="ex-signal">
+              <div class="ex-signal-lbl">D/E</div>
+              <div class="ex-signal-val"
+                   [class.bad]="!s.signals.is_financial && s.signals.de > 3"
+                   [class.warn]="!s.signals.is_financial && s.signals.de > 1.5 && s.signals.de <= 3">
+                {{ fmtNum(s.signals.de, 2) }}
+                @if (s.signals.is_financial) { <span class="ex-dim"> n/a</span> }
+              </div>
+            </div>
+            <div class="ex-signal">
+              <div class="ex-signal-lbl">Current Ratio</div>
+              <div class="ex-signal-val"
+                   [class.bad]="!s.signals.is_financial && s.signals.current_ratio < 1 && s.signals.current_ratio > 0">
+                {{ fmtNum(s.signals.current_ratio, 2) }}
+                @if (s.signals.is_financial) { <span class="ex-dim"> n/a</span> }
+              </div>
+            </div>
+            <div class="ex-signal">
+              <div class="ex-signal-lbl">Interest Coverage</div>
+              <div class="ex-signal-val"
+                   [class.bad]="!s.signals.is_financial && s.signals.icr < 1.5">
+                {{ fmtNum(s.signals.icr, 1) }}<span class="ex-dim">x</span>
+                @if (s.signals.is_financial) { <span class="ex-dim"> n/a</span> }
+              </div>
+            </div>
+            <div class="ex-signal">
+              <div class="ex-signal-lbl">3M Avg Volume</div>
+              <div class="ex-signal-val"
+                   [class.bad]="s.signals.volume_3m < 5000 && s.signals.volume_3m > 0">
+                {{ s.signals.volume_3m != null ? s.signals.volume_3m.toLocaleString('en-IN', {maximumFractionDigits: 0}) : '—' }}
+              </div>
+            </div>
+            <div class="ex-signal">
+              <div class="ex-signal-lbl">1Y Return</div>
+              <div class="ex-signal-val"
+                   [class.bad]="s.signals.ret_1y < -30"
+                   [class.good]="s.signals.ret_1y > 20">
+                {{ fmtPct(s.signals.ret_1y) }}
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- Category breakdown if matched -->
+        @if (s.categories) {
+          <h3 class="ex-h3">Scorecard categories</h3>
+          <div class="ex-cats-grid">
+            @for (cat of ['performance', 'valuation', 'growth', 'profitability', 'entry_point', 'dividend']; track cat) {
+              <div class="ex-cat">
+                <div class="ex-cat-name">{{ cat }}</div>
+                <div class="ex-cat-bar">
+                  <div class="ex-cat-fill"
+                       [class]="scoreClass(s.categories[cat]?.score)"
+                       [style.width.%]="convictionPct(s.categories[cat]?.score)"></div>
+                </div>
+                <div class="ex-cat-score" [class]="scoreClass(s.categories[cat]?.score)">
+                  {{ fmtScore(s.categories[cat]?.score) }}
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+}

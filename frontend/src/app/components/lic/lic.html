@@ -1,0 +1,436 @@
+<div class="lic-page">
+
+  <!-- toasts -->
+  @if (notice()) { <div class="lic-toast ok">{{ notice() }}</div> }
+  @if (error()) { <div class="lic-toast bad">{{ error() }}<button (click)="error.set(null)">✕</button></div> }
+
+  <!-- ── header ─────────────────────────────────────────────────────────── -->
+  <div class="lic-head">
+    <div class="lh-title">
+      <h1>LIC Life Insurance</h1>
+      <p class="lh-sub">The family's LIC policies in plain English — what's <b>covered</b>, what you <b>pay</b>,
+        and what you'll <b>get back</b>. Hover any figure to see <b>which policy</b> drives it and <b>when</b>.</p>
+    </div>
+    <button class="btn" (click)="openAdd()">＋ Add policy</button>
+  </div>
+
+  @if (loading()) {
+    <div class="lic-loading">Loading policies…</div>
+  } @else if (summary(); as s) {
+
+  <!-- ── HERO — the whole LIC book at a glance ───────────────────────────── -->
+  <div class="hero lic-hero">
+    <div class="hero-main">
+      <span class="hero-label">Life cover in force · {{ s.active_count }} running@if (s.count > s.active_count) { · {{ s.count }} in all } · {{ holderCount() }} insured</span>
+      <span class="hero-value">{{ inr(s.in_force_cover) }} <small>cover</small></span>
+      <span class="hero-exact">If something happens, the family receives {{ inrFull(s.in_force_cover) }} across {{ s.active_count }} running {{ s.active_count === 1 ? 'policy' : 'policies' }}.</span>
+
+      <div class="hero-tags">
+        <!-- pay -->
+        <div class="stat has-pop">
+          <span class="s-k">You pay</span>
+          <span class="s-v">{{ inr(s.annual_premium) }} <small>/yr</small></span>
+          <span class="s-sub">≈ {{ inr(s.monthly_premium) }}/mo</span>
+          @if (premiumContribs().length) {
+            <div class="hp">
+              <div class="hp-h">Yearly premium — by policy</div>
+              @for (r of premiumContribs(); track r.plan) {
+                <div class="hp-row"><span class="hp-what">{{ r.plan }} <em>· {{ r.holder }}</em></span>
+                  <span class="hp-when">{{ r.when }}</span><b class="hp-amt">{{ inr(r.amount) }}</b></div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- will receive -->
+        <div class="stat has-pop key">
+          <span class="s-k">Will receive at maturity</span>
+          <span class="s-v pos">{{ inr(s.expected_maturity) }}</span>
+          <span class="s-sub">guaranteed + bonus</span>
+          @if (maturityTimeline().length) {
+            <div class="hp wide">
+              <div class="hp-h">What matures when — and from which policy</div>
+              @for (m of maturityTimeline(); track m.plan) {
+                <div class="hp-row">
+                  <span class="hp-what">{{ m.plan }} <em>· {{ m.holder }}</em></span>
+                  <span class="hp-when">{{ m.when }}@if (m.yrs !== null) { · in {{ m.yrs }}y }</span>
+                  <b class="hp-amt pos">{{ inr(m.amount) }}</b></div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- already received -->
+        <div class="stat has-pop">
+          <span class="s-k">Already received</span>
+          <span class="s-v">{{ inr(s.received) }}</span>
+          <span class="s-sub">{{ s.matured_count }} matured · {{ s.surrendered_count }} surrendered</span>
+          @if (receivedContribs().length) {
+            <div class="hp">
+              <div class="hp-h">Money already in</div>
+              @for (r of receivedContribs(); track r.plan) {
+                <div class="hp-row"><span class="hp-what">{{ r.plan }} <em>· {{ r.holder }}</em></span>
+                  <span class="hp-when">{{ r.when }}</span><b class="hp-amt">{{ inr(r.amount) }}</b></div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- cover breakdown -->
+        <div class="stat has-pop">
+          <span class="s-k">Policies</span>
+          <span class="s-v">{{ s.active_count }} <small>running</small></span>
+          <span class="s-sub">of {{ s.count }} total</span>
+          @if (coverContribs().length) {
+            <div class="hp">
+              <div class="hp-h">Life cover — by policy</div>
+              @for (r of coverContribs(); track r.plan) {
+                <div class="hp-row"><span class="hp-what">{{ r.plan }} <em>· {{ r.holder }}</em></span>
+                  <b class="hp-amt">{{ inr(r.amount) }}</b></div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- side: the next payout, front and centre -->
+    @if (s.next_maturity; as n) {
+      <div class="hero-side">
+        <div class="next-card">
+          <span class="nc-tag">⏭ Next payout</span>
+          <span class="nc-amt pos">{{ inr(n.amount) }}</span>
+          <span class="nc-plan">{{ n.plan }}</span>
+          <span class="nc-holder">{{ n.holder }}</span>
+          <div class="nc-when">
+            <b>{{ fmtMonthYear(n.date) }}</b>
+            @if (nextMaturityYears() !== null) { <span class="nc-in">in {{ nextMaturityYears() }} yr{{ nextMaturityYears() === 1 ? '' : 's' }}</span> }
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- ── two-up: who's insured · policy types ──────────────────────────── -->
+  <div class="mid-grid">
+
+    <!-- per person -->
+    <div class="card">
+      <div class="card-title">Who's insured</div>
+      <div class="card-sub">Cover &amp; yearly premium for each person's running policies.</div>
+      <div class="holder-list">
+        @for (h of s.by_holder; track h.holder) {
+          <div class="holder-row">
+            <div class="hr-avatar">{{ h.holder.charAt(0) }}</div>
+            <div class="hr-main">
+              <span class="hr-name">{{ h.holder }}</span>
+              <span class="hr-meta">{{ h.active }} running · {{ h.count }} total
+                @if (h.cover_lifelong) { · <b class="cov-life">covered for life</b> }
+                @else if (h.cover_until_year) { · covered until {{ h.cover_until_year }} }
+                @if (h.premium_years_left) { · {{ h.premium_years_left }} yr premium left }
+              </span>
+            </div>
+            <div class="hr-stats">
+              <div class="hrs"><span>Cover</span><b>{{ inr(h.cover) }}</b></div>
+              <div class="hrs"><span>Pays/yr</span><b>{{ inr(h.annual_premium) }}</b></div>
+              <div class="hrs"><span>Will get</span><b class="pos">{{ inr(h.expected) }}</b></div>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+
+    <!-- policy types explained -->
+    <div class="card">
+      <div class="card-title">Types of policies</div>
+      <div class="card-sub">The family holds a few kinds — here's what each means.</div>
+      <div class="type-list">
+        @for (t of s.by_type; track t.type) {
+          <div class="type-row" [ngClass]="t.type">
+            <span class="type-dot"></span>
+            <div class="tr-main">
+              <span class="tr-name">{{ t.label }} <span class="tr-count">{{ t.count }}</span></span>
+              <span class="tr-blurb">{{ meta()?.type_blurbs?.[t.type] }}</span>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+
+  <!-- ── in an emergency: who claims & whom to contact ──────────────────── -->
+  <div class="card claim-card">
+    <div class="card-title">If something happens — who claims &amp; how 🛟</div>
+    <div class="card-sub">For each insured person: who receives the money, whom to contact, and the steps to follow. Keep this filled in — it's what your family will need.</div>
+
+    @if (s.missing_nominee > 0) {
+      <div class="claim-warn">⚠ {{ s.missing_nominee }} running {{ s.missing_nominee === 1 ? 'policy has' : 'policies have' }} no nominee on record here. Add one so the family knows who should claim.</div>
+    }
+
+    <div class="claim-people">
+      @for (h of s.by_holder; track h.holder) {
+        @if (h.active > 0) {
+          <div class="claim-person">
+            <div class="cp-head">
+              <div class="hr-avatar">{{ h.holder.charAt(0) }}</div>
+              <div class="cp-id">
+                <span class="cp-name">{{ h.holder }}</span>
+                <span class="cp-sub">{{ inr(h.cover) }} cover@if (h.accident_benefit) { · +{{ inr(h.accident_benefit) }} if accident }@if (h.cover_lifelong) { · <b class="cov-life">for life</b> }</span>
+              </div>
+            </div>
+            <div class="cp-grid">
+              <div class="cp-field">
+                <span class="cp-k">Nominee — who receives the money</span>
+                @if (h.nominee) {
+                  <b class="cp-v">{{ h.nominee }}@if (h.nominee_relation) { <em> · {{ h.nominee_relation }}</em> }</b>
+                  @if (h.nominee_phone) { <a class="cp-tel" [href]="'tel:' + h.nominee_phone">📞 {{ h.nominee_phone }}</a> }
+                } @else {
+                  <button class="cp-add" (click)="editHolderContact(h.holder)">＋ Add nominee</button>
+                }
+              </div>
+              <div class="cp-field">
+                <span class="cp-k">Whom to contact for the claim</span>
+                @if (h.agent_name || h.agent_phone || h.branch) {
+                  <b class="cp-v">{{ h.agent_name || 'LIC agent' }}@if (h.branch) { <em> · {{ h.branch }} branch</em> }</b>
+                  @if (h.agent_phone) { <a class="cp-tel" [href]="'tel:' + h.agent_phone">📞 {{ h.agent_phone }}</a> }
+                } @else {
+                  <button class="cp-add" (click)="editHolderContact(h.holder)">＋ Add agent / branch</button>
+                }
+              </div>
+            </div>
+          </div>
+        }
+      }
+    </div>
+
+    <div class="claim-how">
+      <div class="ch-h">How the nominee claims</div>
+      <ol>
+        <li>Call the agent / branch above — or LIC's helpline <a href="tel:02268276827"><b>022-6827 6827</b></a> — and quote the <b>policy number</b>.</li>
+        <li>Submit the <b>death certificate</b>, the <b>original policy document</b>, the nominee's <b>ID &amp; bank details</b>, and the filled claim form.</li>
+        <li>LIC verifies and pays the <b>sum assured + accrued bonus</b> (plus any accident benefit) to the nominee — usually within 30 days.</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ── maturity ladder / timeline ─────────────────────────────────────── -->
+  @if (s.ladder.length) {
+    <div class="card ladder-card">
+      <div class="card-title">When the money comes in</div>
+      <div class="card-sub">Each running policy matures on a different date — a built-in payout ladder.
+        Taller bar = bigger payout.</div>
+      <div class="ladder">
+        @for (l of s.ladder; track l.policy_number) {
+          <div class="lad-item" [style.--h.%]="ladderH(l.amount)"
+               [title]="l.plan + ' (' + l.holder + ') — ' + inrFull(l.amount) + ' on ' + fmtDate(l.date)">
+            <span class="lad-amt">{{ inr(l.amount) }}</span>
+            <div class="lad-bar"></div>
+            <span class="lad-year">{{ l.year }}</span>
+            <span class="lad-who">{{ l.holder === 'Ram Prasad' ? 'Ram' : 'Maha' }}</span>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ── policy list ────────────────────────────────────────────────────── -->
+  <div class="list-head">
+    <div class="pills">
+      <button class="pill" [class.on]="statusFilter()==='active'" (click)="statusFilter.set('active')">Running · {{ statusCounts().active }}</button>
+      <button class="pill" [class.on]="statusFilter()==='matured'" (click)="statusFilter.set('matured')">Matured · {{ statusCounts().matured }}</button>
+      <button class="pill" [class.on]="statusFilter()==='surrendered'" (click)="statusFilter.set('surrendered')">Surrendered · {{ statusCounts().surrendered }}</button>
+      <button class="pill" [class.on]="statusFilter()==='all'" (click)="statusFilter.set('all')">All · {{ statusCounts().all }}</button>
+    </div>
+    <div class="list-filters">
+      <select [ngModel]="holderFilter()" (ngModelChange)="holderFilter.set($event)">
+        <option value="all">Everyone</option>
+        @for (h of holders(); track h) { <option [value]="h">{{ h }}</option> }
+      </select>
+      <input class="search" placeholder="Search plan / policy no…" [ngModel]="query()" (ngModelChange)="query.set($event)">
+    </div>
+  </div>
+
+  @if (!filtered().length) {
+    <div class="empty">No policies match this filter.</div>
+  } @else {
+    <div class="lic-table-wrap">
+      <table class="lic-table">
+        <thead>
+          <tr>
+            <th class="ex"></th>
+            <th class="col-plan">Policy</th>
+            <th class="col-who">Whose life</th>
+            <th class="ctr">Status</th>
+            <th class="num">Life cover</th>
+            <th class="num">Premium</th>
+            <th class="num">{{ statusFilter()==='matured' || statusFilter()==='surrendered' ? 'Received' : 'Will get' }}</th>
+            <th class="num">Started</th>
+            <th class="col-mat">Matures</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (p of filtered(); track p.id) {
+            <tr class="prow" [class.open]="expanded()===p.id" [class.dim]="!p.is_active" (click)="toggleExpand(p.id)"
+                [title]="'Click for full details of ' + p.plan">
+              <td class="ex"><span class="chev">{{ expanded()===p.id ? '▾' : '▸' }}</span></td>
+              <td class="col-plan">
+                <span class="pl-name">{{ p.plan }}</span>
+                <span class="pl-type" [ngClass]="p.plan_type">{{ p.type_label }}</span>
+              </td>
+              <td class="col-who">
+                <span class="who-ava">{{ (p.holder||'?').charAt(0) }}</span>
+                <span class="who-main"><b>{{ p.holder }}</b><small>policy {{ p.policy_number || '—' }}</small></span>
+              </td>
+              <td class="ctr"><span class="st-chip" [ngClass]="p.status">{{ statusLabel(p) }}</span></td>
+              <td class="num">{{ p.life_cover ? inr(p.life_cover) : '—' }}</td>
+              <td class="num">@if (p.annual_premium) { {{ inr(p.annual_premium) }}@if (p.is_active) { <small>/yr</small> } } @else { — }</td>
+              <td class="num pos">{{ (p.is_surrendered ? p.fund_value : p.expected_maturity) ? inr(p.is_surrendered ? p.fund_value : p.expected_maturity) : '—' }}</td>
+              <td class="num mut">{{ p.start_year || '—' }}</td>
+              <td class="col-mat">
+                @if (p.is_active) {
+                  <b>{{ fmtMonthYear(p.maturity_date) }}</b>@if (p.years_to_maturity !== null) { <small class="mat-in">in {{ p.years_to_maturity }} yr{{ p.years_to_maturity === 1 ? '' : 's' }}</small> }
+                } @else if (p.is_matured) {
+                  <span class="mut">paid out · {{ p.maturity_year }}</span>
+                } @else {
+                  <span class="mut">surrendered</span>
+                }
+              </td>
+            </tr>
+
+            @if (expanded()===p.id) {
+              <tr class="drow">
+                <td colspan="9">
+                  <div class="lic-detail">
+                    <div class="ld-blurb"><b>{{ p.type_label }}</b> — {{ p.type_blurb }}</div>
+                    <div class="ld-grid">
+                      <div class="ld"><span>Policy number</span><b>{{ p.policy_number || '—' }}</b></div>
+                      <div class="ld"><span>Start date</span><b>{{ fmtDate(p.start_date) }}</b></div>
+                      <div class="ld"><span>Maturity date</span><b>{{ fmtDate(p.maturity_date) }}</b></div>
+                      <div class="ld"><span>Policy term</span><b>{{ p.term_years ? p.term_years + ' yrs' : '—' }}</b></div>
+                      <div class="ld"><span>Premium</span><b>{{ p.premium ? inrFull(p.premium) + ' ' + freqLabel(p.premium_frequency) : '—' }}</b></div>
+                      <div class="ld"><span>Premium / year</span><b>{{ p.annual_premium ? inrFull(p.annual_premium) : '—' }}</b></div>
+                      @if (p.is_active) {
+                        <div class="ld"><span>Premium left to pay</span><b>@if (p.premium_done) { done ✓ } @else if (p.premium_years_left !== null) { {{ p.premium_years_left }} yr{{ p.premium_years_left === 1 ? '' : 's' }} more } @else { — }</b></div>
+                      }
+                      @if (p.premiums_paid !== null) { <div class="ld"><span>Paid so far (approx)</span><b>{{ inrFull(p.premiums_paid) }}</b></div> }
+                      <div class="ld"><span>Sum assured (cover)</span><b>{{ p.sum_assured ? inrFull(p.sum_assured) : '—' }}</b></div>
+                      <div class="ld"><span>Cover lasts</span><b [class.pos]="p.cover_lifelong">{{ p.cover_until_label }}@if (p.cover_lifelong) { 🛡 }</b></div>
+                      @if (p.accident_benefit) { <div class="ld"><span>Accident benefit</span><b>+{{ inrFull(p.accident_benefit) }}</b></div> }
+                      @if (p.plan_type === 'ulip') {
+                        <div class="ld"><span>Fund units</span><b>{{ p.fund_units || '—' }}</b></div>
+                        <div class="ld"><span>NAV</span><b>{{ p.fund_nav || '—' }}</b></div>
+                        <div class="ld"><span>Fund value</span><b>{{ p.fund_value ? inrFull(p.fund_value) : '—' }}</b></div>
+                        <div class="ld"><span>Invested</span><b>{{ p.invested ? inrFull(p.invested) : '—' }}</b></div>
+                      } @else {
+                        <div class="ld"><span>Guaranteed maturity</span><b>{{ p.maturity_amount ? inrFull(p.maturity_amount) : '—' }}</b></div>
+                        <div class="ld"><span>Bonus accrued</span><b>{{ p.bonus ? inrFull(p.bonus) : '—' }}</b></div>
+                        <div class="ld hi"><span>Total on maturity</span><b class="pos">{{ p.total_maturity ? inrFull(p.total_maturity) : '—' }}</b></div>
+                      }
+                      <div class="ld"><span>Premiums paid by</span><b>{{ p.paid_by || '—' }}</b></div>
+                      <div class="ld"><span>Nominee</span><b>{{ p.nominee || '—' }}@if (p.nominee_relation) { <em class="ld-rel"> · {{ p.nominee_relation }}</em> }</b></div>
+                      @if (p.nominee_phone) { <div class="ld"><span>Nominee phone</span><b><a [href]="'tel:' + p.nominee_phone">{{ p.nominee_phone }}</a></b></div> }
+                      <div class="ld"><span>Agent / branch</span><b>{{ p.agent_name || '—' }}@if (p.branch) { <em class="ld-rel"> · {{ p.branch }}</em> }</b></div>
+                      @if (p.agent_phone) { <div class="ld"><span>Agent phone</span><b><a [href]="'tel:' + p.agent_phone">{{ p.agent_phone }}</a></b></div> }
+                    </div>
+                    @if (p.is_whole_life) { <div class="ld-note wl">🛡 Whole-life plan: after it pays out at maturity, the {{ inr(p.sum_assured) }} life cover <b>continues for life</b> with no more premiums.</div> }
+                    @if (p.remarks) { <div class="ld-remark">📌 {{ p.remarks }}</div> }
+                    <div class="ld-acts">
+                      <button class="btn ghost sm" (click)="startEdit(p)">Edit</button>
+                      <button class="btn ghost sm danger" (click)="remove(p)">Delete</button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  } @else {
+    <div class="empty">Couldn't load LIC policies. <button class="btn sm" (click)="reload()">Retry</button></div>
+  }
+
+  <!-- ── add / edit modal ───────────────────────────────────────────────── -->
+  @if (showAdd() || editingId()) {
+    <div class="modal-back" (click)="showAdd.set(false); editingId.set(null)">
+      <div class="modal card" (click)="$event.stopPropagation()">
+        <div class="modal-head">
+          <div class="card-title">{{ editingId() ? 'Edit policy' : 'Add a policy' }}</div>
+          <button class="x" (click)="showAdd.set(false); editingId.set(null)">✕</button>
+        </div>
+
+        @if (editingId()) {
+          <div class="form-grid">
+            <label><span>Whose life is covered</span><input [ngModel]="editDraft().holder" (ngModelChange)="setEdit('holder',$event)" placeholder="e.g. Ram Prasad"></label>
+            <label><span>Plan name</span><input [ngModel]="editDraft().plan" (ngModelChange)="setEdit('plan',$event)" placeholder="e.g. Plan 149 (Jeevan Anand)"></label>
+            <label><span>Type</span><select [ngModel]="editDraft().plan_type" (ngModelChange)="setEdit('plan_type',$event)">@for (t of meta()?.plan_types; track t) { <option [value]="t">{{ meta()?.type_labels?.[t] }}</option> }</select></label>
+            <label><span>Status</span><select [ngModel]="editDraft().status" (ngModelChange)="setEdit('status',$event)"><option value="active">Running</option><option value="matured">Matured</option><option value="surrendered">Surrendered</option></select></label>
+            <label><span>Policy number</span><input [ngModel]="editDraft().policy_number" (ngModelChange)="setEdit('policy_number',$event)"></label>
+            <label><span>Start date</span><input type="date" [ngModel]="editDraft().start_date" (ngModelChange)="setEdit('start_date',$event)"></label>
+            <label><span>Maturity date</span><input type="date" [ngModel]="editDraft().maturity_date" (ngModelChange)="setEdit('maturity_date',$event)"></label>
+            <label><span>Term (years)</span><input type="number" [ngModel]="editDraft().term_years" (ngModelChange)="setEdit('term_years',$event)"></label>
+            <label><span>Premium-paying years</span><input type="number" [ngModel]="editDraft().premium_paying_years" (ngModelChange)="setEdit('premium_paying_years',$event)"></label>
+            <label><span>Premium (per payment)</span><input type="number" [ngModel]="editDraft().premium" (ngModelChange)="setEdit('premium',$event)"></label>
+            <label><span>Pay frequency</span><select [ngModel]="editDraft().premium_frequency" (ngModelChange)="setEdit('premium_frequency',$event)">@for (f of meta()?.frequencies; track f) { <option [value]="f">{{ f }}</option> }</select></label>
+            <label><span>Premium / year</span><input type="number" [ngModel]="editDraft().premium_annual" (ngModelChange)="setEdit('premium_annual',$event)"></label>
+            <label><span>Sum assured (cover)</span><input type="number" [ngModel]="editDraft().sum_assured" (ngModelChange)="setEdit('sum_assured',$event)"></label>
+            <label><span>Guaranteed maturity</span><input type="number" [ngModel]="editDraft().maturity_amount" (ngModelChange)="setEdit('maturity_amount',$event)"></label>
+            <label><span>Bonus accrued</span><input type="number" [ngModel]="editDraft().bonus" (ngModelChange)="setEdit('bonus',$event)"></label>
+            <label><span>Total on maturity</span><input type="number" [ngModel]="editDraft().total_maturity" (ngModelChange)="setEdit('total_maturity',$event)"></label>
+            <label><span>Accident benefit</span><input type="number" [ngModel]="editDraft().accident_benefit" (ngModelChange)="setEdit('accident_benefit',$event)"></label>
+            <label class="chk"><input type="checkbox" [checked]="editDraft().whole_life" (change)="setEdit('whole_life', !editDraft().whole_life)"><span>Whole-life — cover continues for life after maturity</span></label>
+
+            <div class="form-sec wide">Who claims &amp; whom to contact</div>
+            <label><span>Nominee (who receives)</span><input [ngModel]="editDraft().nominee" (ngModelChange)="setEdit('nominee',$event)" placeholder="e.g. Ranjeev"></label>
+            <label><span>Nominee relationship</span><input [ngModel]="editDraft().nominee_relation" (ngModelChange)="setEdit('nominee_relation',$event)" placeholder="e.g. Son"></label>
+            <label><span>Nominee phone</span><input [ngModel]="editDraft().nominee_phone" (ngModelChange)="setEdit('nominee_phone',$event)" placeholder="e.g. 98xxxxxxxx"></label>
+            <label><span>Agent name</span><input [ngModel]="editDraft().agent_name" (ngModelChange)="setEdit('agent_name',$event)"></label>
+            <label><span>Agent phone</span><input [ngModel]="editDraft().agent_phone" (ngModelChange)="setEdit('agent_phone',$event)"></label>
+            <label><span>LIC branch</span><input [ngModel]="editDraft().branch" (ngModelChange)="setEdit('branch',$event)" placeholder="e.g. Chennai"></label>
+            <label class="wide"><span>Remarks</span><input [ngModel]="editDraft().remarks" (ngModelChange)="setEdit('remarks',$event)"></label>
+          </div>
+          <div class="modal-acts">
+            <button class="btn ghost" (click)="cancelEdit()">Cancel</button>
+            <button class="btn" [disabled]="saving()" (click)="saveEdit()">{{ saving() ? 'Saving…' : 'Save changes' }}</button>
+          </div>
+        } @else {
+          <div class="form-grid">
+            <label><span>Whose life is covered</span><input [ngModel]="draft().holder" (ngModelChange)="setDraft('holder',$event)" placeholder="e.g. Ram Prasad"></label>
+            <label><span>Plan name</span><input [ngModel]="draft().plan" (ngModelChange)="setDraft('plan',$event)" placeholder="e.g. Plan 149 (Jeevan Anand)"></label>
+            <label><span>Type</span><select [ngModel]="draft().plan_type" (ngModelChange)="setDraft('plan_type',$event)">@for (t of meta()?.plan_types; track t) { <option [value]="t">{{ meta()?.type_labels?.[t] }}</option> }</select></label>
+            <label><span>Status</span><select [ngModel]="draft().status" (ngModelChange)="setDraft('status',$event)"><option value="active">Running</option><option value="matured">Matured</option><option value="surrendered">Surrendered</option></select></label>
+            <label><span>Policy number</span><input [ngModel]="draft().policy_number" (ngModelChange)="setDraft('policy_number',$event)"></label>
+            <label><span>Start date</span><input type="date" [ngModel]="draft().start_date" (ngModelChange)="setDraft('start_date',$event)"></label>
+            <label><span>Maturity date</span><input type="date" [ngModel]="draft().maturity_date" (ngModelChange)="setDraft('maturity_date',$event)"></label>
+            <label><span>Term (years)</span><input type="number" [ngModel]="draft().term_years" (ngModelChange)="setDraft('term_years',$event)"></label>
+            <label><span>Premium-paying years</span><input type="number" [ngModel]="draft().premium_paying_years" (ngModelChange)="setDraft('premium_paying_years',$event)"></label>
+            <label><span>Premium (per payment)</span><input type="number" [ngModel]="draft().premium" (ngModelChange)="setDraft('premium',$event)"></label>
+            <label><span>Pay frequency</span><select [ngModel]="draft().premium_frequency" (ngModelChange)="setDraft('premium_frequency',$event)">@for (f of meta()?.frequencies; track f) { <option [value]="f">{{ f }}</option> }</select></label>
+            <label><span>Premium / year</span><input type="number" [ngModel]="draft().premium_annual" (ngModelChange)="setDraft('premium_annual',$event)"></label>
+            <label><span>Sum assured (cover)</span><input type="number" [ngModel]="draft().sum_assured" (ngModelChange)="setDraft('sum_assured',$event)"></label>
+            <label><span>Guaranteed maturity</span><input type="number" [ngModel]="draft().maturity_amount" (ngModelChange)="setDraft('maturity_amount',$event)"></label>
+            <label><span>Bonus accrued</span><input type="number" [ngModel]="draft().bonus" (ngModelChange)="setDraft('bonus',$event)"></label>
+            <label><span>Total on maturity</span><input type="number" [ngModel]="draft().total_maturity" (ngModelChange)="setDraft('total_maturity',$event)"></label>
+            <label><span>Accident benefit</span><input type="number" [ngModel]="draft().accident_benefit" (ngModelChange)="setDraft('accident_benefit',$event)"></label>
+            <label class="chk"><input type="checkbox" [checked]="draft().whole_life" (change)="setDraft('whole_life', !draft().whole_life)"><span>Whole-life — cover continues for life after maturity</span></label>
+
+            <div class="form-sec wide">Who claims &amp; whom to contact</div>
+            <label><span>Nominee (who receives)</span><input [ngModel]="draft().nominee" (ngModelChange)="setDraft('nominee',$event)" placeholder="e.g. Ranjeev"></label>
+            <label><span>Nominee relationship</span><input [ngModel]="draft().nominee_relation" (ngModelChange)="setDraft('nominee_relation',$event)" placeholder="e.g. Son"></label>
+            <label><span>Nominee phone</span><input [ngModel]="draft().nominee_phone" (ngModelChange)="setDraft('nominee_phone',$event)" placeholder="e.g. 98xxxxxxxx"></label>
+            <label><span>Agent name</span><input [ngModel]="draft().agent_name" (ngModelChange)="setDraft('agent_name',$event)"></label>
+            <label><span>Agent phone</span><input [ngModel]="draft().agent_phone" (ngModelChange)="setDraft('agent_phone',$event)"></label>
+            <label><span>LIC branch</span><input [ngModel]="draft().branch" (ngModelChange)="setDraft('branch',$event)" placeholder="e.g. Chennai"></label>
+            <label class="wide"><span>Remarks</span><input [ngModel]="draft().remarks" (ngModelChange)="setDraft('remarks',$event)"></label>
+          </div>
+          <div class="modal-acts">
+            <button class="btn ghost" (click)="showAdd.set(false)">Cancel</button>
+            <button class="btn" [disabled]="saving()" (click)="add()">{{ saving() ? 'Adding…' : 'Add policy' }}</button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>

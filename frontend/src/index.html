@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Networth.io</title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+
+  <!-- PWA: installable + add-to-home-screen on iPhone & Android -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Networth">
+  <meta name="application-name" content="Networth">
+
+  <script src="/lw-charts.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0d0e11; }
+  </style>
+</head>
+<body>
+  <app-root></app-root>
+  <script>
+    // Register the minimal service worker so the app is installable on Android.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/service-worker.js').catch(function () {});
+      });
+    }
+  </script>
+</body>
+</html>

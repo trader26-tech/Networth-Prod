@@ -1,0 +1,196 @@
+.ss-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 0 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.ss-header {
+  .ss-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .ss-title {
+    font-size: 24px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin: 0 0 6px;
+    letter-spacing: -0.3px;
+  }
+  .ss-sub {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0;
+    max-width: 720px;
+    line-height: 1.55;
+  }
+}
+
+.ss-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.ss-kpi {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  .ss-kpi-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+  }
+  .ss-kpi-val {
+    font-size: 19px;
+    font-weight: 800;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.3px;
+    &.pos { color: var(--positive); }
+    &.neg { color: var(--negative); }
+  }
+}
+
+.ss-state {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-secondary);
+  &.ss-error { color: var(--negative); border-color: rgba(229,57,53,0.4); }
+}
+
+.ss-empty {
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 50px 30px;
+  text-align: center;
+
+  .ss-empty-icon { font-size: 38px; margin-bottom: 8px; }
+  h2 { font-size: 16px; font-weight: 800; color: var(--text-primary); margin: 0 0 6px; }
+  p  { font-size: 13px; color: var(--text-secondary); margin: 0 auto 20px; max-width: 480px; line-height: 1.55; }
+  .ss-cta {
+    display: inline-block;
+    padding: 10px 20px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background 0.15s;
+    &:hover { background: var(--accent-hover); }
+  }
+}
+
+.ss-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ss-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.ss-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+
+  .ss-card-title {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text-primary);
+
+    .ss-card-icon { font-size: 18px; }
+  }
+  .ss-card-status {
+    font-size: 10.5px;
+    font-weight: 800;
+    padding: 3px 9px;
+    border-radius: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+
+    &.ss-status-active { background: rgba(22,160,133,0.10); color: var(--positive); border: 1px solid rgba(22,160,133,0.4); }
+    &.ss-status-closed { background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); }
+  }
+}
+
+.ss-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 10px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+  }
+  .ss-fld-lbl {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+  }
+  .ss-fld-val {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    &.pos { color: var(--positive); }
+    &.neg { color: var(--negative); }
+  }
+}
+
+.ss-card-foot {
+  display: flex;
+  justify-content: flex-end;
+  .ss-card-cta {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    text-decoration: none;
+    &:hover { text-decoration: underline; }
+  }
+}
+
+.ss-future {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 12px 14px;
+  background: rgba(56,126,209,0.06);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+  line-height: 1.55;
+  strong { color: var(--accent); font-weight: 800; }
+}

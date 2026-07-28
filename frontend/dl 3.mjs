@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+const OUT='/private/tmp/claude-501/-Users-ranjeev-Documents-projects-Networth/64346bbc-e794-4e1f-b4ec-4d46cd78b9a6/scratchpad';
+const b=await chromium.launch(); const ctx=await b.newContext({viewport:{width:1400,height:1000},deviceScaleFactor:2,reducedMotion:'reduce'});
+await ctx.addCookies([{name:'nw_device',value:process.env.NW_DEV,domain:'localhost',path:'/',sameSite:'Lax'}]);
+await ctx.addInitScript(([t,e])=>{localStorage.setItem('nw_at',t);localStorage.setItem('nw_at_exp',e);},[process.env.NW_TOK,process.env.NW_EXP]);
+const p=await ctx.newPage();
+await p.goto('http://localhost:4200/land',{waitUntil:'networkidle'}); await p.waitForTimeout(3000);
+await p.screenshot({path:`${OUT}/bhoomi-fab.png`});
+await p.evaluate(()=>document.querySelector('.bhoomi-fab').click()); await p.waitForTimeout(2500);
+await p.screenshot({path:`${OUT}/bhoomi-open.png`});
+await p.evaluate(()=>{ for(const el of document.querySelectorAll('.bhoomi-pop .opt')){ if(el.textContent.includes('sell now')){el.click();break;} } });
+await p.waitForTimeout(1600);
+await p.screenshot({path:`${OUT}/bhoomi-cards.png`});
+const w = await p.evaluate(()=>{const e=document.querySelector('.bhoomi-pop'); return e?Math.round(e.getBoundingClientRect().width)+'x'+Math.round(e.getBoundingClientRect().height):'none'});
+console.log('pop size', w, '| cards', await p.evaluate(()=>document.querySelectorAll('.bhoomi-pop .parcel').length));
+await b.close();

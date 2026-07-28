@@ -1,0 +1,302 @@
+<div class="ht-page" [class.embedded]="embedded">
+  <div class="ht-head">
+    <button class="ht-avatar" [class.active]="aboutOpen()" (click)="toggleAbout()" title="What does Chanakya know & do?">
+      @if (imgOk()) { <img [src]="avatarImg" alt="Chanakya" (error)="imgOk.set(false)"> }
+      @else { <span class="ht-emoji">{{ bot.emoji }}</span> }
+    </button>
+    <div class="ht-who">
+      <h1>{{ bot.name }}</h1>
+      <p>{{ bot.role }} · <button class="ht-tab-btn" (click)="toggleAbout()">what I know &amp; do</button></p>
+    </div>
+    <div class="ht-badge">FY 2025-26</div>
+    @if (embedded) {
+      <button class="ht-icon" (click)="toggleSize.emit()" [title]="expanded ? 'Minimise' : 'Expand'">
+        @if (expanded) {
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9L4 4M9 9V5M9 9H5M15 15l5 5M15 15v4M15 15h4"/></svg>
+        } @else {
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7"/></svg>
+        }
+      </button>
+      <button class="ht-icon" (click)="closed.emit()" title="Close">✕</button>
+    }
+  </div>
+
+  <div class="ht-chat">
+    @if (aboutOpen()) {
+      <div class="ht-about">
+        <div class="hta-scroll">
+          <div class="hta-hero">
+            <div class="hta-ava">
+              @if (imgOk()) { <img [src]="avatarImg" alt="Chanakya" (error)="imgOk.set(false)"> }
+              @else { <span>{{ bot.emoji }}</span> }
+            </div>
+            <div class="hta-id">
+              <h2>{{ bot.name }}</h2>
+              <p>{{ bot.role }} · FY 2025-26</p>
+              <span class="hta-tagline">A rule-based strategist — no guesswork, every answer on your real numbers.</span>
+            </div>
+          </div>
+
+          <div class="hta-sec">
+            <div class="hta-h">📚 What I know about you</div>
+            <div class="hta-knows">
+              @for (k of knows; track k.text) {
+                <div class="hta-know"><span class="htk-i">{{ k.icon }}</span><span>{{ k.text }}</span></div>
+              }
+            </div>
+          </div>
+
+          <div class="hta-sec">
+            <div class="hta-h">🛠️ What I can do <span class="hta-hh">tap one to start</span></div>
+            <div class="hta-skills">
+              @for (s of skills; track s.key) {
+                <button class="hta-skill" (click)="openSkill(s.key)">
+                  <span class="hts-i">{{ s.icon }}</span>
+                  <span class="hts-txt"><b>{{ s.title }}</b><em>{{ s.desc }}</em></span>
+                  <span class="hts-go">→</span>
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+        <button class="hta-close" (click)="aboutOpen.set(false)">Got it — let’s talk</button>
+      </div>
+    }
+    <div class="ht-scroll" #scrollEl>
+      @for (m of msgs(); track $index) {
+        @if (m.role === 'user') {
+          <div class="row user"><div class="bubble user">{{ m.text }}</div></div>
+        } @else {
+          <div class="row bot">
+            <div class="ava">@if (imgOk()) { <img [src]="avatarImg" alt="" (error)="imgOk.set(false)"> } @else { {{ bot.emoji }} }</div>
+            <div class="bot-col">
+              @if (m.text) { <div class="bubble bot" [innerHTML]="boldify(m.text)"></div> }
+
+              @switch (m.card) {
+                <!-- per-sector: how much tax each income + capital-gains-if-sold -->
+                @case ('sectors') {
+                  <div class="card-wrap ht-sectors">
+                    <div class="hsec-h">Income tax now · by sector</div>
+                    @for (r of m.data.rows; track r.sector) {
+                      <div class="hsec">
+                        <div class="hsec-top"><span class="hsec-name">{{ r.sector }}</span>
+                          <span class="hsec-nums"><em>{{ inr(r.income) }}</em><b class="neg">−{{ inr(r.tax) }}</b></span></div>
+                        <div class="hsec-note">{{ r.note }}</div>
+                      </div>
+                    }
+                    <div class="hsec total"><span>Total income tax / yr</span><b class="neg">{{ inr(m.data.totalTax) }}</b></div>
+                    @if (m.data.cg.length) {
+                      <div class="hsec-h cg">If you sold — capital-gains tax</div>
+                      @for (c of m.data.cg; track c.sector) {
+                        <div class="hsec cg">
+                          <div class="hsec-top"><span class="hsec-name">{{ c.sector }}</span>
+                            <span class="hsec-nums"><em>gain {{ inr(c.gain) }}</em><b class="neg">−{{ inr(c.tax) }}</b></span></div>
+                          <div class="hsec-note ok">↓ {{ c.shelter }}</div>
+                        </div>
+                      }
+                    }
+                  </div>
+                }
+
+                <!-- the plan: asset-referenced steps -->
+                @case ('plan') {
+                  <div class="card-wrap ht-plan">
+                    @for (r of m.data.rows; track r.title) {
+                      <div class="hp">
+                        <div class="hp-top"><span class="hp-title">{{ r.title }}</span><span class="hp-save">save {{ inr(r.save) }}</span></div>
+                        <ol class="hp-steps">@for (s of r.steps; track s) { <li [innerHTML]="boldify(s)"></li> }</ol>
+                      </div>
+                    }
+                    <div class="hp-total">Stack them → about <b>{{ inr(m.data.total) }}</b> saved</div>
+                  </div>
+                }
+
+                <!-- need ₹X calculator -->
+                @case ('need') {
+                  <div class="card-wrap ht-need">
+                    <label class="hn-in"><span class="hn-l">How much cash do you need?</span>
+                      <span class="hn-field"><em>₹</em><input type="text" inputmode="numeric" placeholder="e.g. 50,00,000"
+                        [ngModel]="fmt(needAmt())" (ngModelChange)="setNeed($event)"></span>
+                    </label>
+                    @if (needPlan(); as np) {
+                      <div class="hn-res">
+                        <div class="hn-hero"><span>Raise {{ inr(np.raised) }} · pay only</span><b class="neg">{{ inr(np.tax) }}</b>
+                          @if (np.netIfPlanned < np.tax) { <em>→ {{ inr(np.netIfPlanned) }} if you route property via 54EC/54F</em> }</div>
+                        @for (l of np.legs; track l.label) {
+                          <div class="hn-leg">
+                            <div class="hnl-r1"><span class="hnl-name">{{ l.label }}</span><span class="hnl-raise">{{ inr(l.raise) }}</span><span class="hnl-tax" [class.free]="l.tax===0">{{ l.tax ? '−' + inr(l.tax) : 'tax-free' }}</span></div>
+                            <span class="hnl-note">{{ l.note }}</span>
+                          </div>
+                        }
+                        @if (np.short > 0) { <div class="hn-short">Your assets cover {{ inr(np.raised) }}; {{ inr(np.short) }} short.</div> }
+                      </div>
+                    } @else { <div class="hn-hint">Type an amount — I'll draw it from your least-taxed assets first (cash → FDs → stocks with the ₹1.25 L free → property you can shelter).</div> }
+                  </div>
+                }
+
+                <!-- old vs new regime · accordion, one person open at a time -->
+                @case ('regime') {
+                  <div class="card-wrap ht-regime">
+                    <div class="hrg-h">Old vs New regime <span class="hrg-hh">tap a person</span></div>
+                    <div class="hrg-colh"><span></span><span class="hc-col">New</span><span class="hc-col">Old</span><span></span></div>
+                    @for (r of m.data.rows; track r.name) {
+                      <div class="hrga" [class.open]="isRegimeOpen(r.name)" [class.nri]="r.isNRI">
+                        <!-- collapsed: name + the two regime numbers (winner in green) -->
+                        <button type="button" class="hrga-row" (click)="toggleRegime(r.name)">
+                          <span class="hrga-name">{{ r.name }}@if (r.isNRI) { <span class="hrg-tag">NRI</span> }</span>
+                          <span class="hrga-val" [class.win]="r.winner === 'new'">{{ inr(r.newTax) }}</span>
+                          <span class="hrga-val" [class.win]="r.winner === 'old'">{{ inr(r.oldTax) }}</span>
+                          <span class="hrga-cv">▾</span>
+                        </button>
+
+                        @if (isRegimeOpen(r.name)) {
+                          <div class="hrga-body">
+                            <!-- income build-up -->
+                            <div class="hrg-inclist">
+                              @if (r.salaryForeign > 0) {
+                                <div class="hri foreign">
+                                  <span class="hri-l">💼 Salary <em>· KWD</em></span>
+                                  <span class="hri-a">{{ inr(r.salaryForeign) }}<em>not taxed in India</em></span>
+                                </div>
+                              }
+                              @for (it of r.income; track it.label) {
+                                <div class="hri"><span class="hri-l">{{ it.icon }} {{ it.label }}</span><span class="hri-a">{{ inr(it.amount) }}</span></div>
+                              }
+                              @if (!r.income.length) {
+                                <div class="hri none"><span class="hri-l">No India-taxable income</span><span class="hri-a">₹0</span></div>
+                              }
+                              <div class="hri total"><span class="hri-l">India-taxable income</span><span class="hri-a">{{ inr(r.slab) }}</span></div>
+                            </div>
+
+                            <!-- calculation: closed by default; open to see the New/Old working -->
+                            @if (isCalcOpen(r.name)) {
+                              <div class="hrg-calc">
+                                <button type="button" class="hrg-calc-head" (click)="closeCalc()">
+                                  <span>How it's calculated</span><span class="hcc-cv">▾</span>
+                                </button>
+                                <div class="hrg-seg">
+                                  <button type="button" [class.on]="calcRegime() === 'new'" (click)="setCalcRegime('new')">New<b>{{ inr(r.newTax) }}</b></button>
+                                  <button type="button" [class.on]="calcRegime() === 'old'" (click)="setCalcRegime('old')">Old<b>{{ inr(r.oldTax) }}</b></button>
+                                </div>
+                                @let bd = taxBreakdown(r, calcRegime());
+                                <div class="hrg-work">
+                                  <div class="hw-list">
+                                    @if (bd.deductions.length) {
+                                      <div class="hw-row"><span>Income</span><b>{{ inr(bd.grossTaxable) }}</b></div>
+                                      @for (d of bd.deductions; track d.label) {
+                                        <div class="hw-row ded"><span>less {{ d.label }}</span><b>−{{ inr(d.amount) }}</b></div>
+                                      }
+                                      <div class="hw-row sub"><span>Taxable</span><b>{{ inr(bd.taxable) }}</b></div>
+                                    } @else {
+                                      <div class="hw-row sub"><span>Taxable income</span><b>{{ inr(bd.taxable) }}</b></div>
+                                    }
+                                    @if (bd.rebate) {
+                                      <div class="hw-rebate">Under the {{ lk(bd.rebateLimit) }} limit → <b>Section 87A rebate</b> takes the tax to nil.</div>
+                                    } @else {
+                                      @for (s of bd.slabs; track s.label) {
+                                        <div class="hw-row slab"><span>{{ s.label }} <em>@ {{ s.rate * 100 }}%</em></span><b>{{ inr(s.amount) }}</b></div>
+                                      }
+                                      <div class="hw-row sub"><span>Tax on slabs</span><b>{{ inr(bd.taxBeforeCess) }}</b></div>
+                                      <div class="hw-row"><span>+ Health &amp; education cess 4%</span><b>{{ inr(bd.cess) }}</b></div>
+                                    }
+                                    <div class="hw-row total"><span>Total tax</span><b>{{ inr(bd.total) }}</b></div>
+                                  </div>
+                                  @if (bd.isNRI && !bd.rebate) {
+                                    <div class="hw-note">🌍 As an NRI you don’t get the {{ lk(bd.rebateLimit) }} rebate, so tax runs from {{ lk(bd.exemptUpto) }} upward.@if (bd.regime === 'old') { Assumes 80C + NPS are claimed.}</div>
+                                  } @else if (bd.regime === 'old') {
+                                    <div class="hw-note">Assumes 80C + NPS are fully claimed.</div>
+                                  }
+                                </div>
+                              </div>
+                            } @else {
+                              <button type="button" class="hrg-calc-toggle" (click)="openCalc(r)">
+                                <span class="hct-i">🧮</span> See how it's calculated
+                                <span class="hct-sub">New vs Old</span>
+                                <span class="hct-cv">›</span>
+                              </button>
+                            }
+                          </div>
+                        }
+                      </div>
+                    }
+                    <div class="hrg-total">
+                      <span class="hrgt-l">Family total / yr</span>
+                      <b class="hrgt-v" [class.win]="m.data.familyNew <= m.data.familyOld">{{ inr(m.data.familyNew) }}</b>
+                      <b class="hrgt-v" [class.win]="m.data.familyOld < m.data.familyNew">{{ inr(m.data.familyOld) }}</b>
+                      <span></span>
+                    </div>
+                  </div>
+                }
+
+                <!-- ₹0-tax plan — whose name holds what, filling each rebate room -->
+                @case ('zerotax') {
+                  <div class="card-wrap ht-zero">
+                    <div class="hrg-h">Whose name holds what <span class="hrg-hh">fill each ₹12 L rebate, don't overflow</span></div>
+                    @for (h of m.data.hosts; track h.name) {
+                      <div class="hzh" [class.over]="h.over > 0" [class.src]="!h.incoming.length && (h.releases > 0 || h.nre.length)">
+                        <div class="hzh-top">
+                          <span class="hzh-name">{{ h.name }}@if (h.isNRI) { <span class="hrg-tag">NRI</span> }</span>
+                          <span class="hzh-role">{{ h.incoming.length ? 'take on' : (h.releases > 0 || h.nre.length ? 'hand over' : 'keeps') }}</span>
+                          <span class="hzh-tax">tax <b [class.ok]="h.finalTax === 0">{{ inr(h.finalTax) }}</b></span>
+                        </div>
+                        <!-- capacity bar vs their 0-tax ceiling -->
+                        <div class="hzh-bar" [title]="'0-tax ceiling ' + inr(h.cap)">
+                          <div class="hzh-fill own" [style.width.%]="h.ownPct"></div>
+                          <div class="hzh-fill add" [style.width.%]="h.addPct"></div>
+                        </div>
+                        <div class="hzh-scale">
+                          <span>own {{ inr(h.ownIncome) }}@if (h.incomingTotal) { <b>+ {{ inr(h.incomingTotal) }} shifted</b> } = {{ inr(h.finalIncome) }}</span>
+                          <span [class.warn]="h.over > 0">{{ h.over > 0 ? '⚠ ' + inr(h.over) + ' over the cap' : inr(h.roomLeft) + ' room left' }}</span>
+                        </div>
+                        <!-- assets to register in this person's name -->
+                        @for (mv of h.incoming; track mv.name) {
+                          <div class="hzh-asset"><span class="hza-l">{{ mv.icon }} {{ mv.name }} <em>{{ mv.meta }}</em></span><span class="hza-r">from {{ mv.from }} · +{{ inr(mv.income) }}</span></div>
+                        }
+                        @for (nm of h.nre; track nm.name) {
+                          <div class="hzh-asset"><span class="hza-l">🏦 {{ nm.name }} <em>{{ nm.meta }}</em></span><span class="hza-r nre">→ NRE · tax-free</span></div>
+                        }
+                        @if (h.isNRI && !h.incoming.length && h.releases > 0) {
+                          <div class="hzh-note">Gift all rented flats &amp; shares to the residents above; keep only the KWD salary (untaxed in India).</div>
+                        }
+                      </div>
+                    }
+                    <div class="hz-fam">
+                      <span class="hzf-l">Family tax / yr</span>
+                      <span class="hzf-v">{{ inr(m.data.familyBefore) }} <em>→</em> <b [class.ok]="m.data.familyAfter === 0">{{ inr(m.data.familyAfter) }}</b></span>
+                    </div>
+                  </div>
+                }
+
+                <!-- ownership restructuring -->
+                @case ('restructure') {
+                  <div class="card-wrap ht-restr">
+                    @if (m.data.moves.length) {
+                      @for (mv of m.data.moves; track mv.asset) {
+                        <div class="hrm">
+                          <div class="hrm-top"><b>{{ mv.asset }}</b><span class="hrm-flow">{{ mv.from }} → <b>{{ mv.to }}</b></span></div>
+                          <div class="hrm-why">{{ mv.why }}</div>
+                        </div>
+                      }
+                    } @else { <div class="hn-hint">Your assets are already spread across the family — no obvious high-to-low-slab move.</div> }
+                  </div>
+                }
+              }
+            </div>
+          </div>
+        }
+      }
+      @if (typing()) {
+        <div class="row bot"><div class="ava">@if (imgOk()) { <img [src]="avatarImg" alt="" (error)="imgOk.set(false)"> } @else { {{ bot.emoji }} }</div>
+          <div class="bubble bot typing"><span></span><span></span><span></span></div></div>
+      }
+      <!-- quick-reply chips flow inline, right under Chanakya's last message -->
+      @if (options().length && !typing()) {
+        <div class="ht-options">
+          @for (o of options(); track o.key) { <button class="opt" (click)="choose(o)">{{ o.label }}</button> }
+        </div>
+      }
+    </div>
+
+    <div class="ht-disclaimer">⚖️ Estimates for planning, on your recorded numbers &amp; FY 2025-26 rules. Confirm with a chartered accountant before acting.</div>
+  </div>
+</div>

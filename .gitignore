@@ -1,0 +1,46 @@
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Node / Angular
+frontend/node_modules/
+frontend/.angular/
+frontend/dist/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local runtime data
+api/cc_positions.json
+api/cc_simulations.json
+api/hedges.json
+api/options_legs.json
+api/options_bookings.json
+api/options_snapshots.json
+api/fundamentals/data/
+
+# Net-worth dashboard — personal financial data, never commit
+api/networth_data/
+# JSON-fallback stores for the financial modules (salary, expenses, income, planner, …)
+api/*_data/
+summaryofallassets_excel.xlsx
+*.xlsx
+
+
+# Personal broker holdings exports (ICICI / IBKR / Motilal) — never commit
+w-formats/
+
+# F&O raw tradebook uploads — personal trade data, never commit
+api/w-formatts/

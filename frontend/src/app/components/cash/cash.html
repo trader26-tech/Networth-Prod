@@ -1,0 +1,163 @@
+<div class="land-head">
+  <div>
+    <h1>Cash &amp; funds in hand</h1>
+    <p class="sub">Physical cash and bank balances — your most liquid money. Foreign holdings (e.g. Kuwaiti Dinar) convert to ₹ live. Counts toward net worth and shows under "Liquid now".</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" (click)="openAdd()">＋ Add funds</button>
+  </div>
+</div>
+
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head"><span class="ni">⚙︎</span>
+      <div><strong>One-time setup — create the Supabase table</strong>
+        <p>Paste the SQL from <b>SUPABASE.md → "Cash / funds table"</b> into the Supabase SQL editor, then retry.</p></div>
+    </div>
+    <div class="notice-actions"><button class="btn primary" (click)="reload()">I've run it — retry</button></div>
+  </div>
+}
+
+@if (error()) { <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div> }
+@if (loading()) { <div class="state">Loading funds…</div> }
+
+<!-- Hero -->
+@if (!loading() && !needsMigration() && hasData() && data(); as s) {
+  <div class="hero">
+    <div class="hero-main">
+      <span class="hero-label">Cash &amp; funds</span>
+      <span class="hero-value">{{ inr(s.total) }}</span>
+      <span class="hero-exact">{{ inrFull(s.total) }} · {{ s.count }} account{{ s.count === 1 ? '' : 's' }}</span>
+      <div class="hero-stats">
+        <div class="hs"><span class="k">Bank</span><span class="v">{{ inr(s.bank) }}</span></div>
+        <div class="hs"><span class="k">Cash in hand</span><span class="v">{{ inr(s.cash) }}</span></div>
+        @if (s.has_foreign) { @for (c of s.currencies; track c) { @if (c !== 'INR') {
+          <div class="hs fx"><span class="k">Rate · {{ c }}</span><span class="v sm">{{ inrFull(inrPer(c)) }}</span></div>
+        } } }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Empty -->
+@if (!loading() && !needsMigration() && !hasData()) {
+  <div class="empty">
+    <div class="empty-card">
+      <div class="big">💵</div>
+      <h2>No funds tracked yet</h2>
+      <p>Add a bank balance or cash in hand — pick the currency (₹ or foreign) and the amount. It'll count toward your net worth and liquid funds.</p>
+      <button class="btn primary" (click)="openAdd()">＋ Add your first</button>
+    </div>
+  </div>
+}
+
+<!-- Table -->
+@if (!loading() && hasData()) {
+  <div class="table-wrap">
+    <table class="land-table">
+      <colgroup>
+        <col class="c-where"><col class="c-type"><col class="c-owner"><col class="c-bal"><col class="c-inr"><col class="c-asof"><col class="c-act">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Where</th><th>Type</th><th>Owner</th>
+          <th class="num">Balance</th>
+          <th class="num has-tip" data-tip="Converted to ₹ at today's live rate.">₹</th>
+          <th class="has-tip tip-right" data-tip="When you last updated this balance.">As of</th>
+          <th class="act"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (it of items(); track it.id) {
+          <tr class="row" [class.open]="expandedId() === it.id" (click)="toggle(it)">
+            <td class="name" data-label="Where"><b>{{ it.where || (it.type === 'cash' ? 'Cash in hand' : 'Bank') }}</b>@if (it.account_label) { <small>{{ it.account_label }}</small> }</td>
+            <td data-label="Type"><span class="type-chip" [class.cash]="it.type === 'cash'">{{ typeLabel(it.type) }}</span></td>
+            <td data-label="Owner">{{ it.owner || '—' }}</td>
+            <td class="num" data-label="Balance">{{ money(it.balance, it.currency) }}</td>
+            <td class="num value" data-label="₹">{{ inr(it.balance_inr) }}</td>
+            <td data-label="As of">{{ fmtDay(it.as_of_date) }}</td>
+            <td class="act" data-label="">
+              <button class="trash" (click)="$event.stopPropagation(); remove(it)" title="Delete" aria-label="Delete">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                </svg>
+              </button>
+            </td>
+          </tr>
+
+          @if (expandedId() === it.id && editDraft(); as d) {
+            <tr class="edit-row">
+              <td [attr.colspan]="7">
+                <div class="edit-panel">
+                  <div class="edit-grid">
+                    <label class="fld"><span>Type</span>
+                      <div class="seg">
+                        <button type="button" [class.on]="d.type === 'bank'" (click)="d.type = 'bank'">Bank</button>
+                        <button type="button" [class.on]="d.type === 'cash'" (click)="d.type = 'cash'">Cash in hand</button>
+                      </div>
+                    </label>
+                    <label class="fld"><span>{{ d.type === 'cash' ? 'Location' : 'Bank' }}</span><input list="cash-wheres" [ngModel]="d.where" (ngModelChange)="d.where = $event" [placeholder]="d.type === 'cash' ? 'e.g. Home locker' : 'e.g. HDFC'"></label>
+                    <label class="fld"><span>Owner</span><input [ngModel]="d.owner" (ngModelChange)="d.owner = $event"></label>
+                    @if (d.type === 'bank') { <label class="fld"><span>Account label</span><input [ngModel]="d.account_label" (ngModelChange)="d.account_label = $event" placeholder="e.g. ••1234"></label> }
+                    <label class="fld"><span>Balance</span><input type="number" [ngModel]="d.balance" (ngModelChange)="d.balance = $event"></label>
+                    <label class="fld"><span>Currency</span><select [ngModel]="d.currency" (ngModelChange)="d.currency = $event">@for (c of currencyList(); track c) { <option [value]="c">{{ c }}</option> }</select></label>
+                    <label class="fld"><span>As of date</span><input type="date" [ngModel]="d.as_of_date" (ngModelChange)="d.as_of_date = $event"></label>
+                    <label class="fld span2"><span>Note</span><textarea rows="2" [ngModel]="d.note" (ngModelChange)="d.note = $event"></textarea></label>
+                  </div>
+                  <div class="parcel-actions">
+                    <button class="btn danger" (click)="remove(it)">Delete</button>
+                    <div class="spacer"></div>
+                    <button class="btn ghost" (click)="toggle(it)">Cancel</button>
+                    <button class="btn primary" (click)="saveEdit(it)" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save changes' }}</button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+  </div>
+}
+
+<datalist id="cash-wheres">@for (w of whereList(); track w) { <option [value]="w"></option> }</datalist>
+
+<!-- Add modal -->
+@if (showAdd()) {
+  <div class="modal-back" (click)="closeAdd()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-head"><h3>Add funds</h3><button class="x" (click)="closeAdd()">✕</button></div>
+      <div class="edit-grid">
+        <label class="fld"><span>Type</span>
+          <div class="seg">
+            <button type="button" [class.on]="addDraft().type === 'bank'" (click)="addDraft().type = 'bank'">Bank</button>
+            <button type="button" [class.on]="addDraft().type === 'cash'" (click)="addDraft().type = 'cash'">Cash in hand</button>
+          </div>
+        </label>
+        <label class="fld"><span>{{ addDraft().type === 'cash' ? 'Location' : 'Bank' }}</span><input list="cash-wheres" [ngModel]="addDraft().where" (ngModelChange)="addDraft().where = $event" [placeholder]="addDraft().type === 'cash' ? 'e.g. Home locker' : 'e.g. HDFC'"></label>
+        <label class="fld"><span>Owner</span><input [ngModel]="addDraft().owner" (ngModelChange)="addDraft().owner = $event" placeholder="e.g. Dad"></label>
+        @if (addDraft().type === 'bank') { <label class="fld"><span>Account label</span><input [ngModel]="addDraft().account_label" (ngModelChange)="addDraft().account_label = $event" placeholder="e.g. ••1234"></label> }
+        <label class="fld"><span>Balance</span><input type="number" [ngModel]="addDraft().balance" (ngModelChange)="addDraft().balance = $event"></label>
+        <label class="fld"><span>Currency</span><select [ngModel]="addDraft().currency" (ngModelChange)="addDraft().currency = $event">@for (c of currencyList(); track c) { <option [value]="c">{{ c }}</option> }</select></label>
+        <label class="fld"><span>As of date</span><input type="date" [ngModel]="addDraft().as_of_date" (ngModelChange)="addDraft().as_of_date = $event"></label>
+        <label class="fld span2"><span>Note</span><textarea rows="2" [ngModel]="addDraft().note" (ngModelChange)="addDraft().note = $event"></textarea></label>
+      </div>
+      <p class="preview">≈ <b>{{ inr(balPreview(addDraft())) }}</b>@if (isForeign(addDraft().currency)) { <span class="muted">· 1 {{ addDraft().currency }} = {{ inrFull(inrPer(addDraft().currency)) }} (live)</span> }</p>
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="closeAdd()">Cancel</button>
+        <button class="btn primary" (click)="submitAdd()" [disabled]="adding()">{{ adding() ? 'Saving…' : 'Add funds' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Undo toast -->
+@if (pendingDelete(); as pd) {
+  <div class="undo-toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+    <span>Deleted <b>{{ pd.item.where || 'funds' }}</b></span>
+    <button class="undo-btn" (click)="undoDelete()">Undo</button>
+    <button class="undo-x" (click)="finalizeDelete()" title="Dismiss">✕</button>
+  </div>
+}

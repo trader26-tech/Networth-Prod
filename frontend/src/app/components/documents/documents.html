@@ -1,0 +1,194 @@
+<div class="land-head">
+  <div>
+    <h1>Documents</h1>
+    <p class="sub">Your document vault. Make <b>folders</b> (Aadhaar, insurance, anything) and keep any file. Documents attached to <b>Land, Apartments & Gold</b> appear here automatically once they have files.</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" (click)="startAddFolder('')">＋ New folder</button>
+  </div>
+</div>
+
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head"><span class="ni">⚙︎</span>
+      <div><strong>One-time setup — create the vault tables</strong>
+        <p>Paste this into <b>Supabase → SQL Editor → Run</b>, then hit retry.</p>
+        <pre class="sql">{{ migrationSql }}</pre>
+      </div>
+    </div>
+    <div class="notice-actions">
+      <button class="btn" (click)="copySql()">{{ copied() ? '✓ Copied' : 'Copy SQL' }}</button>
+      <button class="btn primary" (click)="load()">I've run it — retry</button>
+    </div>
+  </div>
+}
+
+@if (error()) { <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div> }
+@if (loading()) { <div class="state">Loading…</div> }
+
+@if (!loading() && !needsMigration()) {
+  <!-- top-level new-folder input -->
+  @if (addingSubFor() === '') {
+    <div class="new-folder">
+      <input type="text" placeholder="Folder name (e.g. Aadhaar)" [ngModel]="newName()" (ngModelChange)="newName.set($event)"
+             (keyup.enter)="createFolder()" (keyup.escape)="addingSubFor.set(null)" autofocus>
+      <button class="btn primary" (click)="createFolder()">Create</button>
+      <button class="btn ghost" (click)="addingSubFor.set(null)">Cancel</button>
+    </div>
+  }
+
+  <div class="finder">
+  <div class="tree">
+    @for (row of rows(); track row.key) {
+
+      <!-- ── vault folder ── -->
+      @if (row.t === 'folder') {
+        <div class="row folder" [style.padding-left.px]="indent(row.depth)" (click)="toggleFolder(row.id)">
+          <span class="ficon" [class.open]="isExp(row.id)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+          @if (renamingId() === 'fld:' + row.id) {
+            <input class="rename" [ngModel]="renameText()" (ngModelChange)="renameText.set($event)" (click)="$event.stopPropagation()"
+                   (keyup.enter)="saveFolderName(row.id)" (keyup.escape)="cancelRename()" autofocus>
+          } @else {
+            <span class="name">{{ row.name }}</span>
+            <span class="count">{{ row.files }} file{{ row.files === 1 ? '' : 's' }}</span>
+          }
+          <span class="acts" (click)="$event.stopPropagation()">
+            <label class="ib up" [class.busy]="uploadingKey() === 'fld:' + row.id" title="Upload files">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>
+              <input type="file" multiple hidden (change)="onPickVault($event, row.id)"></label>
+            <button class="ib" (click)="startAddFolder(row.id)" title="New subfolder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><line x1="12" y1="10.5" x2="12" y2="15.5"/><line x1="9.5" y1="13" x2="14.5" y2="13"/></svg></button>
+            <button class="ib" (click)="startRename('fld:' + row.id, row.name)" title="Rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+            <button class="ib del" (click)="deleteFolder(row.id, row.name, $event)" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+          </span>
+        </div>
+        <!-- inline new-subfolder input -->
+        @if (addingSubFor() === row.id) {
+          <div class="new-folder sub" [style.padding-left.px]="indent(row.depth + 1)">
+            <input type="text" placeholder="Subfolder name" [ngModel]="newName()" (ngModelChange)="newName.set($event)"
+                   (keyup.enter)="createFolder()" (keyup.escape)="addingSubFor.set(null)" autofocus>
+            <button class="btn primary sm" (click)="createFolder()">Create</button>
+            <button class="btn ghost sm" (click)="addingSubFor.set(null)">Cancel</button>
+          </div>
+        }
+      }
+
+      <!-- ── vault file ── -->
+      @if (row.t === 'vfile') {
+        <div class="row file" [class.sel]="selected()?.id === row.id" [style.padding-left.px]="indent(row.depth)"
+             (click)="selectFile(row.id, row.name, row.mime, row.size, row.date, vaultUrl(row.id), 'vault')">
+          @if (renamingId() === row.id) {
+            <input class="rename" [ngModel]="renameText()" (ngModelChange)="renameText.set($event)" (click)="$event.stopPropagation()"
+                   (keyup.enter)="saveVFile(row, row.folderId)" (keyup.escape)="cancelRename()" autofocus>
+            <button class="ib ok" (click)="$event.stopPropagation(); saveVFile(row, row.folderId)" title="Save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>
+            <button class="ib" (click)="$event.stopPropagation(); cancelRename()" title="Cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          } @else {
+            <span class="thumb t-{{ kind(row.name, row.mime) }}" [title]="row.name">
+              @if (isImage(row.mime)) { <img [src]="prev(vaultUrl(row.id))" loading="lazy" alt=""> }
+              @else { <span class="ext">{{ ext(row.name) }}</span> }
+            </span>
+            <span class="name file-name">{{ row.name }}</span>
+            <span class="meta">{{ fmtBytes(row.size) }} · {{ row.date }}</span>
+            <span class="acts" (click)="$event.stopPropagation()">
+              <button class="ib" (click)="startRename(row.id, row.name)" title="Rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+              <button class="ib del" (click)="deleteVFile(row.id, row.name, row.folderId)" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+            </span>
+          }
+        </div>
+      }
+
+      <!-- ── linked group (Land/Apartments/Gold) ── -->
+      @if (row.t === 'lgroup') {
+        <div class="row folder" [style.padding-left.px]="indent(row.depth)" (click)="toggleGroup(row.domain)">
+          <span class="ficon" [class.open]="isExp('dom:' + row.domain)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h3.2a2 2 0 0 1 1.6.8l.9 1.2a2 2 0 0 0 1.6.8H20a2 2 0 0 1 2 2"/><path d="M4.3 20h14a2 2 0 0 0 1.94-1.5l1.2-5A1.5 1.5 0 0 0 20 11.6H6.4a2 2 0 0 0-1.94 1.5L3 19"/></svg></span>
+          <span class="name">{{ row.name }}</span>
+          <span class="count">{{ row.files }} file{{ row.files === 1 ? '' : 's' }}</span>
+          <span class="tag">linked</span>
+        </div>
+      }
+
+      <!-- ── linked entity (a parcel / flat / piece) ── -->
+      @if (row.t === 'lentity') {
+        <div class="row folder" [style.padding-left.px]="indent(row.depth)" (click)="toggleEntity(row.domain, row.id)">
+          <span class="ficon" [class.open]="isExp('ent:' + row.domain + ':' + row.id)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h3.2a2 2 0 0 1 1.6.8l.9 1.2a2 2 0 0 0 1.6.8H20a2 2 0 0 1 2 2"/><path d="M4.3 20h14a2 2 0 0 0 1.94-1.5l1.2-5A1.5 1.5 0 0 0 20 11.6H6.4a2 2 0 0 0-1.94 1.5L3 19"/></svg></span>
+          <span class="name">{{ row.name }}</span>
+          <span class="count">{{ row.files }} file{{ row.files === 1 ? '' : 's' }}</span>
+          <span class="acts" (click)="$event.stopPropagation()">
+            <label class="ib up" [class.busy]="uploadingKey() === 'e:' + row.domain + ':' + row.id" title="Upload files">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>
+              <input type="file" multiple hidden (change)="onPickEntity($event, row.domain, row.id)"></label>
+          </span>
+        </div>
+      }
+
+      <!-- ── linked file ── -->
+      @if (row.t === 'lfile') {
+        <div class="row file" [class.sel]="selected()?.id === row.id" [style.padding-left.px]="indent(row.depth)"
+             (click)="selectFile(row.id, row.name, row.mime, row.size, row.date, linkedUrl(row.domain, row.id), row.domain)">
+          @if (renamingId() === row.id) {
+            <input class="rename" [ngModel]="renameText()" (ngModelChange)="renameText.set($event)" (click)="$event.stopPropagation()"
+                   (keyup.enter)="saveLFile(row)" (keyup.escape)="cancelRename()" autofocus>
+            <button class="ib ok" (click)="$event.stopPropagation(); saveLFile(row)" title="Save"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>
+            <button class="ib" (click)="$event.stopPropagation(); cancelRename()" title="Cancel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          } @else {
+            <span class="thumb t-{{ kind(row.name, row.mime) }}" [title]="row.name">
+              @if (isImage(row.mime)) { <img [src]="prev(linkedUrl(row.domain, row.id))" loading="lazy" alt=""> }
+              @else { <span class="ext">{{ ext(row.name) }}</span> }
+            </span>
+            <span class="name file-name">{{ row.name }}</span>
+            <span class="meta">{{ fmtBytes(row.size) }} · {{ row.date }}</span>
+            <span class="acts" (click)="$event.stopPropagation()">
+              <button class="ib" (click)="startRename(row.id, row.name)" title="Rename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
+              <button class="ib del" (click)="deleteLFile(row.domain, row.id, row.name)" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+            </span>
+          }
+        </div>
+      }
+
+    }
+  </div>
+
+  <!-- Finder-style detail / preview pane -->
+  <aside class="detail" [class.empty]="!selected()">
+    @if (selected(); as sel) {
+      <div class="d-head">
+        <span class="d-title" [title]="sel.name">{{ sel.name }}</span>
+        <button class="lnk" (click)="selected.set(null)" title="Close">✕</button>
+      </div>
+      <div class="d-preview" [class.dark]="pkind(sel.mime, sel.name) === 'image' || pkind(sel.mime, sel.name) === 'pdf'">
+        @switch (pkind(sel.mime, sel.name)) {
+          @case ('image') { <img [src]="prev(sel.url)" alt=""> }
+          @case ('pdf') { <iframe [src]="safeUrl()" title="preview"></iframe> }
+          @case ('sheet') {
+            @if (previewLoading()) { <div class="d-load">Loading preview…</div> }
+            @else if (previewHtml()) { <div class="sheet" [innerHTML]="previewHtml()"></div> }
+            @else { <div class="d-box t-sheet"><span class="ext">{{ ext(sel.name) }}</span></div> }
+          }
+          @case ('text') {
+            @if (previewLoading()) { <div class="d-load">Loading preview…</div> }
+            @else if (previewText() !== null) { <pre class="textview">{{ previewText() }}</pre> }
+            @else { <div class="d-box t-other"><span class="ext">{{ ext(sel.name) }}</span></div> }
+          }
+          @default { <div class="d-box t-{{ kind(sel.name, sel.mime) }}"><span class="ext">{{ ext(sel.name) }}</span></div> }
+        }
+      </div>
+      <dl class="d-meta">
+        <div><dt>Type</dt><dd>{{ sel.mime || ext(sel.name) }}</dd></div>
+        <div><dt>Size</dt><dd>{{ fmtBytes(sel.size) || '—' }}</dd></div>
+        <div><dt>Added</dt><dd>{{ sel.date || '—' }}</dd></div>
+      </dl>
+      <div class="d-actions">
+        <a class="btn primary" [href]="sel.url" target="_blank" rel="noopener">Open in new tab</a>
+      </div>
+    } @else {
+      <div class="d-empty-state">
+        <div class="d-empty-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg></div>
+        <p>Select a document to preview it here.</p>
+      </div>
+    }
+  </aside>
+  </div>
+
+  @if (!hasAnything() && addingSubFor() !== '') {
+    <div class="empty-hint">No folders yet. Click <b>＋ New folder</b> to create your first one (e.g. Aadhaar, Insurance). Land / Apartments / Gold documents will appear here automatically once you add files to them.</div>
+  }
+}

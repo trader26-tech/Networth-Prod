@@ -1,0 +1,180 @@
+<div class="card planner-card">
+  <div class="card-head">
+    <h3>🛒 Buy planner</h3>
+    @if (!needsMigration()) { <button class="pl-manage" (click)="openModal()">Open →</button> }
+  </div>
+
+  @if (needsMigration()) {
+    <div class="pl-notice">
+      <p>One-time setup — run the <b>SUPABASE.md → "Buy-planner table"</b> SQL, then retry.</p>
+      <button class="btn primary sm" (click)="reload()">Retry</button>
+    </div>
+  } @else if (loading()) {
+    <div class="pl-state">Loading…</div>
+  } @else if (!summary().count) {
+    <div class="pl-empty">
+      <div class="ple-big">🛍️</div>
+      <p>Add something you want to buy and <b>when</b> you want it. Track how close you are — add funds as you save, or sell an asset to get there.</p>
+      <button class="btn primary sm" (click)="openModal()">＋ Plan a purchase</button>
+    </div>
+  } @else {
+    <div class="pl-head" [class.has]="summary().readyCount">
+      @if (summary().readyCount) {
+        <span class="plh-k">Ready to buy</span>
+        <span class="plh-v ok">{{ summary().readyCount }} · {{ inr(summary().readyTotal) }}</span>
+      } @else if (summary().next; as n) {
+        <span class="plh-k">Closest</span>
+        <span class="plh-v">{{ n.item.name }} · {{ n.pct }}%</span>
+      } @else {
+        <span class="plh-k">On your list</span>
+        <span class="plh-v">{{ summary().count }} item{{ summary().count === 1 ? '' : 's' }}</span>
+      }
+    </div>
+
+    <div class="pl-list">
+      @for (p of topItems(); track p.item.id) {
+        <button class="pl-row" (click)="openModal()">
+          <div class="plr-line">
+            <span class="plr-name">{{ p.item.name }}</span>
+            <span class="plr-amt">{{ p.status === 'ready' ? '✓' : p.pct + '%' }}</span>
+          </div>
+          <div class="mini-bar"><div class="mb-fill" [class.full]="p.status === 'ready'" [style.width.%]="p.pct"></div></div>
+          <span class="plr-sub">{{ inr(p.saved) }} of {{ inr(p.price) }}{{ p.status === 'saving' ? ' · ' + p.verdict : '' }}</span>
+        </button>
+      }
+      @if (summary().count > topItems().length) {
+        <button class="pl-more" (click)="openModal()">+{{ summary().count - topItems().length }} more</button>
+      }
+    </div>
+
+    <div class="pl-foot">
+      <span>Saving <b>{{ inr(summary().totalSaved) }}</b> of {{ inr(summary().totalCost) }}</span>
+      <span>Spare <b [class.warn]="overCommitted()">{{ inr(surplus()) }}/mo</b></span>
+    </div>
+  }
+</div>
+
+<!-- ===== Full planner modal ===== -->
+@if (showModal()) {
+  <div class="modal-back" (click)="$event.target === $event.currentTarget && showModal.set(false)">
+    <div class="modal planner-modal">
+      <div class="modal-head">
+        <div><h3>🛒 Buy planner</h3><span class="pm-sub">What do you want, and by when? Add funds as you save, or sell an asset — the bar shows how close you are.</span></div>
+        <button class="x" (click)="showModal.set(false)">✕</button>
+      </div>
+
+      @if (error()) { <div class="banner err">{{ error() }} <button class="bx" (click)="error.set(null)">✕</button></div> }
+
+      <div class="pm-funds">
+        <div class="pmf"><span>Spare cash / mo</span><b>{{ inr(surplus()) }}</b></div>
+        <div class="pmf"><span>Saving toward goals</span><b [class.warn]="overCommitted()">{{ inr(committed()) }}/mo</b></div>
+        <div class="pmf"><span>Ready now</span><b class="ok">{{ summary().readyCount }}</b></div>
+      </div>
+      @if (overCommitted()) {
+        <div class="pm-warn">⚠ Hitting all these dates needs {{ inr(committed()) }}/mo — more than your {{ inr(surplus()) }}/mo spare. Push a date out or sell an asset to ease it.</div>
+      }
+
+      <!-- add: name + price + WHEN -->
+      <div class="pm-add">
+        <input class="pa-name" placeholder="What do you want to buy? e.g. MacBook Air" [ngModel]="newName()" (ngModelChange)="newName.set($event)" (keydown.enter)="addWish()">
+        <div class="pa-price"><i>₹</i><input type="number" placeholder="price" [ngModel]="newPrice()" (ngModelChange)="newPrice.set($event)" (keydown.enter)="addWish()"></div>
+        <label class="pa-by">by <input type="date" [ngModel]="newTarget()" (ngModelChange)="newTarget.set($event)"></label>
+        <button class="btn primary" (click)="addWish()" [disabled]="!newName().trim()">Add</button>
+      </div>
+
+      @if (!wishlist().length) {
+        <div class="pm-empty">Nothing planned yet — add the first thing above.</div>
+      } @else {
+        <div class="pm-list">
+          @for (p of plans(); track p.item.id; let i = $index) {
+            @if (!p.item.bought) {
+              <div class="pm-item" [class.ready]="p.status === 'ready'">
+                <div class="pmi-rank">
+                  <button class="rk-btn" (click)="move(p.item, -1)" [disabled]="i === 0" title="Move up">▲</button>
+                  <span class="rk-n">{{ i + 1 }}</span>
+                  <button class="rk-btn" (click)="move(p.item, 1)" title="Move down">▼</button>
+                </div>
+                <div class="pmi-main">
+                  <div class="pmi-top">
+                    <input class="pmi-name" [ngModel]="p.item.name" (ngModelChange)="setName(p.item, $event)">
+                    <div class="pmi-price"><i>₹</i><input type="number" [ngModel]="p.item.price" (ngModelChange)="setPrice(p.item, $event)"></div>
+                    <label class="pmi-by">by <input type="date" [ngModel]="p.item.target_date || ''" (ngModelChange)="setTargetDate(p.item, $event)"></label>
+                    <button class="pmi-x" (click)="removeWish(p.item)" title="Remove">✕</button>
+                  </div>
+
+                  <!-- the headline: how close am I? -->
+                  <div class="prog-bar"><div class="pb-fill" [class.full]="p.status === 'ready'" [class.warn]="!p.feasible" [style.width.%]="p.pct"></div></div>
+                  <div class="prog-line">
+                    <span class="pl-saved"><b>{{ inr(p.saved) }}</b> of {{ inr(p.price) }} · {{ p.pct }}%</span>
+                    <span class="pl-verdict" [class.ok]="p.status === 'ready'" [class.bad]="!p.feasible">{{ p.verdict }}</span>
+                  </div>
+
+                  @if (p.status === 'ready') {
+                    <div class="pmi-actions"><button class="btn primary xs" (click)="markBought(p.item)">Mark bought ✓</button></div>
+                  } @else {
+                    <!-- SIP: save a set amount every month -->
+                    <div class="fund-row">
+                      <span class="fr-lbl">SIP / mo</span>
+                      <div class="fr-in"><i>₹</i><input type="number" placeholder="save each month" [ngModel]="p.item.monthly_contribution" (ngModelChange)="setContribution(p.item, $event)"></div>
+                      <span class="ii-or">or by</span>
+                      <input type="date" class="ii-date" [ngModel]="p.item.target_date || ''" (ngModelChange)="setTargetDate(p.item, $event)">
+                      @if (p.perMonth && !p.item.monthly_contribution) { <span class="fr-note">≈ {{ inr(p.perMonth) }}/mo to hit your date</span> }
+                    </div>
+
+                    <!-- lump sum you've already set aside -->
+                    <div class="fund-row">
+                      <span class="fr-lbl">Add funds</span>
+                      <div class="fr-in"><i>₹</i><input type="number" placeholder="lump sum saved" [ngModel]="fundDraft()[p.item.id]" (ngModelChange)="setFundDraft(p.item.id, $event)" (keydown.enter)="addFunds(p.item)"></div>
+                      <button class="btn ghost xs" (click)="addFunds(p.item)" [disabled]="!fundDraft()[p.item.id]">Add</button>
+                      @if (p.manualSaved > 0) { <span class="fr-note">{{ inr(p.manualSaved) }} added · <button class="lnk" (click)="resetSaved(p.item)">reset</button></span> }
+                    </div>
+
+                    <div class="fund-row assets">
+                      <span class="fr-lbl">Sell asset</span>
+                      <div class="pmi-assets">
+                        @for (a of p.assets; track a.key) {
+                          <div class="asset-chip" [class.sold]="a.sold">
+                            <button class="ac-tick" (click)="toggleSold(p.item, a.key)" [title]="a.sold ? 'Not sold yet' : 'Mark sold — adds to funds'">{{ a.sold ? '✓' : '' }}</button>
+                            <span class="ac-dot" [style.background-color]="color(a.asset_class)"></span>
+                            <span class="ac-info"><b>{{ a.name }}</b><small>{{ inr(a.realisable) }} · {{ a.sellable_on ? 'by ' + fmtDate(a.sellable_on) : 'anytime' }}</small></span>
+                            <button class="ac-x" (click)="removeAsset(p.item, a.key)" title="Unlink">✕</button>
+                          </div>
+                        }
+                        @if (availableFor(p.item).length) {
+                          <select class="asset-add" [ngModel]="''" (ngModelChange)="addAsset(p.item, $event)">
+                            <option value="">＋ Sell an asset to fund this…</option>
+                            @for (op of availableFor(p.item); track posKey(op)) {
+                              <option [value]="posKey(op)">{{ op.name }} · {{ op.class_label }} · {{ op.owner }} ({{ inr(op.realisable) }})</option>
+                            }
+                          </select>
+                        }
+                        @if (!p.assets.length && !availableFor(p.item).length) { <span class="fr-note">no assets with a sell date — set a “Sellable on” date on an asset's page (Apartments, Land, FD…), then refresh the dashboard</span> }
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+          }
+        </div>
+
+        @if (boughtItems().length) {
+          <div class="pm-bought">
+            <div class="pmb-head">Bought</div>
+            @for (b of boughtItems(); track b.id) {
+              <div class="pm-doneitem">
+                <span class="rk-tick">✓</span>
+                <span class="pmd-name">{{ b.name }}</span>
+                <span class="pmd-price">{{ inr(b.price) }}</span>
+                <button class="pmi-x" (click)="markBought(b)" title="Back to list">↩</button>
+                <button class="pmi-x" (click)="removeWish(b)" title="Remove">✕</button>
+              </div>
+            }
+          </div>
+        }
+
+        <p class="pm-hint">Set <b>when</b> you want each thing and the planner tells you what to save per month. Tap <b>Add funds</b> as you set money aside, or link an asset and tick it <b>sold</b> — both fill the bar. Set an asset's sell date on its own page (Apartments, Land, Gold…).</p>
+      }
+    </div>
+  </div>
+}

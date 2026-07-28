@@ -1,0 +1,318 @@
+<div class="sm-page">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────────── -->
+  <div class="sm-head">
+    <div>
+      <h1 class="sm-title">📐 Strategy Math</h1>
+      <div class="sm-subtitle">Closed-form expected-return analysis for every options-income strategy. Pure math from Black-Scholes + real-world drift, with full Indian tax + friction modelling. Drag any input to recompute live.</div>
+    </div>
+    @if (view() === 'detail') {
+    <button class="sm-back" (click)="backToCompare()">← All strategies</button>
+    }
+  </div>
+
+  <!-- ── Inputs panel (always visible) ──────────────────────────────────────── -->
+  <div class="sm-card sm-inputs">
+    <div class="sm-inputs-head">
+      <h3>Inputs</h3>
+      <button class="sm-link" (click)="resetDefaults()">Reset to defaults</button>
+    </div>
+    <div class="sm-grid-inputs">
+
+      <div class="sm-input">
+        <label>Spot (S₀)</label>
+        <input type="number" [ngModel]="spot()" (ngModelChange)="spot.set($event); onParamChange()">
+        <span class="hint">Current Nifty level</span>
+      </div>
+
+      <div class="sm-input">
+        <label>Capital (C)</label>
+        <input type="number" [ngModel]="capital()" (ngModelChange)="capital.set($event); onParamChange()">
+        <span class="hint">Total ₹ deployed</span>
+      </div>
+
+      <div class="sm-input">
+        <label>Volatility σ (annual)</label>
+        <input type="number" step="0.01" [ngModel]="sigma()" (ngModelChange)="sigma.set($event); onParamChange()">
+        <span class="hint">{{ (sigma() * 100).toFixed(0) }}% — IV / VIX-implied</span>
+      </div>
+
+      <div class="sm-input">
+        <label>Drift μ (annual)</label>
+        <input type="number" step="0.01" [ngModel]="mu()" (ngModelChange)="mu.set($event); onParamChange()">
+        <span class="hint">{{ (mu() * 100).toFixed(0) }}% — Nifty long-run avg</span>
+      </div>
+
+      <div class="sm-input">
+        <label>Risk-free r</label>
+        <input type="number" step="0.005" [ngModel]="riskFree()" (ngModelChange)="riskFree.set($event); onParamChange()">
+        <span class="hint">{{ (riskFree() * 100).toFixed(1) }}% — RBI repo</span>
+      </div>
+
+      <div class="sm-input">
+        <label>Cash yield (liquid fund)</label>
+        <input type="number" step="0.005" [ngModel]="cashYield()" (ngModelChange)="cashYield.set($event); onParamChange()">
+        <span class="hint">{{ (cashYield() * 100).toFixed(1) }}% — pledged cash</span>
+      </div>
+
+      <div class="sm-input">
+        <label>Cycle T (months)</label>
+        <input type="number" step="0.5" [ngModel]="Tmonths()" (ngModelChange)="Tmonths.set($event); onParamChange()">
+        <span class="hint">Option expiry length</span>
+      </div>
+
+      <div class="sm-input">
+        <label>α<sub>put</sub> (CSP OTM)</label>
+        <input type="number" step="0.005" [ngModel]="alphaPut()" (ngModelChange)="alphaPut.set($event); onParamChange()">
+        <span class="hint">{{ (alphaPut() * 100).toFixed(1) }}% below spot</span>
+      </div>
+
+      <div class="sm-input">
+        <label>α<sub>call</sub> (CC OTM)</label>
+        <input type="number" step="0.005" [ngModel]="alphaCall()" (ngModelChange)="alphaCall.set($event); onParamChange()">
+        <span class="hint">{{ (alphaCall() * 100).toFixed(1) }}% above spot</span>
+      </div>
+
+      <div class="sm-input">
+        <label>α<sub>hedge</sub> (Protected only)</label>
+        <input type="number" step="0.005" [ngModel]="alphaHedge()" (ngModelChange)="alphaHedge.set($event); onParamChange()">
+        <span class="hint">{{ (alphaHedge() * 100).toFixed(1) }}% below — long put strike</span>
+      </div>
+
+      <div class="sm-input">
+        <label>Hedge T (months)</label>
+        <input type="number" step="1" [ngModel]="hedgeMonths()" (ngModelChange)="hedgeMonths.set($event); onParamChange()">
+        <span class="hint">Long-put expiry, rolled at 30 DTE</span>
+      </div>
+
+      <div class="sm-input">
+        <label>Tax slab τ</label>
+        <input type="number" step="0.05" [ngModel]="slabRate()" (ngModelChange)="slabRate.set($event); onParamChange()">
+        <span class="hint">{{ (slabRate() * 100).toFixed(0) }}% — F&O slab</span>
+      </div>
+
+      <div class="sm-input">
+        <label>Friction φ</label>
+        <input type="number" step="0.001" [ngModel]="frictionPct()" (ngModelChange)="frictionPct.set($event); onParamChange()">
+        <span class="hint">{{ (frictionPct() * 100).toFixed(2) }}% annual — broker/STT/slippage</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Loading / Error ────────────────────────────────────────────────────── -->
+  @if (loading() && !comparison() && !detail()) {
+    <div class="sm-loading">Computing…</div>
+  }
+  @if (error()) {
+    <div class="sm-error">⚠ {{ error() }}</div>
+  }
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!--   COMPARE VIEW                                                            -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  @if (view() === 'compare' && comparison()) {
+
+    <div class="sm-section">
+      <h2 class="sm-section-title">Side-by-side: which strategy delivers most?</h2>
+      <div class="sm-grid-cards">
+        @for (row of comparisonRows(); track row.key) {
+        <div class="sm-strat-card"
+             [class.is-best]="row.key === bestStrategyKey()"
+             (click)="runDetail(row.key)">
+          @if (row.key === bestStrategyKey()) {
+            <div class="sm-best-ribbon">🏆 Highest expected net return</div>
+          }
+          <div class="sm-strat-name">{{ row.name }}</div>
+          <div class="sm-strat-desc">{{ row.description }}</div>
+
+          <div class="sm-kpi-grid">
+            <div class="sm-kpi" [class]="pctClass(row.monthly_net_pct)">
+              <div class="sm-kpi-lbl">Per month (net)</div>
+              <div class="sm-kpi-val">{{ fmtPct(row.monthly_net_pct, 3) }}</div>
+            </div>
+            <div class="sm-kpi" [class]="pctClass(row.annual_net_pct / 12)">
+              <div class="sm-kpi-lbl">Per year (net)</div>
+              <div class="sm-kpi-val">{{ fmtPct(row.annual_net_pct, 1) }}</div>
+            </div>
+            <div class="sm-kpi" [class]="sharpeClass(row.sharpe_estimate)">
+              <div class="sm-kpi-lbl">Sharpe (annualised)</div>
+              <div class="sm-kpi-val">{{ fmtNum(row.sharpe_estimate, 2) }}</div>
+            </div>
+          </div>
+
+          <div class="sm-strat-meta">
+            <div><span>Max loss / cycle:</span> <strong class="neg">{{ fmtRs(row.max_loss_per_cycle) }}</strong></div>
+            <div><span>Max gain / cycle:</span> <strong class="pos">{{ fmtRs(row.max_gain_per_cycle) }}</strong></div>
+            <div><span>P(negative month):</span> <strong>{{ (row.prob_negative_month * 100).toFixed(0) }}%</strong></div>
+          </div>
+
+          <button class="sm-detail-btn">View math →</button>
+        </div>
+        }
+      </div>
+    </div>
+
+    <!-- Comparison table -->
+    <div class="sm-card">
+      <h3 class="sm-card-title">📊 Quick comparison table</h3>
+      <table class="sm-compare-table">
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th>Monthly net</th>
+            <th>Annual net</th>
+            <th>Sharpe</th>
+            <th>Max loss</th>
+            <th>Max gain</th>
+            <th>P(loss month)</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of comparisonRows(); track row.key) {
+          <tr (click)="runDetail(row.key)">
+            <td>
+              <strong>{{ row.name }}</strong>
+              @if (row.key === bestStrategyKey()) { <span class="best-badge">BEST</span> }
+            </td>
+            <td [class]="pctClass(row.monthly_net_pct)">{{ fmtPct(row.monthly_net_pct, 3) }}</td>
+            <td [class]="pctClass(row.annual_net_pct / 12)">{{ fmtPct(row.annual_net_pct, 2) }}</td>
+            <td [class]="sharpeClass(row.sharpe_estimate)">{{ fmtNum(row.sharpe_estimate, 2) }}</td>
+            <td class="neg">{{ fmtRs(row.max_loss_per_cycle) }}</td>
+            <td class="pos">{{ fmtRs(row.max_gain_per_cycle) }}</td>
+            <td>{{ (row.prob_negative_month * 100).toFixed(0) }}%</td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- How this helps you -->
+    <div class="sm-card sm-help">
+      <h3 class="sm-card-title">💡 How this helps you</h3>
+      <div class="sm-help-grid">
+        <div class="sm-help-tile">
+          <div class="sm-help-icon">🔬</div>
+          <div class="sm-help-title">Pre-trade analysis</div>
+          <div class="sm-help-text">Adjust strikes, IV, slab — see exactly how each lever moves expected return BEFORE you commit capital.</div>
+        </div>
+        <div class="sm-help-tile">
+          <div class="sm-help-icon">⚖️</div>
+          <div class="sm-help-title">Strategy selection</div>
+          <div class="sm-help-text">The "BEST" badge updates as you change inputs. See which strategy is optimal for the current market regime.</div>
+        </div>
+        <div class="sm-help-tile">
+          <div class="sm-help-icon">📐</div>
+          <div class="sm-help-title">Audit the math</div>
+          <div class="sm-help-text">Click any card → full Black-Scholes + log-normal derivation with current numbers plugged in. No black box.</div>
+        </div>
+        <div class="sm-help-tile">
+          <div class="sm-help-icon">🎯</div>
+          <div class="sm-help-title">Risk awareness</div>
+          <div class="sm-help-text">Probability of negative months + max loss per cycle — know the downside before the upside seduces you.</div>
+        </div>
+      </div>
+    </div>
+
+  }
+
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  <!--   DETAIL VIEW                                                             -->
+  <!-- ════════════════════════════════════════════════════════════════════════ -->
+  @if (view() === 'detail' && detail(); as d) {
+
+    <!-- Hero metric -->
+    <div class="sm-hero" [class.pos]="d.annual_net_pct >= 0" [class.neg]="d.annual_net_pct < 0">
+      <div class="sm-hero-name">{{ d.name }}</div>
+      <div class="sm-hero-desc">{{ d.description }}</div>
+      <div class="sm-hero-row">
+        <div class="sm-hero-stat">
+          <div class="sm-hero-lbl">Per month (net)</div>
+          <div class="sm-hero-val">{{ fmtPct(d.monthly_net_pct, 3) }}</div>
+        </div>
+        <div class="sm-hero-stat">
+          <div class="sm-hero-lbl">Per year (net)</div>
+          <div class="sm-hero-val">{{ fmtPct(d.annual_net_pct, 2) }}</div>
+        </div>
+        <div class="sm-hero-stat">
+          <div class="sm-hero-lbl">Sharpe</div>
+          <div class="sm-hero-val">{{ fmtNum(d.sharpe_estimate, 2) }}</div>
+        </div>
+        <div class="sm-hero-stat">
+          <div class="sm-hero-lbl">Max loss / cycle</div>
+          <div class="sm-hero-val neg">{{ fmtRs(d.max_loss_per_cycle) }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toggles -->
+    <div class="sm-toggles">
+      <button class="sm-toggle" [class.active]="showFormulae()" (click)="showFormulae.set(!showFormulae())">
+        {{ showFormulae() ? '✓' : '○' }} Formulae
+      </button>
+      <button class="sm-toggle" [class.active]="showIntermediates()" (click)="showIntermediates.set(!showIntermediates())">
+        {{ showIntermediates() ? '✓' : '○' }} Intermediate values
+      </button>
+    </div>
+
+    <!-- Formulae panel — the headline feature -->
+    @if (showFormulae()) {
+    <div class="sm-card sm-formulae">
+      <h3 class="sm-card-title">📐 Formulae (with current values plugged in)</h3>
+      <div class="sm-formula-grid">
+        @for (f of d.formulae; track f.label) {
+        <div class="sm-formula">
+          <div class="sm-formula-lbl">{{ f.label }}</div>
+          <div class="sm-formula-eq" [innerHTML]="renderLatex(f.latex)"></div>
+          <div class="sm-formula-val">= <strong>{{ fmtAuto(f.value) }}</strong></div>
+        </div>
+        }
+      </div>
+    </div>
+    }
+
+    <!-- Per-cycle decomposition -->
+    <div class="sm-card">
+      <h3 class="sm-card-title">💰 Per-cycle P&L decomposition</h3>
+      <table class="sm-compare-table">
+        <thead><tr><th>Component</th><th>Amount (₹)</th></tr></thead>
+        <tbody>
+          @for (kv of sortKeys(d.per_cycle); track kv.key) {
+          <tr><td>{{ fmtKey(kv.key) }}</td>
+              <td [class.pos]="kv.value > 0" [class.neg]="kv.value < 0">{{ fmtRs(kv.value) }}</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Intermediate values -->
+    @if (showIntermediates()) {
+    <div class="sm-card">
+      <h3 class="sm-card-title">🔬 Intermediate quantities</h3>
+      <table class="sm-compare-table">
+        <thead><tr><th>Quantity</th><th>Value</th></tr></thead>
+        <tbody>
+          @for (kv of sortKeys(d.intermediates); track kv.key) {
+          <tr>
+            <td>{{ fmtKey(kv.key) }}</td>
+            <td>{{ fmtAuto(kv.value) }}</td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    }
+
+    <!-- Strategy notes -->
+    <div class="sm-card sm-notes">
+      <h3 class="sm-card-title">📝 Honest notes</h3>
+      <ul>
+        @for (n of d.notes; track $index) {
+          <li>{{ n }}</li>
+        }
+      </ul>
+    </div>
+
+  }
+
+</div>

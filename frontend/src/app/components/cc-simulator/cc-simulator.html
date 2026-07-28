@@ -1,0 +1,400 @@
+<div class="sim-page">
+
+  <!-- ════════════ HUB ════════════ -->
+  @if (view() === 'hub') {
+  <div class="sim-hub">
+    <div class="sim-hub-head">
+      <div>
+        <h1 class="sim-title">📊 Covered Call Simulator</h1>
+        <div class="sim-subtitle">Live paper-trading sandbox with real Indian charges + tax accounting. Replicates a Zerodha account exactly.</div>
+      </div>
+      <div class="sim-hub-actions">
+        @if (lastUpdated()) { <span class="sim-stamp">live · {{ lastUpdated() }}</span> }
+        <button class="sim-btn sim-btn-primary" (click)="openCreate()">+ New Simulation</button>
+      </div>
+    </div>
+
+    @if (loading() && !sims().length) {
+      <div class="sim-loading">Loading…</div>
+    } @else if (!sims().length) {
+      <div class="sim-empty">
+        <div class="sim-empty-icon">🎯</div>
+        <h2>No simulations yet</h2>
+        <p>Start a paper portfolio with a starting capital. The system will buy NiftyBees at the live price and let you sell calls, close cycles, and track every charge + tax exactly like a real account.</p>
+        <button class="sim-btn sim-btn-primary sim-btn-lg" (click)="openCreate()">+ Create your first simulation</button>
+      </div>
+    } @else {
+      <div class="sim-grid">
+        @for (s of sims(); track s.id) {
+        <div class="sim-card" (click)="openSim(s)">
+          <div class="sim-card-head">
+            <div class="sim-card-name">{{ s.name }}</div>
+            <button class="sim-card-del" (click)="deleteSim(s, $event)" title="Delete simulation">✕</button>
+          </div>
+          <div class="sim-card-cap">Capital ₹{{ s.starting_capital | number:'1.0-0' }} · {{ s.days_open }}d</div>
+
+          <div class="sim-card-pnl"
+               [class.pos]="s.net_pnl_posttax >= 0" [class.neg]="s.net_pnl_posttax < 0">
+            <div class="sim-card-pnl-val">{{ fmtRs(s.net_pnl_posttax) }}</div>
+            <div class="sim-card-pnl-pct">{{ fmtPct(s.net_pnl_pct) }} · {{ fmtPct(s.annualised_pct) }} p.a.</div>
+          </div>
+
+          <div class="sim-card-meta">
+            <div class="sim-card-meta-row">
+              <span>Portfolio</span><strong>{{ fmtRsPlain(s.total_portfolio_value) }}</strong>
+            </div>
+            <div class="sim-card-meta-row">
+              <span>NB shares</span><strong>{{ s.nb_shares | number }}</strong>
+            </div>
+            <div class="sim-card-meta-row">
+              <span>Active call</span>
+              <strong>
+                @if (s.active_call) { {{ s.active_call.strike | number:'1.0-0' }} CE · Δ {{ s.active_call.delta ?? 0 | number:'1.2-2' }} }
+                @else { — }
+              </strong>
+            </div>
+            <div class="sim-card-meta-row">
+              <span>Charges paid</span><strong>{{ fmtRsPlain(s.charges_breakdown.total) }}</strong>
+            </div>
+          </div>
+        </div>
+        }
+      </div>
+    }
+  </div>
+  }
+
+  <!-- ════════════ DETAIL ════════════ -->
+  @if (view() === 'detail' && selected(); as s) {
+  <div class="sim-detail">
+    <div class="sim-detail-head">
+      <button class="sim-back" (click)="backToHub()">← All sims</button>
+      <h2>{{ s.name }}</h2>
+      <span class="sim-stamp">live · {{ lastUpdated() }}</span>
+      <button class="sim-btn sim-btn-ghost" (click)="refresh()">⟳</button>
+    </div>
+
+    <!-- ── KPI hero strip ────────────────────────────────────────── -->
+    <div class="kpi-hero" [class.pos]="pnlPositive()" [class.neg]="!pnlPositive()">
+      <div class="kpi-hero-label">Net P&L (post-tax)</div>
+      <div class="kpi-hero-val">{{ fmtRs(s.net_pnl_posttax) }}</div>
+      <div class="kpi-hero-meta">
+        {{ fmtPct(s.net_pnl_pct) }} from start ·
+        {{ fmtPct(s.annualised_pct) }} annualised ·
+        {{ s.days_open }}d open
+      </div>
+    </div>
+
+    <!-- ── KPI grid ───────────────────────────────────────────────── -->
+    <div class="kpi-grid">
+      <div class="kpi-tile">
+        <div class="kpi-lbl">Total portfolio value</div>
+        <div class="kpi-val">{{ fmtRsPlain(s.total_portfolio_value) }}</div>
+        <div class="kpi-sub">Starting ₹{{ s.starting_capital | number:'1.0-0' }}</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="kpi-lbl">NiftyBees value (live)</div>
+        <div class="kpi-val">{{ fmtRsPlain(s.nb_mtm_value) }}</div>
+        <div class="kpi-sub">{{ s.nb_shares | number }} sh × ₹{{ s.nb_live_price | number:'1.2-2' }}</div>
+      </div>
+      <div class="kpi-tile" [class.pos]="s.nb_unrealised_pnl >= 0" [class.neg]="s.nb_unrealised_pnl < 0">
+        <div class="kpi-lbl">NB unrealised P&L</div>
+        <div class="kpi-val">{{ fmtRs(s.nb_unrealised_pnl) }}</div>
+        <div class="kpi-sub">avg cost ₹{{ s.nb_avg_cost | number:'1.2-2' }}</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="kpi-lbl">Cash balance</div>
+        <div class="kpi-val">{{ fmtRsPlain(s.cash_balance) }}</div>
+        <div class="kpi-sub">Premium income + sales</div>
+      </div>
+      <div class="kpi-tile">
+        <div class="kpi-lbl">Premium received (lifetime)</div>
+        <div class="kpi-val">{{ fmtRsPlain(s.total_premium_received) }}</div>
+        <div class="kpi-sub">Paid back ₹{{ s.total_premium_paid_back | number:'1.0-0' }}</div>
+      </div>
+      <div class="kpi-tile" [class.pos]="s.realised_pnl_posttax >= 0" [class.neg]="s.realised_pnl_posttax < 0">
+        <div class="kpi-lbl">Realised P&L (post-tax)</div>
+        <div class="kpi-val">{{ fmtRs(s.realised_pnl_posttax) }}</div>
+        <div class="kpi-sub">Tax paid ₹{{ s.realised_tax_paid | number:'1.0-0' }}</div>
+      </div>
+    </div>
+
+    <!-- ── Live Nifty / spot strip ─────────────────────────────── -->
+    <div class="market-strip">
+      <span><strong>Nifty 50</strong> {{ s.nifty_spot | number:'1.0-0' }}</span>
+      <span class="sep">·</span>
+      <span><strong>NIFTYBEES</strong> ₹{{ s.nb_live_price | number:'1.2-2' }}</span>
+      <span class="sep">·</span>
+      <span class="slab-edit">
+        <strong>F&O tax slab</strong>
+        @if (!editingSlab()) {
+          {{ s.slab_rate_pct }}%
+          <button class="sim-link" (click)="editSlab()">edit</button>
+        } @else {
+          <input class="sim-slab-input" type="number" min="0" max="50"
+                 [ngModel]="newSlab()" (ngModelChange)="newSlab.set($event)">%
+          <button class="sim-link" (click)="saveSlab()">save</button>
+        }
+      </span>
+    </div>
+
+    <!-- ── Active call / actions panel ────────────────────────── -->
+    <div class="cc-card act-card">
+      <h3 class="card-title">⚡ Active Position</h3>
+      @if (s.active_call; as ac) {
+      <div class="active-call-grid">
+        <div class="ac-tile">
+          <div class="ac-lbl">Strike</div>
+          <div class="ac-val">{{ ac.strike | number:'1.0-0' }} CE</div>
+          <div class="ac-sub">{{ ac.expiry }} · {{ ac.dte }}d</div>
+        </div>
+        <div class="ac-tile">
+          <div class="ac-lbl">Premium received</div>
+          <div class="ac-val">₹{{ ac.premium_received | number:'1.2-2' }}</div>
+          <div class="ac-sub">Total ₹{{ ac.premium_total | number:'1.0-0' }}</div>
+        </div>
+        <div class="ac-tile">
+          <div class="ac-lbl">Current price</div>
+          <div class="ac-val">₹{{ ac.current_price | number:'1.2-2' }}</div>
+          <div class="ac-sub">Buyback ₹{{ ac.buyback_cost_total | number:'1.0-0' }}</div>
+        </div>
+        <div class="ac-tile" [class.pos]="ac.delta < 0.28" [class.warn]="ac.delta >= 0.28 && ac.delta < 0.35" [class.neg]="ac.delta >= 0.35">
+          <div class="ac-lbl">Delta · IV</div>
+          <div class="ac-val">Δ {{ ac.delta ?? 0 | number:'1.2-2' }} · {{ ac.iv ?? 0 | number:'1.1-1' }}%</div>
+          <div class="ac-sub">{{ ac.is_itm ? 'ITM (intrinsic ₹' + (ac.intrinsic | number:'1.0-0') + ')' : 'OTM' }}</div>
+        </div>
+      </div>
+      <div class="ac-actions">
+        <button class="sim-btn sim-btn-warn" (click)="openCloseCall()">🔒 Close Call (buy back)</button>
+      </div>
+      } @else {
+        <div class="no-call">
+          <div class="no-call-msg">No active call. Sell one to start collecting premium.</div>
+          <button class="sim-btn sim-btn-primary" (click)="openSellCall()">＋ Sell Nifty CE</button>
+        </div>
+      }
+    </div>
+
+    <!-- ── Cash flow actions ─────────────────────────────────── -->
+    <div class="cc-card cash-card">
+      <h3 class="card-title">💸 Cash flow</h3>
+      <div class="cash-actions">
+        <button class="sim-btn sim-btn-secondary" (click)="openSellShares()"
+                [disabled]="s.nb_shares === 0">
+          Sell NB shares (free up cash)
+        </button>
+        <button class="sim-btn sim-btn-secondary" (click)="openBuyShares()"
+                [disabled]="s.cash_balance < s.nb_live_price">
+          Buy more NB (deploy cash)
+        </button>
+      </div>
+      <div class="cash-hint">
+        Selling NB while a call is active is blocked unless enough shares remain to cover the call.
+      </div>
+    </div>
+
+    <!-- ── Charges breakdown ──────────────────────────────────── -->
+    <div class="cc-card charges-card">
+      <h3 class="card-title">🧾 Charges & tax (cumulative)</h3>
+      <div class="charges-grid">
+        <div class="ch-row"><span>Brokerage</span><strong>₹{{ s.charges_breakdown.brokerage | number:'1.2-2' }}</strong></div>
+        <div class="ch-row"><span>STT (Securities Transaction Tax)</span><strong>₹{{ s.charges_breakdown.stt | number:'1.2-2' }}</strong></div>
+        <div class="ch-row"><span>Exchange charges (NSE)</span><strong>₹{{ s.charges_breakdown.exchange | number:'1.2-2' }}</strong></div>
+        <div class="ch-row"><span>SEBI / stamp / DP</span><strong>₹{{ s.charges_breakdown.other | number:'1.2-2' }}</strong></div>
+        <div class="ch-row"><span>GST (18% on brokerage + exchange)</span><strong>₹{{ s.charges_breakdown.gst | number:'1.2-2' }}</strong></div>
+        <div class="ch-row total"><span>Total charges paid</span><strong>₹{{ s.charges_breakdown.total | number:'1.2-2' }}</strong></div>
+        <div class="ch-row"><span>Income tax on F&O P&L (slab {{ s.slab_rate_pct }}%)</span><strong>₹{{ s.realised_tax_paid | number:'1.2-2' }}</strong></div>
+      </div>
+    </div>
+
+    <!-- ── Cycle history ──────────────────────────────────────── -->
+    <div class="cc-card history-card">
+      <h3 class="card-title">🔄 Cycle history ({{ s.call_history.length }})</h3>
+      @if (!s.call_history.length) {
+        <div class="hist-empty">No cycles closed yet.</div>
+      } @else {
+        <table class="hist-table">
+          <thead>
+            <tr>
+              <th>Strike</th><th>Expiry</th><th>Premium in</th><th>Buyback</th>
+              <th>Charges</th><th>Pre-tax P&L</th><th>Tax</th><th>Net</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of s.call_history; track c.exit_date) {
+            <tr [class.pos]="c.pnl_posttax >= 0" [class.neg]="c.pnl_posttax < 0">
+              <td>{{ c.strike | number:'1.0-0' }} CE</td>
+              <td>{{ c.expiry }}</td>
+              <td>₹{{ c.premium_received | number:'1.2-2' }}</td>
+              <td>₹{{ c.exit_price | number:'1.2-2' }}</td>
+              <td>₹{{ (c.entry_charges?.total_charges ?? 0) + (c.exit_charges?.total_charges ?? 0) | number:'1.0-0' }}</td>
+              <td>{{ fmtRs(c.pnl_pretax) }}</td>
+              <td>₹{{ c.tax?.total ?? 0 | number:'1.0-0' }}</td>
+              <td><strong>{{ fmtRs(c.pnl_posttax) }}</strong></td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+
+    <!-- ── NB transaction ledger ─────────────────────────────── -->
+    @if (s.nb_history.length) {
+    <div class="cc-card history-card">
+      <h3 class="card-title">📈 NiftyBees ledger</h3>
+      <table class="hist-table">
+        <thead>
+          <tr><th>Date</th><th>Side</th><th>Qty</th><th>Price</th><th>Charges</th><th>Note</th></tr>
+        </thead>
+        <tbody>
+          @for (n of s.nb_history; track n.date) {
+          <tr>
+            <td>{{ n.date | slice:0:10 }}</td>
+            <td><span class="badge" [class.buy]="n.side === 'BUY'" [class.sell]="n.side === 'SELL'">{{ n.side }}</span></td>
+            <td>{{ n.qty | number }}</td>
+            <td>₹{{ n.price | number:'1.2-2' }}</td>
+            <td>₹{{ n.charges?.total_charges ?? 0 | number:'1.2-2' }}</td>
+            <td>{{ n.note }}</td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    }
+
+  </div>
+  }
+
+  <!-- ════════════ DIALOGS ════════════ -->
+  @if (createOpen()) {
+  <div class="modal-overlay" (click)="cancelCreate()">
+    <div class="modal-box" (click)="$event.stopPropagation()">
+      <div class="modal-title">Create simulation</div>
+      <div class="modal-body">
+        <label>Name</label>
+        <input class="form-control" [ngModel]="createName()" (ngModelChange)="createName.set($event)">
+        <label>Starting capital (₹)</label>
+        <input class="form-control" type="number" [ngModel]="createCapital()" (ngModelChange)="createCapital.set($event)">
+        <div class="hint">Min ₹1,00,000. ₹18L typical for 1 lot Nifty CC.</div>
+        <label>F&O tax slab (%)</label>
+        <input class="form-control" type="number" [ngModel]="createSlab()" (ngModelChange)="createSlab.set($event)">
+        <div class="hint">Your marginal slab rate. Used for F&O income tax.</div>
+        <label>Deploy into NiftyBees (%)</label>
+        <input class="form-control" type="number" [ngModel]="createDeploy()" (ngModelChange)="createDeploy.set($event)">
+        <div class="hint">% of capital to immediately invest in NB. Rest stays as cash.</div>
+        @if (error()) { <div class="error-msg">{{ error() }}</div> }
+      </div>
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" (click)="cancelCreate()">Cancel</button>
+        <button class="modal-confirm-btn" (click)="confirmCreate()" [disabled]="creating()">
+          {{ creating() ? 'Creating…' : 'Create' }}
+        </button>
+      </div>
+    </div>
+  </div>
+  }
+
+  @if (sellOpen()) {
+  <div class="modal-overlay" (click)="cancelSellCall()">
+    <div class="modal-box modal-wide" (click)="$event.stopPropagation()">
+      <div class="modal-title">Sell Nifty CE (paper)</div>
+      <div class="modal-body">
+        @if (sellChainLoading()) {
+          <div class="hint">Loading live chain…</div>
+        } @else if (sellChain(); as ch) {
+          <label>Expiry</label>
+          <select class="form-control" [ngModel]="sellExpiry()" (ngModelChange)="sellExpiry.set($event)">
+            @for (e of ch.expiries; track e) { <option [value]="e">{{ e }}</option> }
+          </select>
+
+          <label>Pick a strike from the live chain</label>
+          <div class="strike-list">
+            @for (c of ch.otm_calls; track c.strike) {
+            <button class="strike-pill"
+                    [class.active]="sellStrike() === (c.strike + '')"
+                    (click)="pickStrike(c.strike, c.premium)">
+              {{ c.strike | number:'1.0-0' }} CE · ₹{{ c.premium | number:'1.2-2' }}
+              · Δ {{ c.delta ?? 0 | number:'1.2-2' }}
+              · {{ c.distance_pct | number:'1.1-1' }}% OTM
+            </button>
+            }
+          </div>
+
+          <label>Lots</label>
+          <input class="form-control" type="number" [ngModel]="sellLots()" (ngModelChange)="sellLots.set($event)">
+          <label>Lot size</label>
+          <input class="form-control" type="number" [ngModel]="sellLotSize()" (ngModelChange)="sellLotSize.set($event)">
+          <label>Premium per unit (₹)</label>
+          <input class="form-control" type="number" step="0.05" [ngModel]="sellPremium()" (ngModelChange)="sellPremium.set($event)">
+          @if (error()) { <div class="error-msg">{{ error() }}</div> }
+        }
+      </div>
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" (click)="cancelSellCall()">Cancel</button>
+        <button class="modal-confirm-btn" (click)="confirmSellCall()">Sell Call</button>
+      </div>
+    </div>
+  </div>
+  }
+
+  @if (closeOpen()) {
+  <div class="modal-overlay" (click)="cancelCloseCall()">
+    <div class="modal-box" (click)="$event.stopPropagation()">
+      <div class="modal-title">Close call (buy back)</div>
+      <div class="modal-body">
+        <label>Buy-back price (₹)</label>
+        <input class="form-control" type="number" step="0.05" [ngModel]="closePrice()" (ngModelChange)="closePrice.set($event)">
+        <div class="hint">Pre-filled with current live price. Adjust if you got a different fill.</div>
+        @if (error()) { <div class="error-msg">{{ error() }}</div> }
+      </div>
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" (click)="cancelCloseCall()">Cancel</button>
+        <button class="modal-confirm-btn" (click)="confirmCloseCall()" [disabled]="closing()">
+          {{ closing() ? 'Closing…' : 'Confirm Close' }}
+        </button>
+      </div>
+    </div>
+  </div>
+  }
+
+  @if (sellSharesOpen()) {
+  <div class="modal-overlay" (click)="cancelSellShares()">
+    <div class="modal-box" (click)="$event.stopPropagation()">
+      <div class="modal-title">Sell NB shares</div>
+      <div class="modal-body">
+        <label>Quantity to sell</label>
+        <input class="form-control" type="number" [ngModel]="sellSharesQty()" (ngModelChange)="sellSharesQty.set($event)">
+        <div class="hint">You have {{ selected()?.nb_shares | number }} shares. Sells at live price ₹{{ selected()?.nb_live_price | number:'1.2-2' }}. Capital gains tax applies.</div>
+        @if (error()) { <div class="error-msg">{{ error() }}</div> }
+      </div>
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" (click)="cancelSellShares()">Cancel</button>
+        <button class="modal-confirm-btn" (click)="confirmSellShares()" [disabled]="sellSharesProcessing()">
+          {{ sellSharesProcessing() ? 'Selling…' : 'Sell' }}
+        </button>
+      </div>
+    </div>
+  </div>
+  }
+
+  @if (buySharesOpen()) {
+  <div class="modal-overlay" (click)="cancelBuyShares()">
+    <div class="modal-box" (click)="$event.stopPropagation()">
+      <div class="modal-title">Buy NB shares</div>
+      <div class="modal-body">
+        <label>Quantity to buy</label>
+        <input class="form-control" type="number" [ngModel]="buySharesQty()" (ngModelChange)="buySharesQty.set($event)">
+        <div class="hint">Cash available ₹{{ selected()?.cash_balance | number:'1.0-0' }} · Live price ₹{{ selected()?.nb_live_price | number:'1.2-2' }}</div>
+        @if (error()) { <div class="error-msg">{{ error() }}</div> }
+      </div>
+      <div class="modal-footer">
+        <button class="modal-cancel-btn" (click)="cancelBuyShares()">Cancel</button>
+        <button class="modal-confirm-btn" (click)="confirmBuyShares()" [disabled]="buySharesProcessing()">
+          {{ buySharesProcessing() ? 'Buying…' : 'Buy' }}
+        </button>
+      </div>
+    </div>
+  </div>
+  }
+
+</div>

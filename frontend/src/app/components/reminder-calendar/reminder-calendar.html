@@ -1,0 +1,232 @@
+<section class="rc">
+  <!-- header: title + stats + all the controls -->
+  <div class="rc-top">
+    <div class="rc-title">
+      <h3>Money calendar</h3>
+      <span class="rc-sub">Money in &amp; out this month — what’s landed, what’s due, and what’s in hand.</span>
+    </div>
+    <div class="rc-controls">
+      <div class="filter-wrap">
+        <button class="filter-btn" [class.on]="activeFilters() > 0" (click)="prefsOpen.set(!prefsOpen())" title="Filter what shows on the calendar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+          Filter @if (activeFilters() > 0) { <span class="fb-badge">{{ activeFilters() }}</span> }
+        </button>
+
+        @if (prefsOpen()) {
+          <div class="fp-backdrop" (click)="prefsOpen.set(false)"></div>
+          <div class="filter-pop" role="dialog">
+            <div class="fp-cols">
+              <!-- column 1: filter type -->
+              <div class="fp-cats">
+                @for (c of filterCats(); track c.key) {
+                  <button [class.on]="filterCat() === c.key" (click)="filterCat.set(c.key)">
+                    <span class="fp-cat-l">
+                      <svg class="fp-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        @switch (c.key) {
+                          @case ('dir') { <path d="M7 7h10v10"/><path d="M7 17 17 7"/> }
+                          @case ('region') { <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/> }
+                          @case ('who') { <circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/> }
+                          @case ('status') { <path d="M20 6 9 17l-5-5"/> }
+                          @case ('cats') { <path d="M20.6 13.4 12 22l-9-9V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><path d="M7 7h.01"/> }
+                        }
+                      </svg>
+                      <span>{{ c.label }}</span>
+                    </span>
+                    @if (c.active()) { <span class="fp-dot" title="active"></span> }
+                  </button>
+                }
+              </div>
+              <!-- column 2: how to filter -->
+              <div class="fp-opts">
+                @switch (filterCat()) {
+                  @case ('dir') {
+                    <p class="fp-hint">Show money moving <b>in</b>, <b>out</b>, or everything.</p>
+                    <label class="fp-radio"><input type="radio" name="rcdir" [checked]="dir()==='all'" (change)="dir.set('all')"><span>All</span></label>
+                    <label class="fp-radio"><input type="radio" name="rcdir" [checked]="dir()==='in'" (change)="dir.set('in')"><span>Coming in</span></label>
+                    <label class="fp-radio"><input type="radio" name="rcdir" [checked]="dir()==='out'" (change)="dir.set('out')"><span>Going out</span></label>
+                  }
+                  @case ('region') {
+                    <p class="fp-hint">India shows in <b>₹</b>, Kuwait in <b>KD</b>.</p>
+                    <label class="fp-radio"><input type="radio" name="rcreg" [checked]="country()==='all'" (change)="country.set('all')"><span>All · ₹</span></label>
+                    <label class="fp-radio"><input type="radio" name="rcreg" [checked]="country()==='india'" (change)="country.set('india')"><span>India · ₹</span></label>
+                    <label class="fp-radio"><input type="radio" name="rcreg" [checked]="country()==='kuwait'" (change)="country.set('kuwait')"><span>Kuwait · KD</span></label>
+                  }
+                  @case ('who') {
+                    <p class="fp-hint">Whose money to include.</p>
+                    <label class="fp-radio"><input type="radio" name="rcwho" [checked]="!owner()" (change)="owner.set('')"><span>Everyone</span></label>
+                    @for (o of owners(); track o) {
+                      <label class="fp-radio"><input type="radio" name="rcwho" [checked]="owner()===o" (change)="owner.set(o)"><span>{{ o }}</span></label>
+                    }
+                  }
+                  @case ('status') {
+                    <p class="fp-hint">Completed items (collected / paid) stay editable when shown.</p>
+                    <label class="fp-check"><input type="checkbox" [checked]="showDone()" (change)="showDone.set(!showDone())"><span>Show done items</span></label>
+                  }
+                  @case ('cats') {
+                    <p class="fp-hint">Untick a category to hide it here &amp; in the email.</p>
+                    @for (c of allCategories(); track c) {
+                      <label class="fp-check"><input type="checkbox" [checked]="catOn(c)" (change)="toggleCat(c)"><span>{{ c }}</span></label>
+                    }
+                    @if (mutedCatCount() > 0) { <button class="fp-mini" (click)="showAllCats()">Show all categories</button> }
+                    @if (hiddenItems().length) {
+                      <div class="fp-mnote">{{ hiddenItems().length }} item(s) hidden
+                        <button class="fp-mini" (click)="unmuteAll()">unhide all</button></div>
+                    }
+                  }
+                }
+              </div>
+            </div>
+            <div class="fp-foot">
+              <button class="fp-clear" [disabled]="activeFilters() === 0" (click)="resetFilters()">Clear all</button>
+              <button class="fp-done" (click)="prefsOpen.set(false)">Done</button>
+            </div>
+          </div>
+        }
+      </div>
+      <a class="rc-all" routerLink="/reminders" title="Open the full reminders page">All →</a>
+    </div>
+  </div>
+
+  <!-- ── in-hand hero: clean stat strip — net · collected/due · paid/due ─────── -->
+  <div class="rc-hero">
+    <div class="hh-item">
+      <span class="hh-k">In hand · net</span>
+      <span class="hh-v" [class.pos]="inHand() > 0" [class.neg]="inHand() < 0">{{ money(inHand()) }}<i class="hh-sub">{{ monthLabel() }}</i></span>
+    </div>
+    <div class="hh-item">
+      <span class="hh-k">Collected</span>
+      <span class="hh-v">{{ money(monthInGot()) }}<i class="hh-sub">of {{ money(monthIn()) }} due in</i></span>
+    </div>
+    <div class="hh-item">
+      <span class="hh-k">Paid</span>
+      <span class="hh-v">{{ money(monthOutPaid()) }}<i class="hh-sub">of {{ money(monthOut()) }} due out</i></span>
+    </div>
+  </div>
+
+
+  <!-- two columns: calendar (left) · tasks (right) -->
+  <div class="rc-cols">
+    <!-- LEFT: calendar -->
+    <div class="rc-cal">
+      <div class="rc-nav">
+        <button class="nav-arw" (click)="prevMonth()" aria-label="Previous month">‹</button>
+        <div class="rc-month">{{ monthLabel() }}
+          @if (!isCurrentMonth()) { <button class="today-btn" (click)="goToday()">Today</button> }
+        </div>
+        <button class="nav-arw" (click)="nextMonth()" aria-label="Next month">›</button>
+      </div>
+      <div class="rc-grid">
+        @for (w of WEEKDAYS; track w) { <div class="dow">{{ w }}</div> }
+        @for (c of cells(); track $index) {
+          <div class="cell" [class.pad]="c.padding" [class.today]="c.isToday" [class.has]="c.count > 0"
+               [class.sel]="selectedDay() === c.iso" [ngClass]="c.tone"
+               (click)="selectDay(c)">
+            @if (!c.padding) {
+              <span class="c-day">{{ c.day }}</span>
+              @if (c.count > 0) {
+                <span class="c-amts">
+                  @if (c.inTotal > 0) { <span class="c-in">+{{ money(c.inTotal) }}</span> }
+                  @if (c.outTotal > 0) { <span class="c-out">−{{ money(c.outTotal) }}</span> }
+                </span>
+                @if (c.pending === 0) { <span class="c-check">✓</span> } @else { <span class="c-dot">{{ c.count }}</span> }
+              }
+            }
+          </div>
+        }
+      </div>
+      <div class="rc-legend">
+        <span><i class="lg gn"></i>All got</span>
+        <span><i class="lg yl"></i>Pending</span>
+        <span><i class="lg rd"></i>Didn't get</span>
+        <span class="lg-hint">+in −out · <b>click a day</b></span>
+      </div>
+    </div>
+
+    <!-- RIGHT: task list — the whole month, or one day when a date is clicked -->
+    <div class="rc-tasks">
+      @if (selectedDay()) {
+        <!-- single-day view (click a calendar date) -->
+        <div class="rt-head day">
+          <button class="rt-back" (click)="clearDay()"><span class="rt-back-arw">‹</span> All of {{ monthLabel() }}</button>
+          <span class="rt-daytot">
+            @if (dayIn() > 0) { <b class="c-in">+{{ money(dayIn()) }}</b> }
+            @if (dayOut() > 0) { <b class="c-out">−{{ money(dayOut()) }}</b> }
+          </span>
+        </div>
+        <div class="rt-scroll">
+          <div class="rt-sep">
+            <span class="rt-sd"><b>{{ selectedLabel() }}</b><small>{{ selectedWeekday() }}</small></span>
+          </div>
+          @for (it of dayItems(); track it.key) {
+            <ng-container *ngTemplateOutlet="row; context: { $implicit: it }"></ng-container>
+          }
+          @if (!dayItems().length) { <div class="rt-empty">Nothing left on this day.</div> }
+        </div>
+      } @else {
+        <!-- whole-month view -->
+        <div class="rt-head"><b>Tasks</b><span class="rt-month">{{ monthLabel() }}</span><span class="rt-count">{{ taskCount() }} {{ showDone() ? '' : 'due' }}</span></div>
+        <div class="rt-scroll">
+          @if (taskGroups().length) {
+            @for (g of taskGroups(); track g.date) {
+              <div class="rt-sep clickable" [class.overdue]="g.overdue" [class.today]="g.isToday" (click)="openDay(g.date)" title="Show only this day">
+                <span class="rt-sd"><b>{{ g.label }}</b><small [class.od]="g.overdue" [class.now]="g.isToday">{{ g.rel }}</small></span>
+                <span class="rt-st">
+                  @if (g.inTotal > 0) { <b class="c-in">+{{ money(g.inTotal) }}</b> }
+                  @if (g.outTotal > 0) { <b class="c-out">−{{ money(g.outTotal) }}</b> }
+                </span>
+              </div>
+              @for (it of g.items; track it.key) {
+                <ng-container *ngTemplateOutlet="row; context: { $implicit: it }"></ng-container>
+              }
+            }
+          } @else {
+            <div class="rt-empty">✓ Nothing {{ showDone() ? '' : 'pending ' }}in {{ monthLabel() }}.</div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</section>
+
+<!-- ── shared reminder row ──────────────────────────────────────────────────── -->
+<ng-template #row let-it>
+  <div class="rem-row" [class.done]="it.status === 'done'" [class.skipped]="it.status === 'skipped'" [class.rem-action]="isAction(it)">
+    <span class="rr-tag" [class.t-in]="it.direction === 'in'" [class.t-out]="it.direction === 'out'" [class.t-act]="isAction(it)">{{ kindTag(it) }}</span>
+    <div class="rr-info">
+      <b class="rr-label">{{ it.label }}</b>
+      <span class="rr-sub">{{ it.kind }} · {{ it.sub }}
+        @if (it.moved) { <span class="rr-moved" [title]="'Moved from ' + fmtDate(it.orig_date)">· moved</span> }
+      </span>
+    </div>
+    @if (isAction(it)) {
+      <!-- a to-do, not a receipt: a link to the right page + a way to dismiss it -->
+      <a class="rr-cta" [routerLink]="actionLink(it)" [queryParams]="actionQuery(it)">{{ actionCta(it) }} →</a>
+      <div class="rr-actions">
+        <button class="rr-btn done" [class.on]="it.status === 'done'" [disabled]="busyKey() === it.key" (click)="markDone(it)" [title]="it.status === 'done' ? 'Mark not done' : 'Mark as done'">{{ it.status === 'done' ? '✓ done' : 'Done' }}</button>
+        @if (it.custom) {
+          <button class="rr-btn hide" [disabled]="busyKey() === it.key" (click)="deleteCustom(it)" [title]="'Delete ' + it.label">Delete</button>
+        } @else {
+          <button class="rr-btn hide" (click)="toggleMute(it)" [title]="'Hide ' + it.label + ' from reminders'">Hide</button>
+        }
+      </div>
+    } @else if (editKey() === it.key) {
+      <div class="rr-edit" (click)="$event.stopPropagation()">
+        <input type="date" [ngModel]="editDate()" (ngModelChange)="editDate.set($event)">
+        <button class="mini save" (click)="saveEdit(it)">Save</button>
+        <button class="mini" (click)="cancelEdit()">✕</button>
+      </div>
+    } @else {
+      <span class="rr-amt" [class.c-in]="it.direction === 'in'" [class.c-out]="it.direction === 'out'">{{ it.direction === 'in' ? '+' : '−' }}{{ money(amt(it)) }}</span>
+      <div class="rr-actions">
+        <button class="rr-btn done" [class.on]="it.status === 'done'" [disabled]="busyKey() === it.key" (click)="markDone(it)">{{ it.status === 'done' ? '✓' : actionWord(it) }}</button>
+        <button class="rr-btn skip" [class.on]="it.status === 'skipped'" [disabled]="busyKey() === it.key" (click)="skip(it)" title="Skip / won't happen">Skip</button>
+        <button class="rr-btn date" (click)="openEdit(it)" title="Move the date">Date</button>
+        @if (it.custom) {
+          <button class="rr-btn hide" [disabled]="busyKey() === it.key" (click)="deleteCustom(it)" [title]="'Delete ' + it.label">Delete</button>
+        } @else {
+          <button class="rr-btn hide" (click)="toggleMute(it)" [title]="'Hide ' + it.label + ' from reminders & email'">Hide</button>
+        }
+      </div>
+    }
+  </div>
+</ng-template>

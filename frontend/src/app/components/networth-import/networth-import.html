@@ -1,0 +1,169 @@
+<div class="imp">
+  <header class="imp-head">
+    <div>
+      <a routerLink="/networth" class="back">← Net Worth</a>
+      <h1>Import assets from Excel</h1>
+    </div>
+    <ol class="steps">
+      <li [class.on]="step() >= 1">1 · Upload</li>
+      <li [class.on]="step() >= 2">2 · Pick sheet</li>
+      <li [class.on]="step() >= 3">3 · Map &amp; import</li>
+    </ol>
+  </header>
+
+  @if (error()) { <div class="banner err">{{ error() }}</div> }
+
+  <!-- STEP 1 -->
+  @if (step() === 1) {
+    <div class="drop" (dragover)="$event.preventDefault()" (drop)="onDrop($event)">
+      <div class="drop-inner">
+        <div class="ic">⬆</div>
+        <h2>Drop your .xlsx here</h2>
+        <p>Numbers users: <b>File ▸ Export To ▸ Excel</b> first. Your file is cached
+           so you can map sheets one by one without re-uploading.</p>
+        <label class="btn primary">
+          {{ uploading() ? 'Uploading…' : 'Choose file' }}
+          <input type="file" accept=".xlsx,.xlsm" (change)="onFile($event)" hidden [disabled]="uploading()">
+        </label>
+      </div>
+    </div>
+  }
+
+  <!-- STEP 2 -->
+  @if (step() === 2 && upload()) {
+    <div class="sheets">
+      <div class="sheets-bar">
+        <input class="search" placeholder="Search sheets…" [ngModel]="sheetSearch()"
+               (ngModelChange)="sheetSearch.set($event)">
+        <label class="toggle">
+          <input type="checkbox" [ngModel]="onlyLikely()" (ngModelChange)="onlyLikely.set($event)">
+          Only likely-asset sheets
+        </label>
+        <span class="muted">{{ filteredSheets().length }} of {{ upload()!.sheet_count }} sheets</span>
+      </div>
+      <div class="sheet-grid">
+        @for (s of filteredSheets(); track s.name) {
+          <button class="sheet-card" (click)="pickSheet(s)">
+            <div class="sc-top">
+              <span class="sc-name">{{ s.name }}</span>
+              @if (s.likely_asset) { <span class="tag">assets</span> }
+            </div>
+            <div class="sc-meta">{{ s.non_empty_rows }} rows · {{ s.cols }} cols</div>
+            @if (s.preview.length) {
+              <div class="sc-prev">
+                @for (p of s.preview.slice(0, 3); track p.row) {
+                  <div class="sc-prow">{{ p.cells.slice(0,4).join(' · ') }}</div>
+                }
+              </div>
+            }
+          </button>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- STEP 3 -->
+  @if (step() === 3 && grid() && !result()) {
+    <div class="mapper">
+      <!-- controls -->
+      <div class="controls">
+        <div class="cgroup">
+          <label>Header row <input type="number" min="0" [ngModel]="headerRow()"
+                  (ngModelChange)="headerRow.set(+$event)"></label>
+          <label>Data start <input type="number" min="0" [ngModel]="dataStart()"
+                  (ngModelChange)="dataStart.set(+$event)"></label>
+          <label>Data end <input type="number" [ngModel]="dataEnd()"
+                  (ngModelChange)="dataEnd.set(+$event)"></label>
+        </div>
+        <div class="cgroup">
+          <label>Asset class
+            <select [ngModel]="assetClass()" (ngModelChange)="assetClass.set($event)">
+              @for (c of meta()?.asset_classes; track c.key) { <option [value]="c.key">{{ c.label }}</option> }
+            </select>
+          </label>
+          <label>Default owner
+            <select [ngModel]="ownerName()" (ngModelChange)="ownerName.set($event)">
+              @for (p of people(); track p.name) { <option [value]="p.name">{{ p.name }}</option> }
+            </select>
+          </label>
+          <label>Risk
+            <select [ngModel]="risk()" (ngModelChange)="risk.set($event)">
+              <option value="">(class default)</option>
+              @for (r of meta()?.risk_levels; track r) { <option [value]="r">{{ r }}</option> }
+            </select>
+          </label>
+          <label>Value ×
+            <input type="number" step="0.01" [ngModel]="valueScale()" (ngModelChange)="valueScale.set(+$event)"
+                   title="Multiply values (e.g. 100000 if sheet is in lakhs)">
+          </label>
+        </div>
+        <div class="cgroup sliders">
+          <label>Col width <input type="range" min="70" max="280" [ngModel]="colWidth()"
+                  (ngModelChange)="colWidth.set(+$event)"></label>
+          <label>Row height <input type="range" min="22" max="56" [ngModel]="rowHeight()"
+                  (ngModelChange)="rowHeight.set(+$event)"></label>
+        </div>
+      </div>
+
+      <div class="hint">
+        Set each column's role in the dropdowns below. <b>{{ mappedCount() }}</b> columns mapped.
+        Map at least <b>Name</b> or <b>Current Value</b>. Rows outside the data range are dimmed.
+      </div>
+
+      <!-- grid -->
+      <div class="grid-wrap">
+        <table class="gtable">
+          <thead>
+            <tr>
+              <th class="rh">#</th>
+              @for (ci of colIndexes(); track ci) {
+                <th [style.min-width.px]="colWidth()" [style.max-width.px]="colWidth()">
+                  <div class="colhdr">
+                    <span class="letter">{{ grid()!.col_letters[ci] }}</span>
+                    <select [ngModel]="colField(ci)" (ngModelChange)="setCol(ci, $event)"
+                            [class.mapped]="colField(ci) !== 'ignore'">
+                      @for (f of meta()?.import_fields; track f.key) { <option [value]="f.key">{{ f.label }}</option> }
+                    </select>
+                    <span class="hname">{{ fmt(headerCells()[ci]) }}</span>
+                  </div>
+                </th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of grid()!.rows; track $index) {
+              <tr [class]="rowClass($index)" [style.height.px]="rowHeight()">
+                <td class="rh">{{ $index }}</td>
+                @for (ci of colIndexes(); track ci) {
+                  <td [style.min-width.px]="colWidth()" [style.max-width.px]="colWidth()"
+                      [class.col-mapped]="colField(ci) !== 'ignore'">{{ fmt(row[ci]) }}</td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (grid()!.truncated_rows) { <p class="muted small">Showing first {{ grid()!.rows.length }} rows.</p> }
+
+      <div class="actions">
+        <button class="btn ghost" (click)="step.set(2)">← Back to sheets</button>
+        <button class="btn primary" (click)="doImport()" [disabled]="importing()">
+          {{ importing() ? 'Importing…' : 'Import these assets' }}
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- success -->
+  @if (result()) {
+    <div class="done">
+      <div class="ic">✓</div>
+      <h2>Imported {{ result()!.imported }} assets</h2>
+      <p>From <b>{{ selectedSheet() }}</b> as <b>{{ classLabel(assetClass()) }}</b>.</p>
+      <div class="actions center">
+        <button class="btn ghost" (click)="importAnother()">Import another sheet</button>
+        <button class="btn primary" (click)="goHome()">View dashboard →</button>
+      </div>
+    </div>
+  }
+</div>

@@ -1,0 +1,451 @@
+@if (auth.phase() === 'loading' && !demo()) {
+  <div class="lock-screen"><div class="lock-spinner"></div></div>
+} @else if (!authed()) {
+  <div class="lock-screen">
+    <div class="lock-card">
+      <span class="lock-logo">N</span>
+      <h2>Networth<span class="lock-suffix">.io</span></h2>
+
+      <!-- STEP 1 · send code (no email box — goes to the allowlisted address) -->
+      @if (auth.phase() === 'email') {
+        <p>Sign in to your secure dashboard</p>
+        <form (submit)="$event.preventDefault(); sendCode()" class="lock-form">
+          <div class="send-target">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+            <span>We'll send a 6-digit code to <b>{{ auth.signinEmail() || 'your email' }}</b></span>
+          </div>
+          @if (auth.error()) { <div class="lock-err">{{ auth.error() }}</div> }
+          <button type="submit" class="lock-btn" [disabled]="auth.busy()">
+            {{ auth.busy() ? 'Sending…' : 'Email me a code' }}
+          </button>
+        </form>
+        <p class="lock-hint">No passwords. Just tap and check your inbox.</p>
+      }
+
+      <!-- STEP 2 · OTP -->
+      @if (auth.phase() === 'otp') {
+        <p>Enter the code we sent to <b>{{ auth.maskedEmail() }}</b></p>
+        <form (submit)="$event.preventDefault(); submitOtp()" class="lock-form">
+          <input class="otp-input" type="text" name="code" [ngModel]="codeInput()" (ngModelChange)="codeInput.set($event)"
+                 placeholder="••••••" inputmode="numeric" autocomplete="one-time-code" maxlength="6" autofocus>
+          @if (auth.notice()) { <div class="lock-note">{{ auth.notice() }}</div> }
+          @if (auth.error()) { <div class="lock-err">{{ auth.error() }}</div> }
+          <button type="submit" class="lock-btn" [disabled]="auth.busy()">
+            {{ auth.busy() ? 'Verifying…' : 'Verify & continue' }}
+          </button>
+        </form>
+        <div class="lock-links">
+          <button type="button" (click)="resendCode()">Resend code</button>
+        </div>
+      }
+
+      <!-- STEP 3 · set a PIN (new device) -->
+      @if (auth.phase() === 'setpin') {
+        <p>Create a PIN for quick unlock on this device</p>
+        <form (submit)="$event.preventDefault(); submitNewPin()" class="lock-form">
+          <label class="lock-label">New PIN (4–8 digits)</label>
+          <input class="pin-input" type="password" name="pin" [ngModel]="pinInput()" (ngModelChange)="pinInput.set($event)"
+                 placeholder="••••" inputmode="numeric" autocomplete="new-password" maxlength="8" autofocus>
+          <label class="lock-label">Confirm PIN</label>
+          <input class="pin-input" type="password" name="pin2" [ngModel]="pin2Input()" (ngModelChange)="pin2Input.set($event)"
+                 placeholder="••••" inputmode="numeric" autocomplete="new-password" maxlength="8">
+          @if (auth.error()) { <div class="lock-err">{{ auth.error() }}</div> }
+          <button type="submit" class="lock-btn" [disabled]="auth.busy()">
+            {{ auth.busy() ? 'Saving…' : 'Set PIN & enter' }}
+          </button>
+        </form>
+        <p class="lock-hint">Next time you'll just enter this PIN — no email needed for ~30 days on this device.</p>
+      }
+
+      <!-- STEP 4 · PIN unlock (returning, trusted device) -->
+      @if (auth.phase() === 'pin') {
+        <p>Welcome back{{ auth.maskedEmail() ? ', ' + auth.maskedEmail() : '' }}</p>
+        <form (submit)="$event.preventDefault(); submitUnlock()" class="lock-form">
+          <label class="lock-label">Enter your PIN</label>
+          <input class="pin-input" type="password" name="pin" [ngModel]="pinInput()" (ngModelChange)="pinInput.set($event)"
+                 placeholder="••••" inputmode="numeric" autocomplete="current-password" maxlength="8" autofocus>
+          @if (auth.error()) { <div class="lock-err">{{ auth.error() }}</div> }
+          <button type="submit" class="lock-btn" [disabled]="auth.busy()">
+            {{ auth.busy() ? 'Unlocking…' : 'Unlock' }}
+          </button>
+        </form>
+        <div class="lock-links">
+          <button type="button" (click)="backToEmail()">Use an email code instead</button>
+        </div>
+      }
+
+      <div class="lock-or"><span>or</span></div>
+      <button type="button" class="demo-btn" (click)="viewDemo()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Explore a live demo
+      </button>
+      <p class="demo-note">See the full dashboard with realistic <b>sample data</b>. No login — and none of your data is shown.</p>
+    </div>
+  </div>
+} @else {
+<div class="app-shell" [class.demo-on]="demo()">
+  @if (demo()) {
+    <div class="demo-banner">
+      <span class="demo-tag">DEMO</span>
+      <span class="demo-msg">You're viewing <b>sample data</b> — this is a live preview of the app. Nothing here is real.</span>
+      <button class="demo-exit" (click)="exitDemo()">Exit demo</button>
+    </div>
+  }
+  <!-- Sidebar -->
+  <nav class="sidebar" [class.collapsed]="!sidebarOpen()">
+    <div class="sidebar-header">
+      <span class="logo-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span>
+      <span class="logo-text">Networth.io</span>
+      <button class="collapse-btn" (click)="toggleSidebar()" title="Close menu" aria-label="Close menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <!-- Scrollable body: pinned + All tabs, or live search results -->
+    <div class="nav-body">
+      @if (navQuery()) {
+        <!-- iPhone-style live results — matches appear as you type -->
+        <ul class="nav-list nav-results">
+          @for (item of navSearch(); track item.path) {
+            <li><ng-container *ngTemplateOutlet="navLink; context: { $implicit: item }"></ng-container></li>
+          }
+          @if (!navSearch().length) { <li class="nav-empty">No tab matches “{{ navQuery() }}”</li> }
+        </ul>
+      } @else {
+        <!-- Pinned tabs — always on top; drag to reorder -->
+        @if (pinnedTabs().length) {
+          <ul class="nav-list nav-pinned">
+            @for (item of pinnedTabs(); track item.path; let i = $index; let last = $last) {
+              <li [attr.draggable]="sidebarOpen() ? true : null"
+                  [class.drag-from]="dragFrom() === i"
+                  [class.drag-over]="dragOver() === i && dragFrom() !== null && dragFrom() !== i"
+                  (dragstart)="onPinDragStart(i, $event)" (dragover)="onPinDragOver(i, $event)"
+                  (drop)="onPinDrop(i, $event)" (dragend)="onPinDragEnd()">
+                <ng-container *ngTemplateOutlet="navLink; context: { $implicit: item, pinned: true, index: i, last: last }"></ng-container>
+              </li>
+            }
+          </ul>
+        }
+
+        <!-- All tabs — up top (below pins); tap to open the full list -->
+        <button class="nav-all-toggle" [class.on]="showAll()" (click)="showAll.set(!showAll())" aria-label="Show all tabs">
+          <svg class="nat-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <span>All tabs</span>
+          <span class="nat-count">{{ mainTabs().length }}</span>
+        </button>
+        @if (showAll()) {
+          <ul class="nav-list nav-all">
+            @for (item of mainTabs(); track item.path) {
+              <li><ng-container *ngTemplateOutlet="navLink; context: { $implicit: item }"></ng-container></li>
+            }
+          </ul>
+        }
+      }
+    </div>
+
+    @if (sidebarOpen()) {
+      <!-- Search — pinned to the bottom; results surface above as you type -->
+      <div class="nav-search nav-search-bottom">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" placeholder="Search tabs…" [ngModel]="navQuery()" (ngModelChange)="navQuery.set($event)" (keydown.enter)="navEnter()" aria-label="Search tabs">
+        @if (navQuery()) { <button class="ns-clear" (click)="navQuery.set('')" aria-label="Clear">✕</button> }
+      </div>
+    }
+
+    <!-- reusable nav link (icon + label) -->
+    <ng-template #navLink let-item let-pinned="pinned" let-index="index" let-last="last">
+          @if (pinned && sidebarOpen()) {
+            <span class="nav-grip" title="Drag to reorder" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+            </span>
+          }
+          <a [routerLink]="item.path" routerLinkActive="active"
+             [attr.draggable]="pinned ? false : null"
+             [routerLinkActiveOptions]="{exact: item.path === '/'}" class="nav-item"
+             [class.pinned]="pinned"
+             [class.api-off]="item.path === '/settings' && !kiteConnected()"
+             (click)="onNavClick(item.path)">
+            <span class="nav-icon">
+              @switch (item.icon) {
+                @case ('home') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 12L12 3l9 9"/>
+                    <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/>
+                  </svg>
+                }
+                @case ('folder') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                }
+                @case ('dashboard') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/>
+                    <rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>
+                  </svg>
+                }
+                @case ('bell') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                  </svg>
+                }
+                @case ('credit-card') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+                  </svg>
+                }
+                @case ('target') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+                  </svg>
+                }
+                @case ('sliders') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+                    <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+                    <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+                    <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/>
+                    <line x1="17" y1="16" x2="23" y2="16"/>
+                  </svg>
+                }
+                @case ('trending-up') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+                    <polyline points="17 6 23 6 23 12"/>
+                  </svg>
+                }
+                @case ('candles') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="6" y1="4" x2="6" y2="7"/><rect x="4" y="7" width="4" height="8" rx="1"/><line x1="6" y1="15" x2="6" y2="20"/>
+                    <line x1="14" y1="3" x2="14" y2="6"/><rect x="12" y="6" width="4" height="7" rx="1"/><line x1="14" y1="13" x2="14" y2="17"/>
+                    <line x1="20" y1="9" x2="20" y2="12"/><rect x="18" y="12" width="4" height="6" rx="1"/><line x1="20" y1="18" x2="20" y2="21"/>
+                  </svg>
+                }
+                @case ('shield') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                }
+                @case ('umbrella') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2v2"/>
+                    <path d="M12 12v7a2 2 0 0 0 4 0"/>
+                    <path d="M2 12a10 10 0 0 1 20 0Z"/>
+                  </svg>
+                }
+                @case ('scale') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3v18"/><path d="M7 21h10"/>
+                    <path d="M6 6h12l-3 6a3 3 0 0 1-6 0Z" transform="translate(-3 0)"/>
+                    <path d="M6 6l-3 6a3 3 0 0 0 6 0Z"/><path d="M18 6l-3 6a3 3 0 0 0 6 0Z"/>
+                    <path d="M6 6h12"/>
+                  </svg>
+                }
+                @case ('flask') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 2v6.31L4.5 17.5A2 2 0 0 0 6.24 20.5h11.52a2 2 0 0 0 1.74-2.99L15 8.31V2"/>
+                    <line x1="8" y1="2" x2="16" y2="2"/>
+                    <line x1="7.5" y1="14" x2="16.5" y2="14"/>
+                  </svg>
+                }
+                @case ('function') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2c-2 0-3 1.5-3 4v3H7v3h4v6c0 2.5-1 4-3 4"/>
+                    <path d="M9 12h7"/>
+                    <path d="M16 17l4-5"/><path d="M16 12l4 5"/>
+                  </svg>
+                }
+                @case ('book') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                  </svg>
+                }
+                @case ('briefcase') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                  </svg>
+                }
+                @case ('map-pin') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                    <circle cx="12" cy="10" r="3"/>
+                  </svg>
+                }
+                @case ('building') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="2" width="16" height="20" rx="1"/>
+                    <line x1="9" y1="6" x2="9" y2="6"/><line x1="15" y1="6" x2="15" y2="6"/>
+                    <line x1="9" y1="10" x2="9" y2="10"/><line x1="15" y1="10" x2="15" y2="10"/>
+                    <line x1="9" y1="14" x2="9" y2="14"/><line x1="15" y1="14" x2="15" y2="14"/>
+                    <path d="M10 22v-4h4v4"/>
+                  </svg>
+                }
+                @case ('layers') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                    <polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+                  </svg>
+                }
+                @case ('coin') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <ellipse cx="12" cy="6" rx="9" ry="3.2"/>
+                    <path d="M3 6v6c0 1.8 4 3.2 9 3.2s9-1.4 9-3.2V6"/>
+                    <path d="M3 12v6c0 1.8 4 3.2 9 3.2s9-1.4 9-3.2v-6"/>
+                  </svg>
+                }
+                @case ('receipt') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 3v18l2-1.4 2 1.4 2-1.4 2 1.4 2-1.4 2 1.4V3l-2 1.4L15 3l-2 1.4L11 3 9 4.4 7 3 5 4.4 5 3z"/>
+                    <line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="14" y2="13"/>
+                  </svg>
+                }
+                @case ('wallet') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v2"/><path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z"/><circle cx="17" cy="13" r="1.2"/>
+                  </svg>
+                }
+                @case ('bank') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 10l9-6 9 6"/><path d="M4 10v8M9 10v8M15 10v8M20 10v8"/><path d="M2 21h20"/>
+                  </svg>
+                }
+                @case ('atom') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="1.5"/>
+                    <ellipse cx="12" cy="12" rx="10" ry="4.5"/>
+                    <ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(60 12 12)"/>
+                    <ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(-60 12 12)"/>
+                  </svg>
+                }
+                @case ('gear') {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
+                }
+                @default {
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                }
+              }
+            </span>
+            @if (sidebarOpen()) {
+              <span class="nav-text">
+                <span class="nav-label">{{ item.label }}</span>
+                @if (item.hint) {
+                  <span class="nav-hint">{{ item.hint }}</span>
+                }
+              </span>
+              @if (item.path === '/settings' && !kiteConnected()) {
+                <span class="nav-alert">!</span>
+              }
+            }
+          </a>
+          @if (sidebarOpen()) {
+            <button class="nav-pin" [class.on]="isPinned(item.path)" (click)="togglePin(item.path, $event)"
+                    [title]="isPinned(item.path) ? 'Unpin' : 'Pin to top'" aria-label="Pin tab">
+              <svg viewBox="0 0 24 24" [attr.fill]="isPinned(item.path) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 17v5"/><path d="M9 10.76V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4.76a2 2 0 0 0 .59 1.42l1.12 1.12A2 2 0 0 1 17 14.7V16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-1.3a2 2 0 0 1 .29-1.4l1.12-1.12A2 2 0 0 0 9 10.76z"/>
+              </svg>
+            </button>
+          }
+    </ng-template>
+
+
+  </nav>
+
+  <!-- Backdrop — click to close the drawer -->
+  @if (sidebarOpen()) {
+    <div class="sidebar-backdrop" (click)="toggleSidebar()"></div>
+  }
+
+  <!-- Main content -->
+  <div class="main-area">
+    <header class="topbar">
+      <button class="menu-btn" (click)="toggleSidebar()" title="Menu" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <a class="topbar-brand" routerLink="/" title="Networth.io — home">
+        <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span>
+        <span class="brand-name">Networth<span class="brand-suffix">.io</span></span>
+      </a>
+      <div class="topbar-actions">
+        @if (!demo()) {
+          <!-- Auto-lock countdown pill → click to change the duration -->
+          <div class="autolock" [class.open]="lockMenuOpen()">
+            @if (auth.secondsLeft() !== null) {
+              <button class="autolock-pill" [class.urgent]="lockUrgent()" (click)="toggleLockMenu()"
+                      title="Auto-locks when this reaches 0 — click to change" aria-label="Auto-lock timer, click to change duration">
+                <svg class="autolock-ring" viewBox="0 0 36 36" aria-hidden="true">
+                  <circle class="ring-track" cx="18" cy="18" r="15"/>
+                  <circle class="ring-fill" cx="18" cy="18" r="15"
+                          [style.stroke-dasharray]="94.25"
+                          [style.stroke-dashoffset]="lockRingOffset()"/>
+                </svg>
+                <span class="autolock-time">{{ lockCountdown() }}</span>
+              </button>
+            }
+            @if (lockMenuOpen()) {
+              <div class="autolock-menu" role="dialog" aria-label="Auto-lock settings">
+                <div class="autolock-menu-head">
+                  <span class="al-title">Auto-lock after</span>
+                  <span class="al-cur">{{ auth.lockMinutes() }} min idle</span>
+                </div>
+                <div class="autolock-presets">
+                  @for (m of auth.lockPresets(); track m) {
+                    <button type="button" [class.sel]="auth.lockMinutes() === m"
+                            [disabled]="savingLock()" (click)="pickLockMinutes(m)">{{ presetLabel(m) }}</button>
+                  }
+                </div>
+                <div class="autolock-custom">
+                  <input type="number" min="1" max="720" inputmode="numeric" placeholder="Custom"
+                         [ngModel]="customMins()" (ngModelChange)="customMins.set($event)"
+                         (keydown.enter)="applyCustomLock()" aria-label="Custom minutes" />
+                  <span class="al-unit">min</span>
+                  <button type="button" class="al-set" [disabled]="savingLock()" (click)="applyCustomLock()">Set</button>
+                </div>
+                <button type="button" class="autolock-locknow" (click)="closeLockMenu(); lock()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  Lock now
+                </button>
+              </div>
+            }
+          </div>
+          <button class="lock-app-btn" (click)="lock()" title="Lock the app" aria-label="Lock the app">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </button>
+        }
+      </div>
+    </header>
+    <main class="content">
+      <router-outlet />
+    </main>
+  </div>
+
+  <!-- Mobile long-press tooltip (phones have no hover) -->
+  @if (touchTip(); as tip) {
+    <div class="touch-tip" [style.left.px]="tip.x" [style.top.px]="tip.y">{{ tip.text }}</div>
+  }
+
+  <!-- Idle auto-lock warning -->
+  @if (auth.warnSeconds() !== null && !demo()) {
+    <div class="idle-overlay">
+      <div class="idle-card">
+        <span class="idle-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </span>
+        <h3>Still there?</h3>
+        <p>For your security, you'll be locked in <b>{{ auth.warnSeconds() }}s</b> due to inactivity.</p>
+        <div class="idle-actions">
+          <button class="idle-stay" (click)="staySignedIn()">Stay signed in</button>
+          <button class="idle-lock" (click)="lock()">Lock now</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>
+}

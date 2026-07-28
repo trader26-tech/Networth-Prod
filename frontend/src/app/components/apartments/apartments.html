@@ -1,0 +1,435 @@
+<div class="land-head">
+  <div>
+    <h1>Apartments</h1>
+    <p class="sub">Every rented flat — appreciation <b>and</b> rent combined into one return. See what you collect each month and the overall CAGR.</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" (click)="openAdd()">＋ Add apartment</button>
+  </div>
+</div>
+<!-- Needs-migration notice -->
+@if (needsMigration()) {
+  <div class="notice">
+    <div class="notice-head">
+      <span class="ni">⚙︎</span>
+      <div>
+        <strong>One-time setup — create the Supabase tables</strong>
+        <p>Supabase is connected, but the <code>apartment_units</code> / <code>apartment_documents</code> tables don't exist yet. Paste this into <b>Supabase → SQL Editor → Run</b>, then hit retry. Document storage is created automatically.</p>
+      </div>
+    </div>
+    <pre class="sql">{{ migrationSql }}</pre>
+    <div class="notice-actions">
+      <button class="btn" (click)="copySql()">{{ copied() ? '✓ Copied' : 'Copy SQL' }}</button>
+      <button class="btn primary" (click)="reload()">I've run it — retry</button>
+    </div>
+  </div>
+}
+
+@if (error()) {
+  <div class="banner err">{{ error() }} <button class="x" (click)="error.set(null)">✕</button></div>
+}
+
+@if (loading()) {
+  <div class="state">Loading your apartments…</div>
+}
+
+<!-- Summary hero -->
+@if (!loading() && !needsMigration() && hasData() && heroSummary(); as s) {
+  <div class="hero">
+    <div class="hero-main">
+      <span class="hero-label has-tip" data-tip="Sum of every apartment's current estimated market value.">Current estimated value</span>
+      <span class="hero-value">{{ inr(s.current_value) }}</span>
+      <span class="hero-exact">{{ inrFull(s.current_value) }}</span>
+      <span class="hero-gain has-tip" data-tip="Current value minus what you paid (capital appreciation only — rent is counted separately)." [class.pos]="s.total_gain >= 0" [class.neg]="s.total_gain < 0">
+        {{ s.total_gain >= 0 ? '▲' : '▼' }} {{ inr(s.total_gain) }}
+        <span class="muted">({{ pct(s.total_gain_pct) }}) appreciation</span>
+      </span>
+    </div>
+    <div class="hero-stats">
+      <div class="hs has-tip tip-right rent" data-tip="Total rent you collect across all apartments every month.">
+        <span class="k">Rent / month</span><span class="v pos">{{ inr(s.monthly_rent) }}</span></div>
+      <div class="hs has-tip tip-right" data-tip="Annualised rent ÷ current value — your gross rental yield right now.">
+        <span class="k">Gross yield</span><span class="v">{{ pct(s.gross_yield) }}</span></div>
+      <div class="hs has-tip tip-right" data-tip="Money-weighted appreciation IRR — the rate r where Σ bought × (1+r)^years = Σ current value — plus portfolio rent yield (annual rent ÷ invested).">
+        <span class="k">Total CAGR</span>
+        <span class="v" [class.pos]="(s.blended_total_cagr ?? 0) >= 0" [class.neg]="(s.blended_total_cagr ?? 0) < 0">{{ pct(s.blended_total_cagr) }}</span>
+      </div>
+      <div class="hs has-tip tip-right" data-tip="Total of every apartment's purchase price — your invested cost.">
+        <span class="k">Invested</span><span class="v">{{ inr(s.invested) }}</span></div>
+      <div class="hs has-tip tip-right" data-tip="Number of apartments you're tracking."><span class="k">Units</span><span class="v">{{ s.unit_count }}</span></div>
+      @if (s.advance_repay > 0) {
+        <div class="hs adv" [class.has-pop]="s.advance_items.length">
+          <span class="k">Advance to repay <small>· {{ s.advance_count }} tenant{{ s.advance_count === 1 ? '' : 's' }}</small></span>
+          <span class="v warn">−{{ inr(s.advance_repay) }}</span>
+          @if (s.advance_items.length) {
+            <div class="adv-pop">
+              <div class="ap-head">Who to repay · advance held</div>
+              @for (a of s.advance_items; track a.tenant + a.unit) {
+                <div class="ap-row"><span class="ap-name">{{ a.tenant }} <em>{{ a.unit }}</em></span><b class="warn">−{{ inr(a.amount) }}</b></div>
+              }
+              <div class="ap-foot"><span>Total to repay</span><b class="warn">−{{ inr(s.advance_repay) }}</b></div>
+              <div class="ap-note">Deposits you must return when tenants vacate — subtracted from your net worth.</div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+}
+
+<!-- Empty state -->
+@if (!loading() && !needsMigration() && !hasData()) {
+  <div class="empty">
+    <div class="empty-card">
+      <div class="big">🏢</div>
+      <h2>No apartments yet</h2>
+      <p>Add your first flat — what you paid, what it's worth today, and the monthly rent. We'll compute the rental yield and the overall CAGR (appreciation + rent), and keep the sale deed and rental agreement attached.</p>
+      <button class="btn primary" (click)="openAdd()">＋ Add your first apartment</button>
+    </div>
+  </div>
+}
+
+<!-- Units table -->
+@if (!loading() && hasData()) {
+  <!-- Filter / search bar -->
+  <div class="filters">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="text" placeholder="Search name, location, owner or notes…"
+             [ngModel]="search()" (ngModelChange)="search.set($event)">
+      @if (search()) { <button class="clr" (click)="search.set('')" title="Clear">✕</button> }
+    </div>
+
+    <label class="fsel">
+      <span>Owner</span>
+      <select [ngModel]="ownerFilter()" (ngModelChange)="ownerFilter.set($event)">
+        <option value="">All owners</option>
+        @for (o of owners(); track o) { <option [value]="o">{{ o }}</option> }
+      </select>
+    </label>
+
+    <label class="fsel">
+      <span>Sort</span>
+      <select [ngModel]="sort()" (ngModelChange)="sort.set($event)">
+        <option value="value">Present value (high → low)</option>
+        <option value="rent">Monthly rent (high → low)</option>
+        <option value="total">Total CAGR (high → low)</option>
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="name">Name (A → Z)</option>
+      </select>
+    </label>
+
+    <span class="count">{{ filtered().length }} of {{ units().length }}</span>
+    @if (hasFilters()) { <button class="clear-all" (click)="clearFilters()">Clear filters</button> }
+    <button class="select-toggle" [class.active]="selectMode()" (click)="toggleSelectMode()">
+      {{ selectMode() ? '✕ Done' : '☑ Select' }}
+    </button>
+  </div>
+
+  <!-- Selection summary — metrics for just the ticked apartments -->
+  @if (selectMode() && selStats().count > 0) {
+    <div class="sel-bar">
+      <div class="sel-head">
+        <span class="sel-count">{{ selStats().count }} selected</span>
+        <button class="sel-clear" (click)="clearSelection()">Clear</button>
+      </div>
+      <div class="sel-stats">
+        <div class="ss"><span class="k">Current value</span><span class="v">{{ inr(selStats().current) }}</span></div>
+        <div class="ss"><span class="k">Invested</span><span class="v">{{ inr(selStats().invested) }}</span></div>
+        <div class="ss"><span class="k">Appreciation</span>
+          <span class="v" [class.pos]="selStats().gain >= 0" [class.neg]="selStats().gain < 0">{{ inr(selStats().gain) }} <small>{{ pct(selStats().gain_pct) }}</small></span>
+        </div>
+        <div class="ss"><span class="k">Rent / mo</span><span class="v pos">{{ inr(selStats().monthly_rent) }}</span></div>
+        <div class="ss"><span class="k">Gross yield</span><span class="v">{{ pct(selStats().gross_yield) }}</span></div>
+        <div class="ss hi has-tip tip-right" data-tip="Money-weighted appreciation IRR (Σ bought×(1+r)^years = Σ current) + annual rent ÷ invested, over the selected apartments.">
+          <span class="k">Total CAGR</span>
+          <span class="v" [class.pos]="(selStats().total_cagr ?? 0) >= 0" [class.neg]="(selStats().total_cagr ?? 0) < 0">{{ pct(selStats().total_cagr) }}</span>
+        </div>
+      </div>
+    </div>
+  }
+
+  <div class="table-wrap">
+    <table class="land-table">
+      <colgroup>
+        <col class="c-name"><col class="c-owner"><col class="c-loc"><col class="c-area"><col class="c-bought"><col class="c-price">
+        <col class="c-present"><col class="c-rate"><col class="c-rent"><col class="c-yield"><col class="c-cagr"><col class="c-act">
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="name-th">
+            @if (selectMode()) {
+              <label class="chk" (click)="$event.stopPropagation()" title="Select all">
+                <input type="checkbox" [checked]="allFilteredSelected()" (change)="toggleSelectAll()">
+              </label>
+            }
+            <span class="has-tip" data-tip="Your label for the apartment.">Name</span>
+          </th>
+          <th class="has-tip" data-tip="Who the apartment is owned by / in favour of.">Owner</th>
+          <th class="has-tip" data-tip="Building / address / city.">Location</th>
+          <th class="num has-tip" data-tip="Carpet/built-up area in square feet.">Area</th>
+          <th class="num has-tip" data-tip="The date the apartment was purchased.">Bought</th>
+          <th class="num has-tip" data-tip="The price you originally paid.">Bought price</th>
+          <th class="num has-tip" data-tip="Present value = current estimated market value today. Click the row to correct it.">Present value</th>
+          <th class="num has-tip tip-right" data-tip="Present value ÷ area. Hover for the original rate you paid.">Rate / sq ft</th>
+          <th class="num has-tip tip-right" data-tip="The rent you collect each month. Hover for the yearly figure.">Rent / mo</th>
+          <th class="num has-tip tip-right" data-tip="Annual rent ÷ present value (gross). Hover for yield on cost.">Yield</th>
+          <th class="num has-tip tip-right" data-tip="Overall CAGR = (present ÷ bought)^(1 ÷ years) − 1  +  annual rent ÷ bought. Hover a value for the worked numbers.">CAGR</th>
+          <th class="act"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (u of filtered(); track u.id) {
+          <tr class="row" [class.open]="expandedId() === u.id" [class.selected]="isSelected(u.id)" (click)="toggle(u)">
+            <td class="name">
+              @if (selectMode()) {
+                <label class="chk" (click)="$event.stopPropagation()">
+                  <input type="checkbox" [checked]="isSelected(u.id)" (change)="toggleSelect(u.id)">
+                </label>
+              }
+              <span class="u-name">{{ u.name }}</span>
+              @if (u.current_tenant; as ct) {
+                <span class="u-tenant" [attr.title]="ct.name + ' · ' + tenancyLabel(ct.tenancy_years)">
+                  <span class="ut-dot"></span>{{ ct.name }} <em>· {{ tenancyLabel(ct.tenancy_years) }}</em>
+                </span>
+              } @else if (u.monthly_rent) {
+                <span class="u-tenant vacant"><span class="ut-dot"></span>No tenant on record</span>
+              }
+            </td>
+            <td data-label="Owner">{{ u.owner || '—' }}</td>
+            <td class="loc" data-label="Location" [title]="u.location || ''">
+              @if (u.location) {
+                <a class="map-link" [href]="mapsUrl(u.location)" target="_blank" rel="noopener"
+                   (click)="$event.stopPropagation()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  <span>{{ locationLabel(u.location) }}</span>
+                </a>
+              } @else { <span class="muted">—</span> }
+            </td>
+            <td class="num" data-label="Area">{{ u.area_sqft ? (u.area_sqft | number:'1.0-0') + ' sq ft' : '—' }}</td>
+            <td class="num" data-label="Bought">{{ u.bought_date ? (u.bought_date | date:'MMM y') : '—' }}</td>
+            <td class="num" data-label="Bought price">{{ inr(u.bought_price) }}</td>
+            <td class="num present" data-label="Present value" [class.open]="expandedId() === u.id">
+              {{ inr(u.current_estimated_price) }} <span class="pen" title="Click row to edit">✎</span>
+            </td>
+            <td class="num has-tip tip-right" data-label="Rate / sq ft"
+                [attr.data-tip]="u.rate_per_sqft !== null ? 'Rate = present value ÷ area.' + (u.bought_rate_per_sqft !== null ? '  Bought at ' + inrFull(u.bought_rate_per_sqft) + ' / sq ft.' : '') : 'Present value ÷ area — set both to see it'">
+              {{ u.rate_per_sqft !== null ? inrFull(u.rate_per_sqft) : '—' }}
+            </td>
+            <td class="num rent has-tip tip-right" data-label="Rent / mo"
+                [attr.data-tip]="u.monthly_rent ? inrFull(u.monthly_rent) + ' / mo  ×12  =  ' + inrFull(u.annual_rent) + ' / year' : 'No rent set yet'">
+              {{ u.monthly_rent ? inr(u.monthly_rent) : '—' }}
+            </td>
+            <td class="num has-tip tip-right" data-label="Yield"
+                [attr.data-tip]="'Gross yield = annual rent ÷ present value = ' + pct(u.rent_yield) + '.   On cost = annual rent ÷ bought price = ' + pct(u.rent_yield_on_cost) + '.'">
+              {{ pct(u.rent_yield) }}
+            </td>
+            <td class="num cagr" data-label="CAGR">
+              <span class="has-tip tip-right" [class]="cagrClass(u.total_cagr)"
+                    [attr.data-tip]="'Total CAGR = appreciation + rent yield-on-cost.   Appreciation = (present ÷ bought)^(1 ÷ years) − 1 = ' + pct(u.cagr) + '.   Rent yield = annual rent ÷ bought = ' + pct(u.rent_yield_on_cost) + '.   Total = ' + pct(u.total_cagr) + '.'">
+                {{ pct(u.total_cagr) }}
+              </span>
+            </td>
+            <td class="act" data-label="">
+              <button class="trash" (click)="$event.stopPropagation(); remove(u)" title="Delete apartment" aria-label="Delete apartment">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                </svg>
+              </button>
+            </td>
+          </tr>
+
+          <!-- Inline edit panel -->
+          @if (expandedId() === u.id && editDraft(); as d) {
+            <tr class="edit-row">
+              <td [attr.colspan]="12">
+                <div class="edit-panel">
+                  <div class="edit-grid">
+                    <label class="fld"><span>Name</span><input [ngModel]="d.name" (ngModelChange)="d.name = $event"></label>
+                    <label class="fld"><span>Owner</span><input [ngModel]="d.owner" (ngModelChange)="d.owner = $event" placeholder="In favour of / owned by"></label>
+                    <label class="fld span2">
+                      <span>Location
+                        @if (d.location.trim()) { <a class="mini-map" [href]="mapsUrl(d.location)" target="_blank" rel="noopener">Open in Maps ↗</a> }
+                      </span>
+                      <input [ngModel]="d.location" (ngModelChange)="d.location = $event" placeholder="Building / address, or paste a Google Maps link">
+                    </label>
+                    <label class="fld"><span>Area (sq ft)</span><input type="number" [ngModel]="d.area_sqft" (ngModelChange)="setArea(d, $event)" placeholder="e.g. 1200"></label>
+                    <label class="fld"><span>Bought date</span><input type="date" [ngModel]="d.bought_date" (ngModelChange)="d.bought_date = $event"></label>
+                    <label class="fld"><span>Bought price (₹)</span><input type="number" [ngModel]="d.bought_price" (ngModelChange)="d.bought_price = $event"></label>
+                    <label class="fld"><span>Rate / sq ft (₹) <em>· sets present = rate × area</em></span><input type="number" [ngModel]="d.rate_sqft" (ngModelChange)="setRate(d, $event)" placeholder="e.g. 8000"></label>
+                    <label class="fld"><span>Present value — current estimate (₹)</span><input type="number" [ngModel]="d.current_estimated_price" (ngModelChange)="setPresent(d, $event)"></label>
+                    <label class="fld"><span>Monthly rent (₹) <em>· drives yield &amp; CAGR</em></span><input type="number" [ngModel]="d.monthly_rent" (ngModelChange)="d.monthly_rent = $event" placeholder="e.g. 25000"></label>
+                    <label class="fld"><span>After-brokerage price (₹)</span><input type="number" [ngModel]="d.after_brokerage_price" (ngModelChange)="d.after_brokerage_price = $event"></label>
+                    <label class="fld"><span>Sellable on <em>· when you can sell it (buy planner)</em></span><input type="date" [ngModel]="d.sellable_on" (ngModelChange)="d.sellable_on = $event"></label>
+                    <label class="fld span2"><span>Notes</span><textarea rows="2" [ngModel]="d.notes" (ngModelChange)="d.notes = $event" placeholder="Tenant, agreement period, society dues, anything"></textarea></label>
+                  </div>
+
+                  <!-- Tenants -->
+                  <div class="tenants">
+                    <div class="tenants-head">
+                      <span>Tenants @if (u.tenants.length) { <small>· {{ u.tenants.length }} on record</small> }</span>
+                      @if (!(tenantForm()?.unitId === u.id && !tenantForm()?.id)) {
+                        <button class="upload-btn" (click)="openAddTenant(u)">＋ Add tenant</button>
+                      }
+                    </div>
+
+                    @if (tenantForm(); as tf) {
+                      @if (tf.unitId === u.id) {
+                        <div class="tenant-form">
+                          <div class="tf-grid">
+                            <label class="fld"><span>Name</span><input [ngModel]="tf.name" (ngModelChange)="tf.name = $event" placeholder="Tenant's full name"></label>
+                            <label class="fld"><span>Phone</span><input [ngModel]="tf.phone" (ngModelChange)="tf.phone = $event" placeholder="10-digit mobile"></label>
+                            <label class="fld"><span>Advance paid (₹)</span><input type="number" [ngModel]="tf.advance_paid" (ngModelChange)="tf.advance_paid = $event" placeholder="e.g. 50000"></label>
+                            <label class="fld"><span>Moved in</span><input type="date" [ngModel]="tf.move_in_date" (ngModelChange)="tf.move_in_date = $event"></label>
+                            <label class="fld"><span>Moved out <em>· blank if current</em></span><input type="date" [ngModel]="tf.move_out_date" (ngModelChange)="tf.move_out_date = $event"></label>
+                            <label class="fld span2"><span>Notes</span><input [ngModel]="tf.notes" (ngModelChange)="tf.notes = $event" placeholder="Agreement period, rent, anything to remember"></label>
+                          </div>
+                          <div class="tf-actions">
+                            <button class="btn ghost" (click)="cancelTenant()">Cancel</button>
+                            <button class="btn primary" (click)="saveTenant()" [disabled]="savingTenant() || !tf.name.trim()">{{ savingTenant() ? 'Saving…' : (tf.id ? 'Save tenant' : 'Add tenant') }}</button>
+                          </div>
+                        </div>
+                      }
+                    }
+
+                    @if (u.tenants.length) {
+                      <div class="tenant-timeline">
+                        @for (t of u.tenants; track t.id) {
+                          <div class="tl-item" [class.active]="t.active">
+                            <span class="tl-dot"></span>
+                            <div class="tl-card">
+                              <div class="tl-top">
+                                <div class="tl-who">
+                                  <b>{{ t.name }}</b>
+                                  @if (t.active) { <span class="tl-badge live">Current</span> } @else { <span class="tl-badge past">Past</span> }
+                                </div>
+                                <div class="tl-dur" title="Time lived here">{{ tenancyLabel(t.tenancy_years) }}</div>
+                              </div>
+                              <div class="tl-meta">
+                                <span class="tl-when">{{ fmtMonthYear(t.move_in_date) }} → {{ t.move_out_date ? fmtMonthYear(t.move_out_date) : 'now' }}</span>
+                                @if (t.phone) { <a class="tl-phone" [href]="'tel:' + t.phone" (click)="$event.stopPropagation()">📞 {{ t.phone }}</a> }
+                                @if (t.advance_paid) { <span class="tl-adv">Advance {{ inr(t.advance_paid) }}</span> }
+                              </div>
+                              @if (t.notes) { <div class="tl-note">{{ t.notes }}</div> }
+                            </div>
+                            <div class="tl-act">
+                              <button class="ic" (click)="openEditTenant(u, t)" title="Edit">✎</button>
+                              <button class="ic del" (click)="removeTenant(u, t)" title="Remove">🗑</button>
+                            </div>
+                          </div>
+                        }
+                      </div>
+                    } @else if (!(tenantForm()?.unitId === u.id)) {
+                      <p class="tenant-empty">No tenants recorded yet — add the current tenant and we'll keep the full move-in / move-out history here.</p>
+                    }
+                  </div>
+
+                  <!-- Documents -->
+                  <div class="docs">
+                    <div class="docs-head">
+                      <span>Documents</span>
+                      <label class="upload-btn">
+                        ＋ Upload
+                        <input type="file" multiple hidden (change)="onPickFiles(u, $event)">
+                      </label>
+                    </div>
+                    <div class="dropzone" (dragover)="$event.preventDefault()" (drop)="onDrop(u, $event)">
+                      @if (uploadingFor() === u.id) {
+                        <span class="up">Uploading…</span>
+                      } @else if (u.documents.length === 0) {
+                        <span class="hint">Drop sale deed, rental agreement, tax receipts here — or use Upload (max 20 MB each).</span>
+                      } @else {
+                        <div class="doc-list">
+                          @for (doc of u.documents; track doc.id) {
+                            <div class="doc">
+                              @if (renamingDoc() === doc.id) {
+                                <input class="doc-rename" [ngModel]="renameText()" (ngModelChange)="renameText.set($event)"
+                                       (keyup.enter)="saveRename(u, doc)" (keyup.escape)="cancelRename()"
+                                       (click)="$event.stopPropagation()" autofocus>
+                                <button class="doc-ok" (click)="saveRename(u, doc)" title="Save name">✓</button>
+                                <button class="doc-x" (click)="cancelRename()" title="Cancel">✕</button>
+                              } @else {
+                                <a class="doc-main" [href]="docUrl(doc)" target="_blank" rel="noopener">
+                                  <span class="g">{{ fileGlyph(doc.mime_type) }}</span>
+                                  <span class="dn">{{ doc.filename }}</span>
+                                  <span class="ds">{{ fmtBytes(doc.size) }}</span>
+                                </a>
+                                <button class="doc-edit" (click)="startRename(doc)" title="Rename">✎</button>
+                                <button class="doc-x" (click)="removeDoc(u, doc)" title="Remove">✕</button>
+                              }
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+
+                  <div class="parcel-actions">
+                    <button class="btn danger" (click)="remove(u)">Delete apartment</button>
+                    <div class="spacer"></div>
+                    <button class="btn ghost" (click)="toggle(u)">Cancel</button>
+                    <button class="btn primary" (click)="saveEdit(u)" [disabled]="saving()">{{ saving() ? 'Saving…' : 'Save changes' }}</button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+    @if (filtered().length === 0) {
+      <div class="no-match">
+        No apartments match your search. <button class="link" (click)="clearFilters()">Clear filters</button>
+      </div>
+    }
+  </div>
+}
+
+<!-- Add modal -->
+@if (showAdd()) {
+  <div class="modal-back" (click)="closeAdd()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <div class="modal-head">
+        <h3>Add an apartment</h3>
+        <button class="x" (click)="closeAdd()">✕</button>
+      </div>
+      <div class="edit-grid">
+        <label class="fld"><span>Name *</span><input [ngModel]="addDraft().name" (ngModelChange)="addDraft().name = $event" placeholder="e.g. Sai Garden A3"></label>
+        <label class="fld"><span>Owner</span><input [ngModel]="addDraft().owner" (ngModelChange)="addDraft().owner = $event" placeholder="In favour of / owned by"></label>
+        <label class="fld span2"><span>Location</span><input [ngModel]="addDraft().location" (ngModelChange)="addDraft().location = $event" placeholder="Building / address, or paste a Google Maps link"></label>
+        <label class="fld"><span>Area (sq ft)</span><input type="number" [ngModel]="addDraft().area_sqft" (ngModelChange)="setArea(addDraft(), $event)" placeholder="e.g. 1200"></label>
+        <label class="fld"><span>Bought date</span><input type="date" [ngModel]="addDraft().bought_date" (ngModelChange)="addDraft().bought_date = $event"></label>
+        <label class="fld"><span>Bought price (₹)</span><input type="number" [ngModel]="addDraft().bought_price" (ngModelChange)="addDraft().bought_price = $event"></label>
+        <label class="fld"><span>Rate / sq ft (₹) <em>· sets present = rate × area</em></span><input type="number" [ngModel]="addDraft().rate_sqft" (ngModelChange)="setRate(addDraft(), $event)" placeholder="e.g. 8000"></label>
+        <label class="fld"><span>Present value — current estimate (₹)</span><input type="number" [ngModel]="addDraft().current_estimated_price" (ngModelChange)="setPresent(addDraft(), $event)"></label>
+        <label class="fld"><span>Monthly rent (₹)</span><input type="number" [ngModel]="addDraft().monthly_rent" (ngModelChange)="addDraft().monthly_rent = $event" placeholder="e.g. 25000"></label>
+        <label class="fld"><span>After-brokerage price (₹)</span><input type="number" [ngModel]="addDraft().after_brokerage_price" (ngModelChange)="addDraft().after_brokerage_price = $event"></label>
+        <label class="fld"><span>Sellable on <em>· when you can sell it (buy planner)</em></span><input type="date" [ngModel]="addDraft().sellable_on" (ngModelChange)="addDraft().sellable_on = $event"></label>
+        <label class="fld span2"><span>Notes</span><textarea rows="2" [ngModel]="addDraft().notes" (ngModelChange)="addDraft().notes = $event"></textarea></label>
+      </div>
+      <p class="cagr-note">Rental yield &amp; the overall CAGR (appreciation + rent) are computed automatically. You can attach documents after saving.</p>
+      <div class="modal-actions">
+        <button class="btn ghost" (click)="closeAdd()">Cancel</button>
+        <button class="btn primary" (click)="submitAdd()" [disabled]="adding() || !addDraft().name.trim()">{{ adding() ? 'Saving…' : 'Save apartment' }}</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Undo toast -->
+@if (pendingDelete(); as pd) {
+  <div class="undo-toast">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+    </svg>
+    <span>Deleted <b>{{ pd.unit.name }}</b></span>
+    <button class="undo-btn" (click)="undoDelete()">Undo</button>
+    <button class="undo-x" (click)="finalizeDelete()" title="Dismiss">✕</button>
+  </div>
+}
