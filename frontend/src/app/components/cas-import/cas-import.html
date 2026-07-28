@@ -118,6 +118,30 @@
       <div class="banner warn">⚠ {{ w }}</div>
     }
 
+    <!-- Symbol resolution: a CAS has no trading symbol, so we resolve it from
+         the ISIN. The symbol is what makes live prices, dividends, the screener
+         and the dashboard work on an imported holding. -->
+    @if (preview()!.symbol_lookup && preview()!.symbol_lookup!.total > 0) {
+      @if (preview()!.symbol_lookup!.resolved > 0) {
+        <div class="banner ok">
+          🔗 Linked {{ preview()!.symbol_lookup!.resolved }} of
+          {{ preview()!.symbol_lookup!.total }} holdings to their NSE/BSE trading
+          symbol from the ISIN — live prices, dividends, screener links and the
+          dashboard will all work for these.
+          @if (preview()!.symbol_lookup!.resolved < preview()!.symbol_lookup!.total) {
+            The rest (new listings / suspended / preference shares) keep their
+            statement name and can be linked manually on the stocks page.
+          }
+        </div>
+      } @else {
+        <div class="banner warn">
+          🔗 Could not reach the NSE/BSE symbol directory
+          ({{ preview()!.symbol_lookup!.error || 'no results' }}). Holdings will
+          import by ISIN; symbols can be linked later.
+        </div>
+      }
+    }
+
     <!-- ISIN enrichment: a CAS rarely prints an NCD's redemption date, so we
          resolve the terms from the ISIN (a public identifier for a listed security). -->
     @if (preview()!.isin_lookup && preview()!.isin_lookup!.looked_up > 0) {
@@ -226,13 +250,17 @@
       <p class="hint">Top 25 by value. All {{ preview()!.counts.holdings }} will be imported.</p>
       <table class="tbl">
         <thead>
-          <tr><th>Security</th><th>ISIN</th><th class="r">Qty</th>
+          <tr><th>Security</th><th>Symbol</th><th>ISIN</th><th class="r">Qty</th>
               <th class="r">Price</th><th class="r">Value</th><th>Account</th></tr>
         </thead>
         <tbody>
           @for (h of topHoldings(); track h.id) {
             <tr>
               <td class="nm">{{ h.name }}</td>
+              <td class="mono">
+                @if (h.symbol) { {{ h.symbol }} }
+                @else { <span class="miss">— not linked</span> }
+              </td>
               <td class="mono">{{ h.isin }}</td>
               <td class="r">{{ h.quantity }}</td>
               <td class="r">{{ inr(h.avg_price) }}</td>

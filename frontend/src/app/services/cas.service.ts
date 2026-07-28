@@ -30,7 +30,10 @@ export interface CasHolding {
   id: string;
   account_id: string | null;
   isin?: string | null;
+  symbol?: string | null;        // resolved from ISIN — unlocks all stock features
+  exchange?: string | null;
   name?: string | null;
+  name_raw?: string | null;      // original CAS name, kept for reference
   quantity?: number | null;
   avg_price?: number | null;
   account_label?: string | null;
@@ -103,6 +106,7 @@ export interface CasPreview {
   totals: CasTotals;
   warnings: string[];
   isin_lookup?: CasIsinLookup;
+  symbol_lookup?: { resolved: number; total: number; source?: string; error?: string };
   counts: { accounts: number; holdings: number; bonds: number; mf_folios: number };
 }
 

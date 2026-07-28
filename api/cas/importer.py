@@ -266,7 +266,10 @@ def build_preview(
                 "person": person,
                 "broker": (acct or {}).get("broker") or "",
                 "account_label": (acct or {}).get("account_label") or "",
-                "symbol": None,          # a CAS carries no trading symbol
+                # symbol / exchange / clean name are filled from the ISIN
+                # directory just below — a CAS carries none of them, and the
+                # symbol is what unlocks live prices, dividends and the rest.
+                "symbol": None,
                 "name": row.get("name") or row.get("isin"),
                 "exchange": None,
                 "isin": row.get("isin"),
@@ -282,6 +285,19 @@ def build_preview(
                 "_source": "cas",
             }
         )
+
+    # Resolve trading symbol + clean name from the ISIN. This is what makes an
+    # imported holding a first-class stock: live prices, the dividend calendar,
+    # screener links, performance and the dashboard roll-up all key on the
+    # symbol, so without this every CAS holding is inert.
+    isin_dir_report: dict[str, Any] = {"resolved": 0, "total": len(holdings)}
+    if holdings:
+        try:
+            from . import isin_directory
+
+            isin_dir_report = isin_directory.enrich_holdings(holdings)
+        except Exception as e:  # never let it break the import
+            isin_dir_report = {"resolved": 0, "total": len(holdings), "error": str(e)}
 
     # ---- bonds + gsecs -> bonds drafts
     bond_rows: list[dict[str, Any]] = []
@@ -402,6 +418,7 @@ def build_preview(
         "totals": totals,
         "warnings": parsed.get("warnings") or [],
         "isin_lookup": lookup_report,
+        "symbol_lookup": isin_dir_report,
         "counts": {
             "accounts": len(accounts),
             "holdings": len(holdings),
