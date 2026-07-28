@@ -29,6 +29,7 @@ import { Equity } from './components/equity/equity';
 import { StockTax } from './components/stock-tax/stock-tax';
 import { Fno } from './components/fno/fno';
 import { Bonds } from './components/bonds/bonds';
+import { CasImport } from './components/cas-import/cas-import';
 import { BondsTax } from './components/bonds-tax/bonds-tax';
 import { Salary } from './components/salary/salary';
 import { Ulip } from './components/ulip/ulip';
@@ -68,6 +69,9 @@ export const routes: Routes = [
   { path: 'stocks',            component: Equity },
   { path: 'stocks-manual',     component: StockAccounts },
   { path: 'stock-tax',         component: StockTax },
+  // CAS import — unlock a CDSL/NSDL Consolidated Account Statement with the PAN
+  // and populate stocks + bonds from it in one pass.
+  { path: 'cas-import',        component: CasImport },
   // F&O — live Zerodha derivatives: strategy P&L (Sentinel straddle, Crude),
   // daily P&L calendar, per-second intraday chart & multi-account Kite login
   { path: 'fno',               component: Fno },
