@@ -56,6 +56,8 @@ export interface CasBond {
   note?: string;
   _value?: number | null;
   _needs?: string[];
+  _enriched?: string[];        // fields resolved from the ISIN lookup
+  issuer_resolved?: string;
 }
 
 export interface CasMfFolio {
@@ -78,6 +80,13 @@ export interface CasTotals {
   parsed_class_values?: Record<string, number>;
 }
 
+export interface CasIsinLookup {
+  looked_up: number;
+  resolved: number;
+  filled: Record<string, string[]>;
+  error?: string;
+}
+
 export interface CasPreview {
   investor: CasInvestor;
   as_of: string;
@@ -88,6 +97,7 @@ export interface CasPreview {
   mf_folios: CasMfFolio[];
   totals: CasTotals;
   warnings: string[];
+  isin_lookup?: CasIsinLookup;
   counts: { accounts: number; holdings: number; bonds: number; mf_folios: number };
 }
 

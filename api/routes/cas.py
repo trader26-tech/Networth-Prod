@@ -33,6 +33,7 @@ async def preview(
     file: UploadFile = File(...),
     pan: str = Form(...),
     owner: Optional[str] = Form(None),
+    lookup_isins: bool = Form(True),
 ):
     """Unlock + parse a CAS and return a draft import for review."""
     name = (file.filename or "").lower()
@@ -64,7 +65,7 @@ async def preview(
     except Exception as e:  # unexpected — surface rather than 500 silently
         raise HTTPException(400, f"Could not read that CAS: {e}")
 
-    result = importer.build_preview(parsed, owner=owner)
+    result = importer.build_preview(parsed, owner=owner, lookup_isins=lookup_isins)
 
     # Never echo the PAN back to the client.
     inv = dict(result.get("investor") or {})

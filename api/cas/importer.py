@@ -139,7 +139,12 @@ def _bond_type(name: str, isin: str) -> str:
 # ---------------------------------------------------------------------------
 # preview construction
 # ---------------------------------------------------------------------------
-def build_preview(parsed: dict[str, Any], owner: str | None = None) -> dict[str, Any]:
+def build_preview(
+    parsed: dict[str, Any],
+    owner: str | None = None,
+    *,
+    lookup_isins: bool = True,
+) -> dict[str, Any]:
     """
     Map a parse_cas() result onto app-shaped draft records.
 
@@ -226,14 +231,6 @@ def build_preview(parsed: dict[str, Any], owner: str | None = None) -> dict[str,
         maturity = _guess_maturity(name, row.get("maturity_date"))
         freq = _guess_freq(name, row.get("coupon_freq"))
 
-        needs: list[str] = []
-        if not maturity:
-            needs.append("maturity_date")
-        if not coupon:
-            needs.append("coupon_rate")
-        needs.append("purchase_date")   # never present in a CAS
-        needs.append("buy_price")       # never present in a CAS
-
         dp, client = _acct_label_for(row)
         acct = next(
             (a for a in accounts if a["_dp_id"] == dp and a["_client_id"] == client), None
@@ -262,10 +259,36 @@ def build_preview(parsed: dict[str, Any], owner: str | None = None) -> dict[str,
                 "note": f"Imported from CAS {investor.get('cas_id') or ''}".strip(),
                 "_value": value,
                 "_name_raw": name,
-                "_needs": needs,
+                # True when the statement itself stated a frequency, so an ISIN
+                # lookup must not overwrite it.
+                "_freq_from_cas": bool(row.get("coupon_freq")),
                 "_source": "cas",
             }
         )
+
+    # Resolve missing terms from the ISIN. A CAS rarely prints the redemption
+    # date for an NCD, but the ISIN identifies a listed security whose terms are
+    # public — so look them up rather than making the user hunt for 13 dates.
+    lookup_report: dict[str, Any] = {"looked_up": 0, "resolved": 0, "filled": {}}
+    if lookup_isins and bond_rows:
+        try:
+            from . import isin_lookup
+
+            lookup_report = isin_lookup.enrich_bonds(bond_rows)
+        except Exception as e:  # never let a network hiccup break the import
+            lookup_report = {"looked_up": 0, "resolved": 0, "filled": {}, "error": str(e)}
+
+    # `_needs` is computed AFTER enrichment so it lists only what is still
+    # genuinely missing and must come from the user.
+    for rec in bond_rows:
+        needs: list[str] = []
+        if not rec.get("maturity_date"):
+            needs.append("maturity_date")
+        if not rec.get("coupon_rate"):
+            needs.append("coupon_rate")
+        # Never in a CAS: a statement shows market value, not what you paid.
+        needs.extend(["purchase_date", "buy_price"])
+        rec["_needs"] = needs
 
     # ---- MF folios (informational; no MF store in this app yet)
     folios = []
@@ -292,6 +315,7 @@ def build_preview(parsed: dict[str, Any], owner: str | None = None) -> dict[str,
         "mf_folios": folios,
         "totals": totals,
         "warnings": parsed.get("warnings") or [],
+        "isin_lookup": lookup_report,
         "counts": {
             "accounts": len(accounts),
             "holdings": len(holdings),

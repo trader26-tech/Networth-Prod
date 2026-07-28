@@ -70,6 +70,11 @@
           🔒 The PAN is used only as the PDF password. It is not saved, not logged,
           and not sent anywhere except your own backend.
         </p>
+        <p class="privacy">
+          🔎 A CAS rarely prints an NCD's redemption date, so bond ISINs are looked up
+          to fill in coupon, maturity and payment frequency. Only the ISIN — a public
+          security identifier — leaves your machine; never your PAN or holdings.
+        </p>
 
         <button class="btn primary big" [disabled]="!canSubmit()" (click)="submit()">
           {{ loading() ? 'Unlocking & reading…' : 'Unlock and read CAS' }}
@@ -111,6 +116,25 @@
 
     @for (w of preview()!.warnings; track w) {
       <div class="banner warn">⚠ {{ w }}</div>
+    }
+
+    <!-- ISIN enrichment: a CAS rarely prints an NCD's redemption date, so we
+         resolve the terms from the ISIN (a public identifier for a listed security). -->
+    @if (preview()!.isin_lookup && preview()!.isin_lookup!.looked_up > 0) {
+      @if (preview()!.isin_lookup!.resolved > 0) {
+        <div class="banner ok">
+          🔎 Looked up {{ preview()!.isin_lookup!.looked_up }} bond ISINs and resolved
+          {{ preview()!.isin_lookup!.resolved }} — coupon, maturity date, payment
+          frequency and face value filled in automatically. Values printed on your
+          statement always take priority.
+        </div>
+      } @else {
+        <div class="banner warn">
+          🔎 Could not reach the bond-terms lookup
+          ({{ preview()!.isin_lookup!.error || 'no results' }}).
+          Fill in any missing maturity dates below.
+        </div>
+      }
     }
 
     <div class="tiles">
@@ -179,7 +203,11 @@
         <tbody>
           @for (b of preview()!.bonds; track b.id) {
             <tr>
-              <td>{{ b.issuer }}<div class="isin">{{ b.isin }}</div></td>
+              <td>
+                {{ b.issuer }}
+                @if (b._enriched?.length) { <span class="tag" title="Resolved from the ISIN">🔎</span> }
+                <div class="isin">{{ b.isin }}</div>
+              </td>
               <td>{{ b.bond_type }}</td>
               <td class="r">{{ b.quantity }}</td>
               <td class="r">{{ b.coupon_rate ? b.coupon_rate + '%' : '—' }}</td>
