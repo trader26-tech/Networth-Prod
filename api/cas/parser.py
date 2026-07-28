@@ -144,39 +144,65 @@ def _clean_name(raw: str) -> str:
 
 
 # Security-type code lives at ISIN[7:9] (e.g. INE101Q07CA7 -> "07").
-# Verified against this CAS's own asset-class summary, which these buckets
-# reproduce to the rupee.
+#   REITs use "25"; InvITs use "23" — but "23" is also used by some warrants /
+#   other instruments, so InvIT detection leans on the NAME (unambiguous), with
+#   the code only as a hint. The statement groups both REITs and InvITs under
+#   "Others", which these buckets reproduce.
 _ISIN_TYPE_MAP = {
     "01": "equity",
     "04": "preference",
     "07": "debt",
     "08": "debt",
-    "25": "other",  # REITs / InvITs — the statement's "Others" class
+    "25": "other",  # REITs
 }
+
+# The security name is authoritative for trust units, whatever the ISIN code.
+_REIT_INVIT_RE = re.compile(
+    r"\b(REIT|INVIT|IN ?VIT|REAL ESTATE INVESTMENT TRUST|"
+    r"INFRASTRUCTURE INVESTMENT TRUST|INFRA(?:STRUCTURE)? TRUST|INFRATRUST)\b",
+    re.I,
+)
 
 
 def _classify_isin(isin: str, name: str = "") -> str:
     """
-    Classify a holding from its ISIN, which encodes the instrument type:
+    Classify a holding into the statement's asset-class buckets.
 
-      INF...      -> mutual fund / ETF unit (AMC-issued)
-      ISIN[7:9]   -> security-type code: 01 equity, 04 preference,
-                     07/08 debt, 25 REIT/InvIT ("Others")
+      INF...                       -> mutual fund / ETF unit
+      name says REIT / InvIT       -> "other" (authoritative — beats the code)
+      ISIN[7:9] 01/04/07/08/25     -> equity / preference / debt / REIT
+      ISIN[7:9] 23                 -> InvIT only when name/CAS agrees, else the
+                                      code's usual meaning
+      name hints (NCD/ETF/...)     -> fallback
 
-    This reproduces the CAS's own asset-class summary, so imported rows land
-    on the right page. Name-based hints are only a fallback for ISINs whose
-    type code is unrecognised.
+    Name-first for trust units is deliberate: InvIT ISINs don't all share one
+    type code, so keying on the code alone silently files them as equity and
+    the "Others" class under-reconciles.
     """
     s = (isin or "").upper()
+    nm = name or ""
+
     if s.startswith("INF"):
         return "mf"
+
+    # A named REIT/InvIT is "Others" regardless of the ISIN type code.
+    if _REIT_INVIT_RE.search(nm):
+        return "other"
+
     if len(s) >= 9:
-        kind = _ISIN_TYPE_MAP.get(s[7:9])
+        code = s[7:9]
+        kind = _ISIN_TYPE_MAP.get(code)
         if kind:
             return kind
-    if re.search(r"\b(NCD|BOND|DEBENTURE|SLR|G-?SEC)\b", name or "", re.I):
+        # "23" with no equity/debt name signal is very likely an InvIT unit.
+        if code == "23" and not re.search(
+            r"\b(NCD|BOND|DEBENTURE|WARRANT|EQUITY SHARES?)\b", nm, re.I
+        ):
+            return "other"
+
+    if re.search(r"\b(NCD|BOND|DEBENTURE|SLR|G-?SEC)\b", nm, re.I):
         return "debt"
-    if re.search(r"\b(ETF|MUTUAL FUND|MF-|LIQUID|NIFTY|BEES)\b", name or "", re.I):
+    if re.search(r"\b(ETF|MUTUAL FUND|MF-|LIQUID|NIFTY|BEES)\b", nm, re.I):
         return "mf"
     return "equity"
 
