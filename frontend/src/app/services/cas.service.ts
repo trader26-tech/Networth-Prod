@@ -60,6 +60,7 @@ export interface CasBond {
   _value?: number | null;
   _needs?: string[];
   _enriched?: string[];        // fields resolved from the ISIN lookup
+  _schedule_confidence?: 'exact' | 'estimated';  // amortizing = estimated schedule
   issuer_resolved?: string;
 }
 

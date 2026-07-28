@@ -338,7 +338,9 @@ def build_preview(
                 "buy_price": price or face or 0.0,
                 "coupon_rate": coupon or 0.0,
                 "coupon_freq": freq,
-                "repayment_type": "bullet",
+                # Carry the amortizing/bullet structure the parser detected from
+                # the CAS wording; default bullet only when unknown.
+                "repayment_type": row.get("repayment_type") or "bullet",
                 "purchase_date": as_of,
                 "first_payment_date": None,
                 "maturity_date": maturity,
@@ -348,6 +350,18 @@ def build_preview(
                 # True when the statement itself stated a frequency, so an ISIN
                 # lookup must not overwrite it.
                 "_freq_from_cas": bool(row.get("coupon_freq")),
+                # Confidence of the generated cashflow schedule:
+                #   exact     — bullet bond: interest from coupon, principal at
+                #               maturity; arithmetically correct.
+                #   estimated — amortizing bond: principal spread straight-line
+                #               because the real instalment schedule is in the
+                #               offer document, not any free source. The user
+                #               can paste the true schedule to override.
+                "_schedule_confidence": (
+                    "estimated"
+                    if (row.get("repayment_type") == "amortizing")
+                    else "exact"
+                ),
                 "_source": "cas",
             }
         )

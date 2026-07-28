@@ -318,6 +318,20 @@ def rows_from_words(words: list[dict]) -> list[dict[str, Any]]:
         if not nums:
             continue
 
+        # Is this a row in the dedicated BONDS table? That table has its own
+        # column shape — qty | face-per-bond | mkt-per-bond | value — so
+        # "quantity = 3rd-from-last numeric" (right for equities) would read the
+        # face value as the quantity. The bonds table is recognised by the
+        # coupon+maturity that CDSL prints inside the description, e.g.
+        # "UCL 11.65 17052031 11.65 17052031 5.00 1,00,000.00 98,300.00 491500".
+        right_texts = [w["text"].strip() for w in right]
+        head_txt = " ".join(right_texts)
+        is_bond_table = bool(
+            re.search(r"\b\d{8}\b", head_txt)          # embedded DDMMYYYY maturity
+            and len(nums) >= 4
+        )
+
+        face = None
         if is_folio:
             # Folio summary: units | NAV | invested | VALUE | gain | gain%
             # -> value is 3rd from last; needs at least 4 numerics to be real.
@@ -326,6 +340,12 @@ def rows_from_words(words: list[dict]) -> list[dict[str, Any]]:
             value = _num(nums[-3]["text"])
             price = _num(nums[-4]["text"]) if len(nums) >= 4 else None
             qty = _num(nums[0]["text"])
+        elif is_bond_table:
+            # value | mkt-per-bond | face-per-bond | quantity (right-to-left)
+            value = _num(nums[-1]["text"])
+            price = _num(nums[-2]["text"])
+            face = _num(nums[-3]["text"])
+            qty = _num(nums[-4]["text"])
         else:
             value = _num(nums[-1]["text"])
             price = _num(nums[-2]["text"]) if len(nums) >= 2 else None
@@ -341,7 +361,9 @@ def rows_from_words(words: list[dict]) -> list[dict[str, Any]]:
             "quantity": qty,
             "price": price,
             "value": value,
+            "face_value": face,
             "is_folio": is_folio,
+            "is_bond_table": is_bond_table,
             "top": t,
         })
     return rows
@@ -925,23 +947,38 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
                 "page": pno,
             }
             if kind == "debt":
-                # Debt holding. The dedicated bonds table (page 28) carries
-                # coupon/maturity/face columns embedded in the name; parse them
-                # when present, else leave None for the ISIN lookup to fill.
+                # Debt holding. Coupon/maturity embedded in the name are parsed
+                # when present (bonds-table rows), else left None for the ISIN
+                # lookup to fill during import. Quantity/face come from the
+                # row's own columns (the bonds table sets face_value directly).
                 parsed = _parse_bond_row(
                     f"{row['isin']} {row['name']}", row["isin"]
                 ) or {}
+                # "PRN PRT" (principal part-payment) in a CDSL description marks
+                # an AMORTIZING NCD — principal returns in instalments, not one
+                # bullet at maturity. Detecting it is what lets the schedule
+                # engine spread principal correctly instead of dumping it all at
+                # the end. Scalable: it keys on the CAS's own wording, not any
+                # specific issuer.
+                nm_up = (row.get("name") or "").upper()
+                amortizing = bool(
+                    re.search(r"\bPR[TN]\b.*\bPR[TN]\b", nm_up)
+                    or re.search(r"\bPART\s*(?:PAY|REDEM|PRIN)", nm_up)
+                    or re.search(r"\bAMORTI", nm_up)
+                    or ("PRN" in nm_up and "PRT" in nm_up)
+                )
                 bonds.append(
                     {
                         "isin": row["isin"],
                         "name": row["name"],
                         "quantity": qty or parsed.get("quantity"),
-                        "face_value": parsed.get("face_value"),
+                        "face_value": row.get("face_value") or parsed.get("face_value"),
                         "price": price,
                         "value": value,
                         "coupon_rate": parsed.get("coupon_rate"),
                         "coupon_freq": parsed.get("coupon_freq"),
                         "maturity_date": parsed.get("maturity_date"),
+                        "repayment_type": "amortizing" if amortizing else "bullet",
                         "account": cur_acct,
                     }
                 )

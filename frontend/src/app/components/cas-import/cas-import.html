@@ -221,7 +221,7 @@
       <h2>Bonds &amp; NCDs <span class="pill">{{ preview()!.bonds.length }}</span></h2>
       <table class="tbl">
         <thead>
-          <tr><th>Issuer</th><th>Type</th><th class="r">Qty</th><th class="r">Coupon</th>
+          <tr><th>Issuer</th><th>Repayment</th><th class="r">Qty</th><th class="r">Coupon</th>
               <th>Freq</th><th>Maturity</th><th class="r">Value</th></tr>
         </thead>
         <tbody>
@@ -229,10 +229,18 @@
             <tr>
               <td>
                 {{ b.issuer }}
-                @if (b._enriched?.length) { <span class="tag" title="Resolved from the ISIN">🔎</span> }
+                @if (b._enriched?.length) { <span class="tag" title="Coupon / maturity resolved from the ISIN">🔎</span> }
                 <div class="isin">{{ b.isin }}</div>
               </td>
-              <td>{{ b.bond_type }}</td>
+              <td>
+                @if (b.repayment_type === 'amortizing') {
+                  <span class="tag-amort" title="Principal repaid in instalments. The exact per-date schedule isn't in a CAS, so it's estimated straight-line — edit on the bonds page for exact figures.">
+                    Amortizing · est.
+                  </span>
+                } @else {
+                  <span class="sub2">Bullet</span>
+                }
+              </td>
               <td class="r">{{ b.quantity }}</td>
               <td class="r">{{ b.coupon_rate ? b.coupon_rate + '%' : '—' }}</td>
               <td>{{ b.coupon_freq }}</td>
