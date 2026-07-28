@@ -804,19 +804,29 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
         if not text:
             continue
         words = pages_words[pno - 1] if pno - 1 < len(pages_words) else []
-        cur_acct = account_seq[acct_idx] if acct_idx < len(account_seq) else None
 
-        # Track per-account "Portfolio Value ..." lines: they close each demat
-        # account (moving cur_acct on) and feed the reconciliation totals. Row
-        # classification itself is by ISIN, not page position.
+        # Find the y-position of each unlabelled "Portfolio Value" line — each
+        # one closes a demat account. A page can hold both an account's last
+        # rows AND its closing line, so account assignment must respect vertical
+        # order WITHIN the page: a row belongs to the account whose closing line
+        # is the first one at or below it. Advancing a page-global pointer
+        # before placing that page's rows is what mis-assigned every Zerodha
+        # holding to the next account.
         by_line: dict[float, list[dict]] = {}
         for w in words:
             by_line.setdefault(round(w["top"], 1), []).append(w)
+
+        close_ys: list[float] = []          # y of each account-closing line, top→down
         for y in sorted(by_line):
             ltxt = " ".join(
                 x["text"] for x in sorted(by_line[y], key=lambda w: w["x0"])
             )
             if _DEVANAGARI.search(ltxt):
+                continue
+            # "Total Portfolio Value 52,23,899.44" is the grand-total on the
+            # summary page — NOT an account close. Counting it as one shifts
+            # every account by one and empties the first account.
+            if re.search(r"Total Portfolio Value", ltxt, re.I):
                 continue
 
             pv = _PORTFOLIO_VAL_RE.search(ltxt)
@@ -830,10 +840,38 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
                 elif "govern" in label or "gsec" in label:
                     section_values["gsec"] = section_values.get("gsec", 0.0) + val
                 else:
-                    # An unlabelled "Portfolio Value" closes one demat account.
                     stated_per_account.append(val)
                     section_values["equity"] = section_values.get("equity", 0.0) + val
-                    acct_idx += 1
+                    close_ys.append(y)
+
+        page_start_idx = acct_idx            # account index at the top of this page
+
+        def _acct_for_y(row_y: float):
+            # Each unlabelled "Portfolio Value" line ENDS an account, so every
+            # such line ABOVE a row means that row is in a later account. The
+            # offset from the page's starting account is exactly the number of
+            # closes above the row. (Rows below the last close on the page —
+            # e.g. the bonds sub-section, whose own close is *labelled* and thus
+            # not counted — correctly stay in that later account.)
+            crossed = sum(1 for cy in close_ys if cy < row_y)
+            idx = page_start_idx + crossed
+            return account_seq[idx] if idx < len(account_seq) else None
+
+        # After the page is placed, advance the global pointer past every
+        # account that closed on it.
+        acct_idx += len(close_ys)
+
+        # The bonds sub-section on a page follows that page's equity section and
+        # belongs to the SAME demat account — but it renders below the account's
+        # (unlabelled) equity close, so a plain "closes above me" count would
+        # push it to the next account. Anchor bond rows to the account of the
+        # last unlabelled close on the page (the account this page belongs to),
+        # not the index after it.
+        def _bond_acct():
+            idx = page_start_idx + max(0, len(close_ys) - 1)
+            return account_seq[idx] if idx < len(account_seq) else (
+                account_seq[-1] if account_seq else None
+            )
 
         for row in rows_from_words(words):
             y = row["top"]
@@ -842,6 +880,8 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
             qty = row.get("quantity")
             if value is None:
                 continue
+            _kind_for_acct = _classify_isin(row["isin"], row["name"])
+            cur_acct = _bond_acct() if _kind_for_acct == "debt" else _acct_for_y(y)
             # Folio-summary rows (units|NAV|cost|VALUE|gain|gain%) are read by
             # _extract_mutual_funds with their full detail; skip them here so
             # they are not double-counted in the demat bucket.
