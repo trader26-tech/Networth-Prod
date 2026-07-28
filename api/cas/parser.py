@@ -19,16 +19,21 @@ callers get plain dicts and decide what to write.
 
 Design notes
 ------------
-* Text is extracted per page and parsed with anchored regexes rather than
-  positional table extraction: CDSL's generated tables have merged/rotated
-  header cells that defeat pdfplumber's table finder, but the *data* rows are
-  reliably single-line and ISIN-anchored.
-* Hindi (Devanagari) duplicate lines are stripped — every label in a CAS is
-  printed twice, once per language.
-* Section state is tracked via "HOLDING STATEMENT OF <X>" banners so the same
-  ISIN row shape can be attributed to equities vs bonds vs G-secs.
-* Unknown/garbled rows are collected into `warnings` instead of raising, so one
-  malformed line never loses the other 300 holdings.
+* Holdings are read ROW-RELATIVE, with zero absolute coordinates (see
+  `rows_from_words`). Each holdings row is anchored on its ISIN token; the
+  numeric cells to its right are ordered by right edge and the last one is the
+  market value. Because the money columns are right-aligned this survives any
+  page width, margin, or font scale, and values of any magnitude — the failure
+  modes that a fixed-pixel-column parser cannot handle.
+* Instrument class is derived from the ISIN itself (`_classify_isin`), which
+  reproduces the statement's own asset-class summary to the rupee, so rows are
+  bucketed without depending on page position or section banners.
+* Rows carrying a transaction date are transaction-ledger entries, not
+  holdings, and are dropped — that is what keeps the ledger from being counted.
+* Every parse is checked against the statement's own asset-class totals; any
+  drift becomes a `warning` rather than a silently-wrong import.
+* Hindi (Devanagari) duplicate lines are stripped — every label is printed
+  twice, once per language.
 """
 
 from __future__ import annotations
@@ -197,270 +202,166 @@ def _coupon_freq(raw: str) -> str | None:
 # ---------------------------------------------------------------------------
 # PDF opening
 # ---------------------------------------------------------------------------
-# --- coordinate-based row assembly -----------------------------------------
-# CAS holdings tables are strictly columnar. Reading them from word positions
-# instead of text lines is what makes the parse reliable: the security name
-# wraps onto its own rows in the name column, and pdfplumber's line-joining
-# otherwise interleaves a holding's name with its neighbour's.
-_NAME_COL_X0 = 90.0    # names start ~101; ISIN sits at ~21
-_NAME_COL_X1 = 265.0   # first numeric column starts ~265
+# --- row-relative holdings extraction --------------------------------------
+# Holdings rows are read with ZERO absolute coordinates. The only geometry used
+# is (a) grouping tokens that share a baseline (same `top`) and (b) ordering the
+# numeric cells within a row by their right edge. Because CAS money columns are
+# right-aligned, the right-most numeric on an ISIN row is always the market
+# value — no matter the page width, margin, font scale, or how many digits the
+# value has. This is what makes the parse robust across CAS layouts; the old
+# fixed-pixel approach broke on every one of those variations.
+
+_ISIN_ANCHOR = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}\d$")
+_ROW_DATE = re.compile(r"^\d{2}[-/]\d{2}[-/]\d{4}$")
+_FOLIO_NO = re.compile(r"^\d{3,}/\d+$")
+# Indian-format number (lakh/crore grouping) or plain decimal.
+_ROW_NUM = re.compile(r"^-?\d{1,3}(?:,\d{2,3})*(?:\.\d+)?$|^-?\d+(?:\.\d+)?$")
+
 _ROW_BAND = 5.0        # cells within this many pts share the row's baseline
-# Debt descriptions wrap over 3-4 text lines (~4.5pt apart), so the name search
-# reaches further than the row band — but is always clamped to the midpoint
-# between neighbouring rows so names can't bleed between holdings.
-_NAME_LOOKUP = 16.0
-
-# A *holdings* row carries a unit-price cell (470 ≤ x0 < 528) AND a market-value
-# cell (x0 ≥ 528), and no date. A *transaction* row carries a date around
-# x0≈301 and no price cell — its trailing numbers are balance columns. This
-# structural difference, not the page number, separates the holding statement
-# from the movement ledger, and it holds across all sections and row shapes
-# (equity, ETF, NSDL debt, and the bond table).
-_PRICE_COL_MIN = 470.0
-_PRICE_COL_MAX = 528.0
-
-# The market-value column is RIGHT-aligned (right edge ~x1≈580), so its x0
-# slides with digit count: 12 digits → 531.0, 1 digit → 573.3. Nothing else
-# numeric ever appears at x0 ≥ 528 on a holdings row, so a lower bound is a
-# safe way to target the value regardless of magnitude.
-_VALUE_COL_MIN = 528.0
-
-# pdfplumber sometimes emits the unit price and the market value as a single
-# word ("114.770017,84,673.50" = ₹114.7700 + ₹17,84,673.50). Left unsplit the
-# token is not a number and the whole holding is silently dropped, so this
-# split is mandatory, not cosmetic.
-_GLUED_PRICE_VALUE = re.compile(r"^(\d+\.\d{4})([\d,]+\.\d\d)$")
-
-# The constants above are measured from CDSL's current A4 layout. Rather than
-# trust them, `calibrate_layout()` re-derives the column boundaries from each
-# PDF's own geometry, so a different page size, margin or font scale still
-# parses. The constants remain only as a fallback when calibration can't find
-# enough structure to measure.
-def _median(vals: list[float]) -> float:
-    s = sorted(vals)
-    n = len(s)
-    if not n:
-        return 0.0
-    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+_NAME_LOOKUP = 16.0    # debt names wrap over ~3-4 lines around the data row
 
 
-_LAYOUT_DEFAULT = {
-    "name_x0": _NAME_COL_X0,
-    "name_x1": _NAME_COL_X1,
-    "price_min": _PRICE_COL_MIN,
-    "price_max": _PRICE_COL_MAX,
-    "value_min": _VALUE_COL_MIN,
-}
+def _is_row_num(t: str) -> bool:
+    return t != "--" and bool(_ROW_NUM.match(t))
 
 
-def calibrate_layout(pages_words: list[list[dict]]) -> dict[str, float]:
+def _extract_words_tight(page) -> list[dict]:
     """
-    Measure the holdings-table column boundaries from the document itself.
+    Extract words with a word-gap tolerance tuned to the page's own glyph size.
 
-    Anchor: rows whose first token is an ISIN. On such a row the right-most
-    numeric cell is the market value and the one before it is the unit price, so
-    the gap between those two columns gives a real split point — whatever the
-    page width. Everything is expressed relative to observed positions, so a
-    rescaled or re-margined CAS calibrates to its own numbers.
-
-    Falls back to the measured-from-A4 defaults if too few rows are found to
-    measure confidently.
+    Right-aligned columns in a CAS sit only ~3pt apart, so the default gap
+    tolerance sometimes fuses a price and a value into one token
+    ("114.770017,84,673.50"), silently dropping that holding's value. A smaller
+    tolerance splits them — but a fixed value would be wrong on a differently
+    scaled PDF, so it is derived from the median character width on the page
+    (≈0.4× a char). Falls back to a safe small constant when the page is empty.
     """
-    isin_x: list[float] = []
-    numeric_x: list[float] = []
-    value_x1: list[float] = []
-    price_x1: list[float] = []
-
-    for words in pages_words:
-        if not words:
-            continue
-        by_y: dict[float, list[dict]] = {}
-        for w in words:
-            by_y.setdefault(round(w["top"], 1), []).append(w)
-        for y, row in by_y.items():
-            row = sorted(row, key=lambda w: w["x0"])
-            first = row[0]
-            if not _ISIN.fullmatch(first["text"].strip()):
-                continue
-            nums = [
-                w for w in row[1:]
-                if _num(w["text"]) is not None and _NUM_RE.fullmatch(
-                    w["text"].replace(",", "")
-                )
-            ]
-            if len(nums) < 3:
-                continue
-            isin_x.append(first["x0"])
-            value_x1.append(nums[-1]["x1"])
-            price_x1.append(nums[-2]["x1"])
-            numeric_x.extend(w["x0"] for w in nums)
-
-    if len(value_x1) < 20:
-        return dict(_LAYOUT_DEFAULT)
-
-    numeric_x.sort()
-
-    # Calibrate on the column's RIGHT edge, not its left. Both money columns are
-    # right-aligned, so x1 is fixed while x0 slides ~2.6pt left per extra digit.
-    # Anchoring on x0 means a wide value (e.g. "1,50,00,000.00") starts left of
-    # the cutoff and gets misread as the price — losing that holding's value
-    # entirely. The right edge does not move, so it is the safe anchor.
-    value_edge = max(value_x1)
-    price_edge = _median(price_x1)
-
-    # Split midway between the two right edges: any cell ending beyond this is
-    # the value, whatever its width.
-    value_min = (price_edge + value_edge) / 2 if price_edge < value_edge else value_edge - 30.0
-
-    # Price column, also by right edge: anything ending left of the value split
-    # but within ~1.5 column-widths of it.
-    price_max = value_min
-    price_min = min(price_x1) - 5.0
-    if price_min >= price_max:
-        price_min = price_max - 80.0
-
-    # Name column sits between the ISIN token and the first numeric column.
-    # (Name cells are left-aligned, so x0 is the right key for this one.)
-    first_num = numeric_x[0] if numeric_x else _NAME_COL_X1
-    name_x0 = (min(isin_x) + first_num) / 2 if isin_x else _NAME_COL_X0
-    name_x0 = min(name_x0, first_num - 20.0)
-    name_x1 = first_num - 1.0
-
-    return {
-        "name_x0": name_x0,
-        "name_x1": name_x1,
-        "price_min": price_min,
-        "price_max": price_max,
-        "value_min": value_min,
-    }
+    chars = page.chars or []
+    if chars:
+        widths = sorted(c["x1"] - c["x0"] for c in chars if c.get("x1", 0) > c.get("x0", 0))
+        med = widths[len(widths) // 2] if widths else 5.0
+        tol = max(1.0, min(2.5, med * 0.4))
+    else:
+        tol = 2.0
+    return page.extract_words(keep_blank_chars=False, x_tolerance=tol)
 
 
-def _rows_from_words(
-    words: list[dict], layout: dict[str, float] | None = None
-) -> list[dict[str, Any]]:
+def rows_from_words(words: list[dict]) -> list[dict[str, Any]]:
     """
-    Group a page's words into holdings rows keyed on the ISIN token, pulling
-    the security name from the name column within the row's vertical band.
+    Extract holdings rows from one page's words, coordinate-free.
+
+    For every baseline that starts with an ISIN token:
+      * drop it if any token on the line is a date  -> transaction ledger, not a
+        holding;
+      * take the numeric tokens to the right of the ISIN, ordered by right edge;
+      * the last numeric is the market value, the one before it the unit price,
+        the one before that the balance quantity (folio rows are handled
+        specially — their value is the 3rd-from-last numeric);
+      * the security name is the non-numeric text between the ISIN and the first
+        number, plus any name-column fragments on the lines just above/below
+        (names wrap), clamped so two adjacent holdings can't swap fragments.
+
+    Returns dicts: {isin, name, quantity, price, value, is_folio, top}.
     """
-    lay = layout or _LAYOUT_DEFAULT
-    name_x0, name_x1 = lay["name_x0"], lay["name_x1"]
-    price_min, price_max = lay["price_min"], lay["price_max"]
-    value_min = lay["value_min"]
+    by_top: dict[float, list[dict]] = {}
+    for w in words:
+        by_top.setdefault(round(w["top"], 1), []).append(w)
 
-    isin_words = [
-        w for w in words if w["x0"] < name_x0 and _ISIN.fullmatch(w["text"].strip())
-    ]
-    if not isin_words:
-        return []
-    isin_words.sort(key=lambda w: w["top"])
-
-    name_words = [
-        w for w in words if name_x0 <= w["x0"] < name_x1
-    ]
+    # baselines that begin with an ISIN, in page order
+    isin_tops = sorted(
+        t for t, line in by_top.items()
+        if any(_ISIN_ANCHOR.match(w["text"].strip()) for w in line)
+    )
 
     rows: list[dict[str, Any]] = []
-    for iw in isin_words:
-        y = iw["top"]
-        # numeric/data cells on the same baseline
-        band = [w for w in words if abs(w["top"] - y) < _ROW_BAND and w["x0"] >= name_x1]
-        band.sort(key=lambda w: w["x0"])
-        # CAS sometimes emits an adjacent "--" glued to the next figure
-        # ("--3540.000"); split those so column counting stays correct.
-        # Normalise cells into (right_edge, text) pairs, splitting the two glue
-        # cases:
-        #   "--3540.000"           -> "--", "3540.000"
-        #   "114.770017,84,673.50" -> price, value
-        #
-        # Cells are keyed on their RIGHT edge (x1), because both money columns
-        # are right-aligned: x0 slides left as a number gets wider, so a large
-        # value would otherwise fall outside its own column and be read as the
-        # price. x1 stays put no matter how many digits.
-        cells_xy: list[tuple[float, str]] = []
-        for w in band:
-            txt = w["text"].strip()
-            g = _GLUED_PRICE_VALUE.match(txt)
-            if g:
-                # Two figures rendered as one word: the price ends where the
-                # value begins, so split the span proportionally by length.
-                span = w["x1"] - w["x0"]
-                frac = len(g.group(1)) / max(1, len(txt))
-                cells_xy.append((w["x0"] + span * frac, g.group(1)))
-                cells_xy.append((w["x1"], g.group(2)))
-                continue
-            for part in re.split(r"(?<=--)(?=\d)|(?<=\d)(?=--)", txt):
-                part = part.strip()
-                if part:
-                    cells_xy.append((w["x1"], part))
-        cells = [t for _, t in cells_xy]
+    for t in isin_tops:
+        line = sorted(by_top[t], key=lambda w: w["x0"])
+        iw = next(w for w in line if _ISIN_ANCHOR.match(w["text"].strip()))
+        isin = iw["text"].strip()
 
-        # Reject movement-ledger rows: they date-stamp the transaction and have
-        # no unit-price column.
-        # Test dates against the RAW words, never the split cells — splitting
-        # can break a date apart and let a ledger row through.
-        has_date = any(_DATE_RE.search(w["text"]) for w in band)
-        has_price = any(
-            price_min <= x < price_max and _num(t) is not None
-            for x, t in cells_xy
-        )
-        value = next(
-            (
-                _num(t)
-                for x, t in sorted(cells_xy, key=lambda c: -c[0])
-                if x >= value_min and _num(t) is not None
-            ),
-            None,
-        )
-        if has_date or not has_price or value is None:
+        right = [w for w in line if w["x0"] > iw["x1"] - 1]
+
+        # Transaction-ledger rows carry a date and no price column — skip.
+        if any(_ROW_DATE.match(w["text"].strip()) for w in right):
             continue
 
-        # Name fragments sit in the name column across several text lines
-        # around the data row (debt descriptions run 3-4 lines). Claim the
-        # fragments nearest this row but never past the neighbouring rows, so
-        # two adjacent holdings don't swap name pieces.
-        prev_y = max((w["top"] for w in isin_words if w["top"] < y - 1), default=None)
-        next_y = min((w["top"] for w in isin_words if w["top"] > y + 1), default=None)
-        lo = y - _NAME_LOOKUP if prev_y is None else max(y - _NAME_LOOKUP, (prev_y + y) / 2)
-        hi = y + _NAME_LOOKUP if next_y is None else min(y + _NAME_LOOKUP, (next_y + y) / 2)
+        is_folio = any(_FOLIO_NO.match(w["text"].strip()) for w in right)
 
-        frags = [w for w in name_words if lo <= w["top"] <= hi]
-        frags.sort(key=lambda w: (round(w["top"], 1), w["x0"]))
-        name = _clean_name(" ".join(w["text"] for w in frags))
+        nums = [w for w in right if _is_row_num(w["text"].strip())]
+        nums.sort(key=lambda w: w["x1"])          # right-aligned: order by right edge
+        if not nums:
+            continue
 
-        price = next(
-            (
-                _num(t)
-                for x, t in sorted(cells_xy, key=lambda c: -c[0])
-                if price_min <= x < price_max and _num(t) is not None
-            ),
-            None,
-        )
-        rows.append(
-            {
-                "isin": iw["text"].strip(),
-                "name": name,
-                "cells": cells,
-                "value": value,
-                "price": price,
-                "top": y,
-            }
-        )
+        if is_folio:
+            # Folio summary: units | NAV | invested | VALUE | gain | gain%
+            # -> value is 3rd from last; needs at least 4 numerics to be real.
+            if len(nums) < 4:
+                continue
+            value = _num(nums[-3]["text"])
+            price = _num(nums[-4]["text"]) if len(nums) >= 4 else None
+            qty = _num(nums[0]["text"])
+        else:
+            value = _num(nums[-1]["text"])
+            price = _num(nums[-2]["text"]) if len(nums) >= 2 else None
+            qty = _num(nums[-3]["text"]) if len(nums) >= 3 else None
+        if value is None:
+            continue
+
+        name = _row_name(isin, iw, nums, by_top, isin_tops, t)
+
+        rows.append({
+            "isin": isin,
+            "name": name,
+            "quantity": qty,
+            "price": price,
+            "value": value,
+            "is_folio": is_folio,
+            "top": t,
+        })
     return rows
 
 
-def _row_quantity(row: dict[str, Any]) -> float | None:
+def _row_name(
+    isin: str,
+    iw: dict,
+    nums: list[dict],
+    by_top: dict[float, list[dict]],
+    isin_tops: list[float],
+    t: float,
+) -> str:
     """
-    Balance quantity for a holdings row: the last numeric cell before the
-    price column. Row shapes differ by instrument (equity rows carry
-    current/frozen/pledge/market-pledge/balance; NSDL debt rows carry only
-    quantity), so counting backwards from the price is what works for both.
+    Reassemble a security name that wraps across the lines around its data row.
+    Name tokens are the non-numeric words left of the first numeric column;
+    they are collected from this baseline and the neighbouring text lines, but
+    never past an adjacent ISIN row, so holdings can't steal each other's names.
     """
-    price, value = row.get("price"), row.get("value")
-    nums = [_num(c) for c in row.get("cells") or []]
-    nums = [v for v in nums if v is not None]
-    # drop the trailing price/value we already resolved by column
-    while nums and nums[-1] in (value, price):
-        nums.pop()
-    return nums[-1] if nums else None
+    first_num_x0 = nums[0]["x0"] if nums else 1e9
+
+    def name_tokens(line: list[dict]) -> list[dict]:
+        out = []
+        for w in line:
+            s = w["text"].strip()
+            if not s or _DEVANAGARI.search(s):
+                continue
+            if _ISIN_ANCHOR.match(s) or _is_row_num(s) or s == "--":
+                continue
+            if w["x0"] > iw["x1"] - 1 and w["x1"] <= first_num_x0 + 1:
+                out.append(w)
+        return out
+
+    # bounds: don't reach past the neighbouring ISIN rows
+    prev_t = max((x for x in isin_tops if x < t - 1), default=None)
+    next_t = min((x for x in isin_tops if x > t + 1), default=None)
+    lo = t - _NAME_LOOKUP if prev_t is None else max(t - _NAME_LOOKUP, (prev_t + t) / 2)
+    hi = t + _NAME_LOOKUP if next_t is None else min(t + _NAME_LOOKUP, (next_t + t) / 2)
+
+    frags: list[tuple[float, float, str]] = []
+    for top, line in by_top.items():
+        if lo <= top <= hi:
+            for w in name_tokens(line):
+                frags.append((round(top, 1), w["x0"], w["text"].strip()))
+    frags.sort(key=lambda f: (f[0], f[1]))
+    return _clean_name(" ".join(f[2] for f in frags))
 
 
 def _open_pdf(pdf_bytes: bytes, password: str):
@@ -505,124 +406,6 @@ _HOLDING_TAIL_RE = re.compile(
     r"(?P<price>" + _NUM + r")\s+"
     r"(?P<value>" + _NUM + r")\s*$"
 )
-
-
-def _parse_security_row(line: str, isin: str) -> dict[str, Any] | None:
-    """
-    Equity / preference holding row. The ISIN and the numeric tail sit on one
-    line; the security name may be split across this line and its neighbours:
-
-        BALMER LAWRIE & COMPANY                 <- name (line above)
-        INE164A01016 5.000 -- -- -- 5.000 182.1000 910.50
-        LIMITED EQUITY SHARES                   <- name cont. (line below)
-
-    Returns the row with whatever name fragment is on *this* line; the caller
-    stitches in the neighbouring fragments.
-    """
-    after = line.split(isin, 1)[1] if isin in line else line
-
-    m = _HOLDING_TAIL_RE.search(after)
-    if not m:
-        return None
-
-    value = _num(m.group("value"))
-    price = _num(m.group("price"))
-    qty = _num(m.group("bal"))
-    if value is None or price is None or qty is None:
-        return None
-
-    # Reject transaction-ledger rows: those carry a date and zero balances.
-    if _DATE_RE.search(after[: m.start()]):
-        return None
-
-    inline_name = _clean_name(after[: m.start()])
-
-    return {
-        "isin": isin,
-        "name": inline_name,
-        "quantity": qty,
-        "price": price,
-        "value": value,
-    }
-
-
-def _is_name_fragment(line: str) -> bool:
-    """
-    True if `line` looks like a wrapped piece of a security name rather than
-    another row, a header, or page furniture.
-    """
-    s = (line or "").strip()
-    if not s or len(s) <= 1:
-        return False
-    if _ISIN.search(s):
-        return False
-    if _DATE_RE.search(s):
-        return False
-    if re.match(r"^Page \d+ of \d+", s, re.I):
-        return False
-    if _PORTFOLIO_VAL_RE.search(s) or _SECTION_RE.search(s):
-        return False
-    # Rotated single-character header cells ("I", "S", "N", "al", "ty", ...)
-    letters = re.sub(r"[^A-Za-z]", "", s)
-    if len(letters) < 3:
-        return False
-    # Mostly-numeric lines are data, not names
-    digits = sum(c.isdigit() for c in s)
-    if digits > len(s) * 0.4:
-        return False
-    # Known header/footer vocabulary
-    if re.search(
-        r"\b(ISIN|Security|Balance|Description|Lockin|Pledge|Frozen|Current|Market|"
-        r"Face Value|Coupon|Maturity|Quantity|Value|Stamp|Transaction|Note)\b",
-        s,
-        re.I,
-    ):
-        return False
-    return True
-
-
-def _stitch_name(
-    lines: list[str], idx: int, inline: str, row_lines: set[int]
-) -> str:
-    """
-    Rebuild a security name split across the lines above/below its data row:
-
-        BALMER LAWRIE & COMPANY          <- above
-        INE164A01016 5.000 ... 910.50    <- data row (idx), maybe inline name
-        LIMITED EQUITY SHARES            <- below
-
-    CAS wraps names both ways. `row_lines` holds the indices of every data row
-    on the page, so a fragment is only claimed if no *other* data row sits
-    between it and this one — otherwise adjacent holdings steal each other's
-    names.
-    """
-    below: list[str] = []
-    j = idx + 1
-    while j < len(lines) and j not in row_lines and _is_name_fragment(lines[j]):
-        below.append(lines[j].strip())
-        j += 1
-
-    # Look upward only as far as the previous data row, and skip fragments that
-    # the previous row will already have claimed as its own trailing wrap.
-    prev_row = max((r for r in row_lines if r < idx), default=-1)
-    above: list[str] = []
-    i = idx - 1
-    while i > prev_row and _is_name_fragment(lines[i]):
-        above.append(lines[i].strip())
-        i -= 1
-    above.reverse()
-
-    if prev_row >= 0 and above:
-        # fragments directly under the previous row belong to it
-        k = prev_row + 1
-        claimed = 0
-        while k < idx and _is_name_fragment(lines[k]):
-            claimed += 1
-            k += 1
-        above = above[claimed:]
-
-    parts = above + ([inline] if inline else []) + below
-    return _clean_name(" ".join(p for p in parts if p))
 
 
 def _parse_bond_row(line: str, isin: str) -> dict[str, Any] | None:
@@ -985,7 +768,7 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
                 pages_text.append("")
                 warnings.append(f"page {pno}: text extraction failed ({e})")
             try:
-                pages_words.append(page.extract_words(keep_blank_chars=False))
+                pages_words.append(_extract_words_tight(page))
             except Exception as e:
                 pages_words.append([])
                 warnings.append(f"page {pno}: word extraction failed ({e})")
@@ -1013,16 +796,6 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
     # the account when its valuation line appears.
     # Measure this document's own column geometry before reading any row, so a
     # different page size / margin / font scale parses without code changes.
-    layout = calibrate_layout(pages_words)
-    # Only mention calibration when the document's geometry is materially
-    # different from the common CDSL layout — otherwise it is just noise.
-    if abs(layout["value_min"] - _LAYOUT_DEFAULT["value_min"]) > 25:
-        warnings.append(
-            "This CAS uses a different page layout; columns were auto-calibrated "
-            f"(value column at x≥{layout['value_min']:.0f}). Totals were still "
-            "reconciled against the statement."
-        )
-
     account_seq = [a for a in _extract_accounts(pages_text)]
     acct_idx = 0
     stated_per_account: list[float] = []
@@ -1033,12 +806,9 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
         words = pages_words[pno - 1] if pno - 1 < len(pages_words) else []
         cur_acct = account_seq[acct_idx] if acct_idx < len(account_seq) else None
 
-        # Vertical positions of this page's section banners / valuation lines,
-        # so a row can be classified by where it sits on the page.
-        bond_bands: list[float] = []
-        gsec_bands: list[float] = []
-
-        # Derive banner + valuation y-positions from word groups
+        # Track per-account "Portfolio Value ..." lines: they close each demat
+        # account (moving cur_acct on) and feed the reconciliation totals. Row
+        # classification itself is by ISIN, not page position.
         by_line: dict[float, list[dict]] = {}
         for w in words:
             by_line.setdefault(round(w["top"], 1), []).append(w)
@@ -1047,20 +817,6 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
                 x["text"] for x in sorted(by_line[y], key=lambda w: w["x0"])
             )
             if _DEVANAGARI.search(ltxt):
-                continue
-            sm = _SECTION_RE.search(ltxt)
-            if sm:
-                raw = re.sub(r"\s+", " ", sm.group(1).strip().upper())
-                kind = _SECTION_KINDS.get(raw)
-                if kind is None:
-                    for key, val in _SECTION_KINDS.items():
-                        if key in raw:
-                            kind = val
-                            break
-                if kind == "bond":
-                    bond_bands.append(y)
-                elif kind == "gsec":
-                    gsec_bands.append(y)
                 continue
 
             pv = _PORTFOLIO_VAL_RE.search(ltxt)
@@ -1079,23 +835,17 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
                     section_values["equity"] = section_values.get("equity", 0.0) + val
                     acct_idx += 1
 
-        for row in _rows_from_words(words, layout):
+        for row in rows_from_words(words):
             y = row["top"]
-            in_bond = any(y > b for b in bond_bands)
-            in_gsec = any(y > b for b in gsec_bands)
-
-            if in_bond or in_gsec:
-                line = f"{row['isin']} {row['name']} " + " ".join(row["cells"])
-                parsed = _parse_bond_row(line, row["isin"])
-                if parsed:
-                    parsed["account"] = cur_acct
-                    (bonds if in_bond else gsecs).append(parsed)
-                continue
-
             value = row.get("value")
             price = row.get("price")
-            qty = _row_quantity(row)
+            qty = row.get("quantity")
             if value is None:
+                continue
+            # Folio-summary rows (units|NAV|cost|VALUE|gain|gain%) are read by
+            # _extract_mutual_funds with their full detail; skip them here so
+            # they are not double-counted in the demat bucket.
+            if row.get("is_folio"):
                 continue
             kind = _classify_isin(row["isin"], row["name"])
             rec = {
@@ -1108,30 +858,32 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
                 "account": cur_acct,
                 "page": pno,
             }
-            if kind in ("mf", "preference", "other"):
-                # Preference shares and REITs/InvITs are tiny here but must
-                # still be counted somewhere; they ride along with the demat
-                # securities bucket rather than being silently discarded.
-                (demat_funds if kind == "mf" else equities).append(rec)
-            elif kind == "debt":
-                # A debt holding in the equity-shaped table: no coupon columns
-                # here, so record what we have and let the bonds section (which
-                # does carry coupon/maturity) win on merge.
+            if kind == "debt":
+                # Debt holding. The dedicated bonds table (page 28) carries
+                # coupon/maturity/face columns embedded in the name; parse them
+                # when present, else leave None for the ISIN lookup to fill.
+                parsed = _parse_bond_row(
+                    f"{row['isin']} {row['name']}", row["isin"]
+                ) or {}
                 bonds.append(
                     {
                         "isin": row["isin"],
                         "name": row["name"],
-                        "quantity": qty,
-                        "face_value": None,
+                        "quantity": qty or parsed.get("quantity"),
+                        "face_value": parsed.get("face_value"),
                         "price": price,
                         "value": value,
-                        "coupon_rate": None,
-                        "coupon_freq": None,
-                        "maturity_date": None,
+                        "coupon_rate": parsed.get("coupon_rate"),
+                        "coupon_freq": parsed.get("coupon_freq"),
+                        "maturity_date": parsed.get("maturity_date"),
                         "account": cur_acct,
                     }
                 )
+            elif kind == "mf":
+                demat_funds.append(rec)
             else:
+                # equity, preference, REIT/InvIT ("others") — all ride in the
+                # equities bucket; the class split is recomputed by ISIN later.
                 equities.append(rec)
 
     # De-dupe within a single (ISIN, account) — the same holding must not be
