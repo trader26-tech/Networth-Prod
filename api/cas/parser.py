@@ -236,6 +236,14 @@ _GLUED_PRICE_VALUE = re.compile(r"^(\d+\.\d{4})([\d,]+\.\d\d)$")
 # PDF's own geometry, so a different page size, margin or font scale still
 # parses. The constants remain only as a fallback when calibration can't find
 # enough structure to measure.
+def _median(vals: list[float]) -> float:
+    s = sorted(vals)
+    n = len(s)
+    if not n:
+        return 0.0
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
 _LAYOUT_DEFAULT = {
     "name_x0": _NAME_COL_X0,
     "name_x1": _NAME_COL_X1,
@@ -260,7 +268,8 @@ def calibrate_layout(pages_words: list[list[dict]]) -> dict[str, float]:
     """
     isin_x: list[float] = []
     numeric_x: list[float] = []
-    rightmost: list[float] = []
+    value_x1: list[float] = []
+    price_x1: list[float] = []
 
     for words in pages_words:
         if not words:
@@ -282,29 +291,37 @@ def calibrate_layout(pages_words: list[list[dict]]) -> dict[str, float]:
             if len(nums) < 3:
                 continue
             isin_x.append(first["x0"])
-            rightmost.append(nums[-1]["x0"])
+            value_x1.append(nums[-1]["x1"])
+            price_x1.append(nums[-2]["x1"])
             numeric_x.extend(w["x0"] for w in nums)
 
-    if len(rightmost) < 20:
+    if len(value_x1) < 20:
         return dict(_LAYOUT_DEFAULT)
 
-    rightmost.sort()
     numeric_x.sort()
 
-    # Value column: right-aligned, so take a little below its smallest observed
-    # x0 (long numbers start furthest left).
-    value_min = rightmost[0] - 3.0
+    # Calibrate on the column's RIGHT edge, not its left. Both money columns are
+    # right-aligned, so x1 is fixed while x0 slides ~2.6pt left per extra digit.
+    # Anchoring on x0 means a wide value (e.g. "1,50,00,000.00") starts left of
+    # the cutoff and gets misread as the price — losing that holding's value
+    # entirely. The right edge does not move, so it is the safe anchor.
+    value_edge = max(value_x1)
+    price_edge = _median(price_x1)
 
-    # Price column: the widest gap among numeric starts that sits left of the
-    # value column marks the price/value boundary.
-    left_of_value = [x for x in numeric_x if x < value_min - 1]
-    if not left_of_value:
-        return dict(_LAYOUT_DEFAULT)
+    # Split midway between the two right edges: any cell ending beyond this is
+    # the value, whatever its width.
+    value_min = (price_edge + value_edge) / 2 if price_edge < value_edge else value_edge - 30.0
+
+    # Price column, also by right edge: anything ending left of the value split
+    # but within ~1.5 column-widths of it.
     price_max = value_min
-    price_min = max(left_of_value[0], min(left_of_value[-1] - 60.0, value_min - 60.0))
+    price_min = min(price_x1) - 5.0
+    if price_min >= price_max:
+        price_min = price_max - 80.0
 
     # Name column sits between the ISIN token and the first numeric column.
-    first_num = left_of_value[0] if left_of_value else _NAME_COL_X1
+    # (Name cells are left-aligned, so x0 is the right key for this one.)
+    first_num = numeric_x[0] if numeric_x else _NAME_COL_X1
     name_x0 = (min(isin_x) + first_num) / 2 if isin_x else _NAME_COL_X0
     name_x0 = min(name_x0, first_num - 20.0)
     name_x1 = first_num - 1.0
@@ -349,22 +366,31 @@ def _rows_from_words(
         band.sort(key=lambda w: w["x0"])
         # CAS sometimes emits an adjacent "--" glued to the next figure
         # ("--3540.000"); split those so column counting stays correct.
-        # Normalise cells into (x0, text) pairs, splitting the two glue cases:
+        # Normalise cells into (right_edge, text) pairs, splitting the two glue
+        # cases:
         #   "--3540.000"           -> "--", "3540.000"
-        #   "114.770017,84,673.50" -> price, value  (value keeps the value x0)
+        #   "114.770017,84,673.50" -> price, value
+        #
+        # Cells are keyed on their RIGHT edge (x1), because both money columns
+        # are right-aligned: x0 slides left as a number gets wider, so a large
+        # value would otherwise fall outside its own column and be read as the
+        # price. x1 stays put no matter how many digits.
         cells_xy: list[tuple[float, str]] = []
         for w in band:
             txt = w["text"].strip()
             g = _GLUED_PRICE_VALUE.match(txt)
             if g:
-                cells_xy.append((w["x0"], g.group(1)))
-                # the value half belongs in the value column
-                cells_xy.append((max(value_min, w["x0"]), g.group(2)))
+                # Two figures rendered as one word: the price ends where the
+                # value begins, so split the span proportionally by length.
+                span = w["x1"] - w["x0"]
+                frac = len(g.group(1)) / max(1, len(txt))
+                cells_xy.append((w["x0"] + span * frac, g.group(1)))
+                cells_xy.append((w["x1"], g.group(2)))
                 continue
             for part in re.split(r"(?<=--)(?=\d)|(?<=\d)(?=--)", txt):
                 part = part.strip()
                 if part:
-                    cells_xy.append((w["x0"], part))
+                    cells_xy.append((w["x1"], part))
         cells = [t for _, t in cells_xy]
 
         # Reject movement-ledger rows: they date-stamp the transaction and have
