@@ -112,7 +112,8 @@
       "Bash(node drive-st.mjs)",
       "Bash(node drive-st2.mjs)",
       "Bash(node drive-v3.mjs)",
-      "Bash(node scripts/validate_palette.js \"#e0654f,#16a085\" --mode light)"
+      "Bash(node scripts/validate_palette.js \"#e0654f,#16a085\" --mode light)",
+      "Bash(brew list *)"
     ]
   },
   "model": "claude-opus-4-8[1m]",
