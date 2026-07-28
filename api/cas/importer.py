@@ -297,10 +297,17 @@ def build_preview(
             {
                 "amc": f.get("amc"),
                 "scheme": f.get("scheme"),
+                "scheme_code": f.get("scheme_code"),
                 "isin": f.get("isin"),
                 "folio": f.get("folio"),
                 "units": f.get("units"),
+                "nav": f.get("nav"),
+                # Folios report cost basis in the CAS (the demat side does not),
+                # so real gain/loss is available here without a tradebook.
+                "invested": f.get("invested"),
                 "value": f.get("value"),
+                "pnl": f.get("pnl"),
+                "pnl_pct": f.get("pnl_pct"),
             }
         )
 

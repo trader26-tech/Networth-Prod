@@ -99,6 +99,8 @@
   .isin { font-family: ui-monospace, monospace; font-size: 11px; color: var(--muted); margin-top: 2px; }
   .sub2 { color: var(--muted); font-size: 12px; }
   .miss { color: var(--warn); }
+  .gain { color: #86efac; }
+  .loss { color: #fca5a5; }
   input.sm { background: var(--bg); border: 1px solid var(--border); color: var(--text);
     border-radius: 7px; padding: 5px 8px; font-size: 12.5px; width: 130px;
     &:focus { outline: none; border-color: var(--accent); } }

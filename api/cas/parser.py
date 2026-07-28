@@ -724,88 +724,119 @@ def _extract_totals(pages_text: list[str]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # mutual funds
 # ---------------------------------------------------------------------------
+# The MF section of a CAS has TWO tables per folio:
+#   1. a transaction ledger (dates, redemptions, NAV per transaction)
+#   2. a holdings SUMMARY row — the one that actually states your position:
+#        Scheme Name | ISIN | Folio No. | Units | NAV | Invested | Valuation | P/L | P/L%
+# Only (2) describes what you hold, so that is what we read. Scraping (1) yields
+# one bogus "scheme" per redemption line, which is exactly the bug this replaces.
+#
+# Summary-row column positions (x0), stable across CAS output:
+_MF_COL = {
+    "isin":     (100.0, 175.0),
+    "folio":    (175.0, 255.0),
+    "units":    (255.0, 295.0),
+    "nav":      (295.0, 360.0),
+    "invested": (360.0, 430.0),
+    "value":    (430.0, 500.0),
+    "pnl":      (500.0, 545.0),
+    "pnl_pct":  (545.0, 600.0),
+}
+_MF_NAME_X1 = 100.0          # scheme name occupies x0 < 100
+_MF_ROW_BAND = 6.0
+_MF_NAME_LOOKUP = 14.0       # scheme names wrap over ~3 lines
+
+_MF_AMC_RE = re.compile(r"(Mutual Fund|Asset Management|AMC)\s*$", re.I)
 _MF_SCHEME_RE = re.compile(r"^(\d{2,6})\s*-\s*(.+)$")
-_MF_ISIN_RE = re.compile(r"ISIN\s*:?\s*([A-Z]{2}[A-Z0-9]{9}\d)", re.I)
-_MF_FOLIO_RE = re.compile(r"(?:Folio|UCC)\s*(?:No\.?)?\s*:?\s*([A-Za-z0-9/\-]+)", re.I)
-_MF_CLOSING_RE = re.compile(
-    r"Closing\s+(?:Unit\s+)?Balance\D{0,40}?(" + _NUM + r")", re.I
-)
-_MF_VALUATION_RE = re.compile(
-    r"(?:Market\s+Value|Valuation)\D{0,40}?(" + _NUM + r")", re.I
-)
-_MF_NAV_RE = re.compile(r"NAV\D{0,30}?(" + _NUM + r")", re.I)
 
 
-def _extract_mutual_funds(pages_text: list[str]) -> list[dict[str, Any]]:
+def _mf_cell(words: list[dict], lo: float, hi: float) -> str | None:
+    """First word whose x0 falls in [lo, hi)."""
+    for w in sorted(words, key=lambda x: x["x0"]):
+        if lo <= w["x0"] < hi:
+            return w["text"].strip()
+    return None
+
+
+def _extract_mutual_funds(
+    pages_text: list[str], pages_words: list[list[dict]] | None = None
+) -> list[dict[str, Any]]:
     """
-    MF folios in a CAS are transaction-statement style: an AMC line, a
-    '<code> - <scheme name>' line, an 'ISIN : ... UCC : ...' line, then a
-    transaction ledger ending in a closing balance / valuation.
+    Read each folio's holdings-summary row: units, NAV, invested cost, current
+    value and P&L.
+
+    Note this is richer than the demat side of a CAS: for MF folios the
+    statement DOES report invested cost, so real gain/loss is available without
+    a tradebook.
     """
     funds: list[dict[str, Any]] = []
-    for text in pages_text:
-        if "ISIN" not in text:
+    if not pages_words:
+        return funds
+
+    for pno, words in enumerate(pages_words):
+        if not words:
             continue
-        lines = _strip_hindi(text)
-        amc = None
-        cur: dict[str, Any] | None = None
 
-        for line in lines:
-            s = line.strip()
-
-            if re.search(r"Mutual Fund$", s, re.I) and not _MF_SCHEME_RE.match(s):
-                amc = _clean_name(s)
+        # An MF summary row = an ISIN in the ISIN column plus a numeric value
+        # in the valuation column.
+        for w in words:
+            if not (_MF_COL["isin"][0] <= w["x0"] < _MF_COL["isin"][1]):
+                continue
+            isin = w["text"].strip().upper()
+            if not _ISIN.fullmatch(isin):
                 continue
 
-            sm = _MF_SCHEME_RE.match(s)
-            if sm and amc:
-                if cur:
-                    funds.append(cur)
-                cur = {
-                    "amc": amc,
-                    "scheme_code": sm.group(1),
-                    "scheme": _clean_name(sm.group(2)),
-                    "isin": None,
-                    "folio": None,
-                    "units": None,
-                    "nav": None,
-                    "value": None,
-                }
-                continue
+            y = w["top"]
+            band = [x for x in words if abs(x["top"] - y) < _MF_ROW_BAND]
+            value = _num(_mf_cell(band, *_MF_COL["value"]))
+            units = _num(_mf_cell(band, *_MF_COL["units"]))
+            if value is None or units is None:
+                continue  # not the summary row (e.g. the "ISIN : ..." header)
 
-            if cur is None:
-                continue
+            # scheme name: the name column around this row (wraps over lines)
+            frags = [
+                x for x in words
+                if x["x0"] < _MF_NAME_X1 and abs(x["top"] - y) <= _MF_NAME_LOOKUP
+            ]
+            frags.sort(key=lambda x: (round(x["top"], 1), x["x0"]))
+            scheme = _clean_name(" ".join(x["text"] for x in frags))
 
-            im = _MF_ISIN_RE.search(s)
-            if im and not cur["isin"]:
-                cur["isin"] = im.group(1).upper()
-            fm = _MF_FOLIO_RE.search(s)
-            if fm and not cur["folio"]:
-                cur["folio"] = fm.group(1)
-            cm = _MF_CLOSING_RE.search(s)
+            # scheme code + AMC come from the ledger header above this table
+            code = None
+            cm = _MF_SCHEME_RE.match(scheme)
             if cm:
-                cur["units"] = _num(cm.group(1))
-            vm = _MF_VALUATION_RE.search(s)
-            if vm:
-                cur["value"] = _num(vm.group(1))
-            nm = _MF_NAV_RE.search(s)
-            if nm and cur["nav"] is None:
-                cur["nav"] = _num(nm.group(1))
+                code, scheme = cm.group(1), _clean_name(cm.group(2))
 
-        if cur:
-            funds.append(cur)
+            amc = None
+            for line in _strip_hindi(pages_text[pno] if pno < len(pages_text) else ""):
+                s = line.strip()
+                if _MF_AMC_RE.search(s) and not _MF_SCHEME_RE.match(s):
+                    amc = _clean_name(s)
+                    break
+                m2 = _MF_SCHEME_RE.match(s)
+                if m2 and not scheme:
+                    code = code or m2.group(1)
 
-    # de-dupe on (isin, folio, scheme) keeping the richest record
+            invested = _num(_mf_cell(band, *_MF_COL["invested"]))
+            funds.append({
+                "amc": amc,
+                "scheme_code": code,
+                "scheme": scheme or None,
+                "isin": isin,
+                "folio": _mf_cell(band, *_MF_COL["folio"]),
+                "units": units,
+                "nav": _num(_mf_cell(band, *_MF_COL["nav"])),
+                "invested": invested,
+                "value": value,
+                "pnl": _num(_mf_cell(band, *_MF_COL["pnl"])),
+                "pnl_pct": _num(_mf_cell(band, *_MF_COL["pnl_pct"])),
+                "page": pno + 1,
+            })
+
+    # one row per (isin, folio)
     merged: dict[tuple, dict[str, Any]] = {}
     for f in funds:
-        key = (f.get("isin"), f.get("folio"), f.get("scheme"))
-        prev = merged.get(key)
-        if not prev:
-            merged[key] = f
-        else:
-            for k, v in f.items():
-                if prev.get(k) in (None, "") and v not in (None, ""):
-                    prev[k] = v
+        merged.setdefault((f.get("isin"), f.get("folio")), f)
     return list(merged.values())
 
 
@@ -1026,7 +1057,7 @@ def parse_cas(pdf_bytes: bytes, pan: str) -> dict[str, Any]:
     investor = _extract_investor(pages_text)
     accounts = _extract_accounts(pages_text)
     totals = _extract_totals(pages_text)
-    mutual_funds = _extract_mutual_funds(pages_text)
+    mutual_funds = _extract_mutual_funds(pages_text, pages_words)
 
     totals["equity_value"] = round(sum(e.get("value") or 0 for e in equities), 2)
     totals["bond_value"] = round(sum(b.get("value") or 0 for b in bonds), 2)

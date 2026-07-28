@@ -63,10 +63,15 @@ export interface CasBond {
 export interface CasMfFolio {
   amc?: string | null;
   scheme?: string | null;
+  scheme_code?: string | null;
   isin?: string | null;
   folio?: string | null;
   units?: number | null;
+  nav?: number | null;
+  invested?: number | null;      // folios DO report cost basis, unlike demat
   value?: number | null;
+  pnl?: number | null;
+  pnl_pct?: number | null;
 }
 
 export interface CasTotals {

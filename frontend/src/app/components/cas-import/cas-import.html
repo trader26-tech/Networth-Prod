@@ -248,14 +248,34 @@
       <div class="card">
         <h2>Mutual fund folios <span class="pill">{{ preview()!.mf_folios.length }}</span></h2>
         <p class="hint">
-          Listed for reference — folio-held funds are not imported into the stocks page.
+          Funds held directly with the AMC (not in demat). Unlike the demat side, a CAS
+          <b>does</b> report invested cost for folios — so real gain/loss is available
+          here without a tradebook. Listed for reference; not imported into the stocks page.
         </p>
         <table class="tbl">
-          <thead><tr><th>AMC</th><th>Scheme</th><th>Folio</th><th class="r">Units</th></tr></thead>
+          <thead>
+            <tr><th>Scheme</th><th>Folio</th><th class="r">Units</th><th class="r">NAV</th>
+                <th class="r">Invested</th><th class="r">Value</th><th class="r">Gain</th></tr>
+          </thead>
           <tbody>
             @for (f of preview()!.mf_folios; track f.isin) {
-              <tr><td>{{ f.amc }}</td><td class="nm">{{ f.scheme }}</td>
-                  <td class="mono">{{ f.folio }}</td><td class="r">{{ f.units ?? '—' }}</td></tr>
+              <tr>
+                <td class="nm">
+                  {{ f.scheme }}
+                  <div class="isin">{{ f.amc }} · {{ f.isin }}</div>
+                </td>
+                <td class="mono">{{ f.folio }}</td>
+                <td class="r">{{ f.units ?? '—' }}</td>
+                <td class="r">{{ inr(f.nav) }}</td>
+                <td class="r">{{ inr(f.invested) }}</td>
+                <td class="r">{{ inr(f.value) }}</td>
+                <td class="r" [class.gain]="(f.pnl ?? 0) > 0" [class.loss]="(f.pnl ?? 0) < 0">
+                  {{ inr(f.pnl) }}
+                  @if (f.pnl_pct !== null && f.pnl_pct !== undefined) {
+                    <span class="sub2"> ({{ f.pnl_pct }}%)</span>
+                  }
+                </td>
+              </tr>
             }
           </tbody>
         </table>
