@@ -35,6 +35,12 @@ print(f"▶ SUPABASE_URL = {'set' if os.environ.get('SUPABASE_URL') else '(unset
 print(f"▶ SUPABASE_KEY = {'set' if os.environ.get('SUPABASE_KEY') or os.environ.get('SUPABASE_SERVICE_KEY') else '(unset)'}")
 print("─" * 60)
 
+# Install per-user data isolation BEFORE any store builds its Supabase client,
+# so every store's client is tenant-wrapped. No-op unless a user is in context
+# and MULTI_USER_ISOLATED is on, so safe for single-user too.
+from api import tenancy as _tenancy
+_tenancy.install()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -122,19 +128,31 @@ async def _auth_guard(request, call_next):
             # would add a per-request DB lookup for no benefit. Failure here
             # must never block a valid token; identity is additive.
             request.state.device_id = payload.get("did")
+            _tok = None
             try:
                 from api.auth import config as _acfg
 
                 if _acfg.multi_user():
                     from api.auth import store as _astore, users as _ausers
+                    from api import tenancy as _tenancy
 
                     dev = _astore.device_get(payload.get("did")) or {}
                     request.state.email = dev.get("email")
                     u = _ausers.get_by_email(dev.get("email")) if dev.get("email") else None
-                    request.state.user_id = u.get("id") if u else None
+                    uid = u.get("id") if u else None
+                    request.state.user_id = uid
+                    # Set the tenant context for this request only when data
+                    # isolation is enabled — so stores auto-scope to this user.
+                    if uid and _acfg.data_isolated():
+                        _tok = _tenancy.set_current_user(uid)
             except Exception:
                 pass
-            return await call_next(request)
+            try:
+                return await call_next(request)
+            finally:
+                if _tok is not None:
+                    from api import tenancy as _tenancy
+                    _tenancy.reset_current_user(_tok)
 
     # This guard sits OUTSIDE CORSMiddleware (Starlette's add_middleware inserts
     # at index 0, so the decorator-added guard wraps CORS). A short-circuit 401

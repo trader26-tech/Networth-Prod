@@ -307,9 +307,13 @@ def whoami(request: Request):
     # resolve it here from the bearer/cookie when present.
     email = getattr(request.state, "email", None)
     if not email:
-        did = _device_from_access(request)
-        if did:
-            dev = authstore.device_get(did) or {}
+        # whoami is public (pre-login), so a missing/expired token is normal —
+        # resolve identity if a valid token happens to be present, never raise.
+        auth = request.headers.get("authorization", "")
+        tok = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+        payload = authtok.verify_access(tok) if tok else None
+        if payload:
+            dev = authstore.device_get(payload.get("did")) or {}
             email = dev.get("email")
 
     user = None
