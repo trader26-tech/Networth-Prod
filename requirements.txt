@@ -2,7 +2,6 @@ kiteconnect>=5.0.0
 pandas>=2.0.0
 openpyxl>=3.1.0
 xlrd>=2.0.1                 # read old-format .xls bank statements (OLE2) for bond reconcile
-pdfplumber>=0.11            # parse password-protected CDSL/NSDL eCAS holdings PDFs
 python-multipart>=0.0.9
 python-dotenv>=1.0.0
 rich>=13.0.0

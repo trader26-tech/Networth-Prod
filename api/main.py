@@ -190,7 +190,6 @@ for _path in (
     "api.routes.brokerage",
     "api.routes.equity",
     "api.routes.bonds",
-    "api.routes.cas",
     "api.routes.salary",
     "api.routes.ulip",
     "api.routes.lic",
