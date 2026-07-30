@@ -1,0 +1,154 @@
+<div class="imp">
+  <header class="imp-head">
+    <div>
+      <a routerLink="/stocks" class="back">← Stocks</a>
+      <h1>Import holdings from Aionion</h1>
+    </div>
+    <ol class="steps">
+      <li [class.on]="step() >= 1">1 · Upload</li>
+      <li [class.on]="step() >= 2">2 · Review</li>
+      <li [class.on]="step() >= 3">3 · Done</li>
+    </ol>
+  </header>
+
+  @if (error()) { <div class="banner err">{{ error() }}</div> }
+
+  <!-- STEP 1 -->
+  @if (step() === 1) {
+    <div class="card">
+      <h2>Your Aionion holdings file</h2>
+      <p class="hint">
+        The <b>.xlsx</b> holdings statement from Aionion (Equity, MF and Bonds tabs).
+        Everything is re-priced <b>live</b> after import — the statement figures are
+        only a starting point.
+      </p>
+      <label class="drop-sm" [class.has]="!!file()">
+        <input type="file" accept=".xlsx,.xlsm" (change)="onFile($event)" hidden [disabled]="loading()">
+        @if (file()) { <span class="fname">📄 {{ file()!.name }}</span> }
+        @else { <span class="ic">⬆</span><span class="fname">Choose the .xlsx file</span> }
+      </label>
+      <label class="fld">
+        <span>Owner <em>(optional)</em></span>
+        <input type="text" placeholder="defaults to the name on the statement"
+               [ngModel]="owner()" (ngModelChange)="owner.set($event)" [disabled]="loading()">
+      </label>
+      <button class="btn primary big" [disabled]="!canSubmit()" (click)="submit()">
+        {{ loading() ? 'Reading…' : 'Read holdings' }}
+      </button>
+    </div>
+  }
+
+  <!-- STEP 2 -->
+  @if (step() === 2 && preview()) {
+    <div class="card who">
+      <div>
+        <div class="who-name">{{ preview()!.investor.name || 'Holdings' }}</div>
+        <div class="who-sub">
+          {{ preview()!.account.account_label }}
+          @if (preview()!.investor.pan) { · PAN {{ preview()!.investor.pan }} }
+        </div>
+      </div>
+      <div class="who-total">
+        <span class="lbl">Statement net worth</span>
+        <b>{{ inr(preview()!.totals.net_worth) }}</b>
+      </div>
+    </div>
+
+    @for (w of preview()!.warnings; track w) { <div class="banner warn">⚠ {{ w }}</div> }
+
+    <div class="tiles">
+      <div class="tile"><span>Equity &amp; ETF</span><b>{{ preview()!.counts.equities }}</b></div>
+      <div class="tile"><span>Mutual funds</span><b>{{ preview()!.counts.mutual_funds }}</b></div>
+      <div class="tile"><span>Bonds</span><b>{{ preview()!.counts.bonds }}</b></div>
+    </div>
+
+    <div class="card">
+      <h2>Equity &amp; ETF <span class="pill">{{ equityRows().length }}</span></h2>
+      <table class="tbl">
+        <thead><tr><th>Symbol</th><th>ISIN</th><th class="r">Qty</th>
+          <th class="r">Avg cost</th><th class="r">Value (statement)</th></tr></thead>
+        <tbody>
+          @for (h of equityRows(); track h.id) {
+            <tr><td>{{ h.symbol }}</td><td class="mono">{{ h.isin }}</td>
+              <td class="r">{{ h.quantity }}</td><td class="r">{{ inr(h.avg_price) }}</td>
+              <td class="r">{{ inr(h._value) }}</td></tr>
+          }
+        </tbody>
+      </table>
+      <p class="hint">Live prices load on the stocks page after import.</p>
+    </div>
+
+    @if (mfRows().length) {
+      <div class="card">
+        <h2>Mutual funds <span class="pill">{{ mfRows().length }}</span></h2>
+        <table class="tbl">
+          <thead><tr><th>Scheme</th><th class="r">Units</th>
+            <th class="r">Avg cost</th><th class="r">Value</th></tr></thead>
+          <tbody>
+            @for (h of mfRows(); track h.id) {
+              <tr><td class="nm">{{ h.name }}</td><td class="r">{{ h.quantity }}</td>
+                <td class="r">{{ inr(h.avg_price) }}</td><td class="r">{{ inr(h._value) }}</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    @if (preview()!.bonds.length) {
+      <div class="card">
+        <h2>Bonds <span class="pill">{{ preview()!.bonds.length }}</span></h2>
+        <table class="tbl">
+          <thead><tr><th>Issuer</th><th class="r">Coupon</th><th>Maturity</th>
+            <th class="r">Qty</th><th class="r">Value</th></tr></thead>
+          <tbody>
+            @for (b of preview()!.bonds; track b.id) {
+              <tr>
+                <td>{{ b.issuer }}<div class="isin">{{ b.isin }}</div></td>
+                <td class="r">{{ b.coupon_rate }}%</td>
+                <td [class.miss]="!b.maturity_date">{{ b.maturity_date || 'needs date' }}</td>
+                <td class="r">{{ b.quantity }}</td><td class="r">{{ inr(b._value) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        <p class="hint">Payout calendars are generated from coupon + maturity on the bonds page.</p>
+      </div>
+    }
+
+    <div class="card actions">
+      <div class="picks">
+        <label><input type="checkbox" [ngModel]="importHoldings()" (ngModelChange)="importHoldings.set($event)">
+          Import {{ preview()!.counts.holdings }} stocks / funds</label>
+        <label><input type="checkbox" [ngModel]="importBonds()" (ngModelChange)="importBonds.set($event)">
+          Import {{ preview()!.counts.bonds }} bonds</label>
+      </div>
+      <div class="row">
+        <button class="btn ghost" (click)="restart()">Start over</button>
+        <button class="btn primary big" [disabled]="committing()" (click)="commit()">
+          {{ committing() ? 'Importing…' : 'Import into my portfolio' }}
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- STEP 3 -->
+  @if (step() === 3 && report()) {
+    <div class="card done">
+      <div class="ic-ok">✓</div>
+      <h2>Imported</h2>
+      <div class="tiles">
+        <div class="tile"><span>Holdings</span><b>{{ report()!.holdings }}</b></div>
+        <div class="tile"><span>Bonds</span><b>{{ report()!.bonds }}</b></div>
+      </div>
+      @if (report()!.errors.length) {
+        <div class="banner warn"><b>Some rows skipped:</b>
+          <ul>@for (e of report()!.errors; track e) { <li>{{ e }}</li> }</ul></div>
+      }
+      <div class="row">
+        <a class="btn primary" routerLink="/stocks">View stocks</a>
+        <a class="btn" routerLink="/bonds">View bonds</a>
+        <button class="btn ghost" (click)="restart()">Import another</button>
+      </div>
+    </div>
+  }
+</div>

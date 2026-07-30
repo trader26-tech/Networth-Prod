@@ -29,6 +29,7 @@ import { Equity } from './components/equity/equity';
 import { StockTax } from './components/stock-tax/stock-tax';
 import { Fno } from './components/fno/fno';
 import { Bonds } from './components/bonds/bonds';
+import { AionionImport } from './components/aionion-import/aionion-import';
 import { BondsTax } from './components/bonds-tax/bonds-tax';
 import { Salary } from './components/salary/salary';
 import { Ulip } from './components/ulip/ulip';
@@ -68,6 +69,8 @@ export const routes: Routes = [
   { path: 'stocks',            component: Equity },
   { path: 'stocks-manual',     component: StockAccounts },
   { path: 'stock-tax',         component: StockTax },
+  // Aionion broker .xlsx import — equities, MFs and bonds into the portfolio.
+  { path: 'aionion-import',    component: AionionImport },
   // F&O — live Zerodha derivatives: strategy P&L (Sentinel straddle, Crude),
   // daily P&L calendar, per-second intraday chart & multi-account Kite login
   { path: 'fno',               component: Fno },
