@@ -87,6 +87,7 @@ from api.auth import tokens as _authtok
 _AUTH_PUBLIC = {
     "/api/health",
     "/api/auth/session",
+    "/api/auth/whoami",   # multi-user flags + masked identity for the lock screen
     "/api/auth/request-otp",
     "/api/auth/verify-otp",
     "/api/auth/unlock",
@@ -112,8 +113,28 @@ async def _auth_guard(request, call_next):
     # both are verified identically below.
     if not token:
         token = (request.query_params.get("access_token") or "").strip()
-    if token and _authtok.verify_access(token):
-        return await call_next(request)
+    if token:
+        payload = _authtok.verify_access(token)
+        if payload:
+            # Resolve identity onto request.state so downstream code (and the
+            # coming per-user data isolation) can scope by the signed-in user.
+            # Only in multi-user mode — single-user has one dataset and this
+            # would add a per-request DB lookup for no benefit. Failure here
+            # must never block a valid token; identity is additive.
+            request.state.device_id = payload.get("did")
+            try:
+                from api.auth import config as _acfg
+
+                if _acfg.multi_user():
+                    from api.auth import store as _astore, users as _ausers
+
+                    dev = _astore.device_get(payload.get("did")) or {}
+                    request.state.email = dev.get("email")
+                    u = _ausers.get_by_email(dev.get("email")) if dev.get("email") else None
+                    request.state.user_id = u.get("id") if u else None
+            except Exception:
+                pass
+            return await call_next(request)
 
     # This guard sits OUTSIDE CORSMiddleware (Starlette's add_middleware inserts
     # at index 0, so the decorator-added guard wraps CORS). A short-circuit 401

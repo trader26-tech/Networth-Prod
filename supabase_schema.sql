@@ -896,6 +896,25 @@ create table if not exists public.auth_devices (
 create index if not exists auth_devices_email_idx on public.auth_devices (email);
 
 -- ---------------------------------------------------------------------------
+-- [33b] Multi-user registry (email-validated sign-up)
+-- ---------------------------------------------------------------------------
+-- One row per person who can sign in. A user is created 'pending' when they
+-- first request a code and flips to 'active' only after a correct OTP, so an
+-- unverified email never yields a usable account. Written by the backend with
+-- the service-role key (RLS disabled below), like the other auth tables.
+create table if not exists public.users (
+  id            text primary key,
+  email         text unique not null,
+  display_name  text,
+  status        text not null default 'pending',   -- pending | active | suspended
+  is_admin      boolean not null default false,
+  created_at    timestamptz not null default now(),
+  last_login    timestamptz
+);
+create index if not exists users_email_idx on public.users (lower(email));
+alter table if exists public.users disable row level security;
+
+-- ---------------------------------------------------------------------------
 -- [34] REQUIRED · Durable KV (`app_cache`) — persists F&O statements, tradebooks, more
 -- ---------------------------------------------------------------------------
 -- Generic durable KV cache (used for the live-price snapshot; reusable)

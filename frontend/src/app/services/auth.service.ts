@@ -34,6 +34,11 @@ export class AuthService {
   email = signal('');               // raw email entered (used to verify)
   maskedEmail = signal('');         // masked, for display
   signinEmail = signal('');         // masked allowlisted address codes go to
+  // Multi-user: when on, the lock screen shows an email box so anyone can sign
+  // in / register with their own address (single-user hides it and uses the
+  // allowlisted address).
+  multiUser = signal(false);
+  registrationOpen = signal(false);
   hasPin = signal(false);
   lockMinutes = signal(10);
   lockPresets = signal<number[]>([1, 5, 10, 30, 60]);
@@ -83,6 +88,14 @@ export class AuthService {
     let sess: any = null;
     try { sess = await firstValueFrom(this.http.get<any>(`${BASE}/auth/session`, { withCredentials: true })); }
     catch { /* offline → treat as unknown device */ }
+
+    // Multi-user context: does this instance allow multiple accounts / open
+    // registration? Drives whether the lock screen shows an email box.
+    try {
+      const w: any = await firstValueFrom(this.http.get<any>(`${BASE}/auth/whoami`, { withCredentials: true }));
+      this.multiUser.set(!!w.multi_user);
+      this.registrationOpen.set(!!w.registration_open);
+    } catch { /* default single-user */ }
 
     if (sess) {
       this.hasPin.set(!!sess.has_pin);

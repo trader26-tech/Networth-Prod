@@ -283,8 +283,9 @@ export class App implements OnInit {
   }
 
   // ── Lock-screen actions ──────────────────────────────────────────────────────
-  // No email box — the code goes straight to the allowlisted address.
-  sendCode()     { this.auth.requestOtp(); }
+  // Single-user: no email box, code goes to the configured address (empty arg).
+  // Multi-user: pass the email the user typed so they sign in / register with it.
+  sendCode()     { this.auth.requestOtp(this.auth.multiUser() ? this.emailInput().trim() : ''); }
   submitOtp()    { this.auth.verifyOtp(this.codeInput()).then(() => this.codeInput.set('')); }
   submitNewPin() {
     if (this.pinInput() !== this.pin2Input()) { this.auth.error.set("PINs don't match."); return; }
@@ -292,7 +293,7 @@ export class App implements OnInit {
   }
   submitUnlock() { this.auth.unlock(this.pinInput()).then(() => this.pinInput.set('')); }
   backToEmail()  { this.auth.error.set(''); this.codeInput.set(''); this.auth.phase.set('email'); }
-  resendCode()   { this.auth.requestOtp(); }
+  resendCode()   { this.auth.requestOtp(this.auth.multiUser() ? this.emailInput().trim() : ''); }
   staySignedIn() { this.auth.refresh(); }
 
   /** Manual lock button in the topbar. */

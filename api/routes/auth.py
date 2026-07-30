@@ -296,6 +296,43 @@ def _mask_email(email: str) -> str:
         return "your email"
 
 
+@router.get("/whoami")
+def whoami(request: Request):
+    """
+    Multi-user context for the client: whether multi-user is on, whether open
+    registration is available, and — if signed in — who the current user is.
+    Identity comes from request.state (set by the auth middleware).
+    """
+    # whoami is a public route, so identity isn't pre-set on request.state —
+    # resolve it here from the bearer/cookie when present.
+    email = getattr(request.state, "email", None)
+    if not email:
+        did = _device_from_access(request)
+        if did:
+            dev = authstore.device_get(did) or {}
+            email = dev.get("email")
+
+    user = None
+    if authcfg.multi_user() and email:
+        from ..auth import users as authusers
+
+        u = authusers.get_by_email(email)
+        if u:
+            user = {
+                "id": u.get("id"),
+                "email": _mask_email(u.get("email") or ""),
+                "display_name": u.get("display_name"),
+                "status": u.get("status"),
+                "is_admin": bool(u.get("is_admin")),
+            }
+    return {
+        "multi_user": authcfg.multi_user(),
+        "data_isolated": authcfg.data_isolated(),
+        "registration_open": authcfg.registration_open(),
+        "user": user,
+    }
+
+
 @router.get("/session")
 def auth_session(request: Request):
     """Bootstrap state for the lock screen — looks at the device cookie only.
@@ -324,19 +361,28 @@ def auth_session(request: Request):
 
 @router.post("/request-otp")
 def request_otp(body: _EmailBody):
-    # Single-user app: if the client sends no email, use the allowlisted address.
+    # Single-user: no email from client → the allowlisted address.
     email = (body.email or "").strip().lower() or authcfg.primary_email()
-    # Don't reveal whether an address is allowed — same response either way,
-    # but only actually send to allowlisted addresses.
-    if authcfg.is_allowed(email):
+
+    # Decide eligibility via the policy (single-user allowlist, or multi-user
+    # registration rules with the isolation interlock).
+    may, _reason = authcfg.may_request_code(email)
+    if may:
         ok, msg = authstore.otp_rate_ok(email)
         if not ok:
             raise HTTPException(429, msg)
+        # In multi-user mode, record a pending user so a correct code can
+        # activate the account. Email-validated: still 'pending' until verify.
+        if authcfg.multi_user():
+            from ..auth import users as authusers
+
+            authusers.ensure_pending(email)
         code = _gen_code()
         authstore.otp_put(email, code)
         emailed = emailer.send_otp(email, code)
     else:
-        emailed = True  # pretend, to avoid leaking the allowlist
+        # Don't reveal whether an address is eligible — same shape either way.
+        emailed = True
     return {"ok": True, "emailed": bool(emailed), "masked": _mask_email(email)}
 
 
@@ -344,11 +390,21 @@ def request_otp(body: _EmailBody):
 def verify_otp(body: _VerifyBody, response: Response):
     email = (body.email or "").strip().lower() or authcfg.primary_email()
     code = (body.code or "").strip()
-    if not authcfg.is_allowed(email):
+    # Same eligibility gate as request-otp — a code for an ineligible email is
+    # rejected as "incorrect" (no info leak about who may sign in).
+    may, _reason = authcfg.may_request_code(email)
+    if not may:
         raise HTTPException(401, "Incorrect code.")
     ok, msg = authstore.otp_check(email, code)
     if not ok:
         raise HTTPException(401, msg)
+
+    # Correct code == email proven. Activate the user (email-validated sign-up).
+    if authcfg.multi_user():
+        from ..auth import users as authusers
+
+        authusers.ensure_pending(email)
+        authusers.mark_verified(email)
 
     device_id, raw = authstore.device_create(email)
     _set_device_cookie(response, f"{device_id}.{raw}")
